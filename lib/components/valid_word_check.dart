@@ -64,7 +64,6 @@ Future<List<String>> checkColumn(List<String?> letterPositions, int columnIndex,
     validWords.add(currentWord);
   }
 
-
   if (notValid.isEmpty) {
     print("Column Valid: $validWords");
     return validWords;
