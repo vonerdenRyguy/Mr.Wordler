@@ -75,7 +75,6 @@ class _GameScreenState extends State<GameScreen> {
                   }
                   if (previousIndex != -1) {
                     String? draggedLetter = letterPositions[previousIndex];
-                    //letterPositions[previousIndex] = null;
                      if (draggedLetter != null) {
                        letterPositions[previousIndex] = null;
                        allLetters.remove(draggedLetter);
@@ -98,19 +97,19 @@ class _GameScreenState extends State<GameScreen> {
                 Widget dialog = buildWordListDialog(result.words, result.areValid);
                 Widget winnerDialog = winDialog();
 
-                bool isWin = allLetters.every((letter) {
-                  String lowerLetter = letter.toLowerCase();
-                  int countInAllLetters = allLetters.where((l) => l.toLowerCase() == lowerLetter).length;
-                  int countInValidWords = result.words.map((word) => word.replaceAll(RegExp(r'[^a-zA-Z]'), '')).join().toLowerCase().split(lowerLetter).length - 1;
-                  print("Letter: $lowerLetter, Count in allLetters: $countInAllLetters, Count in validWords: $countInValidWords");
-                  return countInAllLetters == countInValidWords;
-
-                });
+                int takenSpots = 0;
+                for (int i = 0; i < 100; i++) {
+                  if (letterPositions[i] != null) {
+                    takenSpots++;
+                  }
+                }
+                bool isWin = takenSpots == allLetters.length;
                 // Must handle this problem with repeated letters
-                print("isWin: $isWin");
+                //print("isWin: $isWin");
+                print(takenSpots);
                 print(allLetters);
                 print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
-                if (isWin) {
+                if (isWin && result.areValid) {
                   showDialog(
                       context: context,
                       builder: (context) => winnerDialog,

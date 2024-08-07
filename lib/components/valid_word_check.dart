@@ -15,6 +15,8 @@ Then it repeats it for the rows
 
  */
 
+// DIFFICULT: HARD
+// ATTEMPTING TO ADD CHECK F0R IF ALL WORDS ARE CONNECTED
 late SpellCheck spellCheck;
 
 Future<void> initSpellCheck() async {
