@@ -1,0 +1,31 @@
+name: namer_app
+description: A new Flutter project.
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 0.0.1
+
+environment:
+  sdk: ^3.1.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  english_words: ^4.0.0
+  provider: ^6.0.0
+  spell_check_on_client: ^0.0.8
+  scrabble_word_checker: ^0.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - lib_assests/scrabble.jpg
+    - lib_assests/trade.png
+    - lib_assests/words.txt
