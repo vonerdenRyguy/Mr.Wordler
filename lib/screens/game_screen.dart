@@ -1,11 +1,13 @@
 
 import 'package:flutter/material.dart';
+import 'package:namer_app/components/timer.dart';
 
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
+
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -16,11 +18,13 @@ class _GameScreenState extends State<GameScreen> {
   List<String?> letterPositions = List.filled(121, null);
   List<GlobalKey> tileKeys = List.generate(121, (index) => GlobalKey());
   List<String> letters = [];
-
+  late StopwatchManager _stopwatchManager;
 
   @override
   void initState() {
     super.initState();
+    _stopwatchManager = StopwatchManager(context);
+    _stopwatchManager.start();
     initSpellCheck();
     letters = LetterGenerator.generateLetters(144);
     for (int i = 0; i < 21; i++) {
@@ -96,7 +100,6 @@ class _GameScreenState extends State<GameScreen> {
                 var result = await findValidWords(letterPositions, 10);
                 Widget dialog = buildWordListDialog(result.words,
                     result.areValid);
-                Widget winnerDialog = winDialog();
                 Widget notConnectedDialog = unconnectedDialog();
 
                 int takenSpots = 0;
@@ -112,9 +115,11 @@ class _GameScreenState extends State<GameScreen> {
                 print(allLetters);
                 print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
                 if (isWin && result.areValid && result.areConnected) {
+                  _stopwatchManager.stop();
+                  String finalTime = _stopwatchManager.getElapsedTime();
                   showDialog(
                     context: context,
-                    builder: (context) => winnerDialog,
+                    builder: (context) => winDialog(finalTime, result.words),
                   );
                 } else if (!result.areConnected && result.areValid){
                   showDialog(
@@ -142,13 +147,7 @@ class _GameScreenState extends State<GameScreen> {
                 border: Border.all(color: Colors.white), // Customize border
                 borderRadius: BorderRadius.circular(8.0), // Customize border radius
               ),
-              child: const Text(
-                '00:00', // Replace with your timer text
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16.0,
-                ),
-              ),
+              child: Text(_stopwatchManager.elapsedTime),
             ),
           ],
         ),
@@ -315,11 +314,25 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget winDialog() {
+  Widget winDialog(String winningTime, List<String> winningWords) {
     return AlertDialog(
-      title: Text('You Win!'),
-      content: Column(mainAxisSize: MainAxisSize.min,
+      title: Text("You Win!"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Your Time: $winningTime"),
+          SizedBox(height: 10),
+          Text("Winning Words:"),
+          ...winningWords.map((word) => Text("- $word")).toList(),
+        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text("Close"),
+        ),
+      ],
     );
   }
 
