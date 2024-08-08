@@ -15,9 +15,10 @@ Then it repeats it for the rows
 
  */
 
-// DIFFICULT: HARD
+// DIFFICULTY: HARD
 // ATTEMPTING TO ADD CHECK F0R IF ALL WORDS ARE CONNECTED
 late SpellCheck spellCheck;
+Map<String, Set<int>> wordPositionsMap = {};
 
 Future<void> initSpellCheck() async {
   String language = 'en';
@@ -32,74 +33,85 @@ Future<bool> isValidWord(String word) async {
   return suggestions.isEmpty;
 }
 
-// Function to check words in a column
-Future<List<String>> checkColumn(List<String?> letterPositions, int columnIndex,
-    int gridSize) async {
+// Function to check words in a column and return their positions
+Future<({Iterable<Set<int>> positions, List<String> words})>
+checkColumnWithPositions(
+    List<String?> letterPositions, int columnIndex, int gridSize) async {
   List<String> validWords = [];
-  List<String>notValid =[];
+  List<String> notValid = [];
+  List<Set<int>> positions = []; // To store positions of letters in valid words
   String currentWord = "";
+  Set<int> currentWordPositions = {};
 
   for (int rowIndex = 0; rowIndex < gridSize; rowIndex++) {
     int index = rowIndex * gridSize + columnIndex;
     String? letter = letterPositions[index];
 
     if (index < 100) {
-      String? letter = letterPositions[index];
-
       if (letter != null) {
         currentWord += letter;
+        currentWordPositions.add(index); // Add index to current word positions
       } else {
         if (currentWord.length > 1) {
           if (await isValidWord(currentWord)) {
             validWords.add(currentWord);
+            positions.add(currentWordPositions.toSet()); // Store positions
+            wordPositionsMap[currentWord] = currentWordPositions.toSet();
           } else {
             notValid.add(currentWord);
           }
         }
         currentWord = "";
+        currentWordPositions = {}; // Reset for next word
       }
     }
   }
 
-  // Check the last word in the column (if any)
+  // Check the last word in the column
   if (currentWord.length > 1 && await isValidWord(currentWord)) {
     validWords.add(currentWord);
+    positions.add(currentWordPositions.toSet());
   }
 
   if (notValid.isEmpty) {
     print("Column Valid: $validWords");
-    return validWords;
+    return (words: validWords, positions: positions);
   } else {
     print("Column invalid: $notValid");
-    return notValid;
+    return (words: notValid, positions: <Set<int>>[].toSet()); // Return empty positions for invalid words
   }
 }
 
-// Function to check words in a row
-Future<List<String>> checkRow(List<String?> letterPositions, int rowIndex,
-    int gridSize) async {
+// Function to check words in a row and return their positions
+Future<({Iterable<Set<int>> positions, List<String> words})>
+checkRowWithPositions(
+    List<String?> letterPositions, int rowIndex, int gridSize) async {
   List<String> validWords = [];
-  List<String>notValid =[];
+  List<String> notValid = [];
+  List<Set<int>> positions = [];
   String currentWord = "";
+  Set<int> currentWordPositions = {};
 
   for (int columnIndex = 0; columnIndex < gridSize; columnIndex++) {
     int index = rowIndex * gridSize + columnIndex;
     String? letter = letterPositions[index];
 
     if (index < 100) {
-      String? letter = letterPositions[index];
-
       if (letter != null) {
         currentWord += letter;
+        currentWordPositions.add(index);
       } else {
         if (currentWord.length > 1) {
           if (await isValidWord(currentWord)) {
             validWords.add(currentWord);
+            positions.add(currentWordPositions.toSet());
+            wordPositionsMap[currentWord] = currentWordPositions.toSet();
           } else {
             notValid.add(currentWord);
           }
         }
         currentWord = "";
+        currentWordPositions = {};
       }
     }
   }
@@ -107,53 +119,97 @@ Future<List<String>> checkRow(List<String?> letterPositions, int rowIndex,
   // Check the last word in the row (if any)
   if (currentWord.length > 1 && currentWord.length < 100 && await isValidWord(currentWord)) {
     validWords.add(currentWord);
+    positions.add(currentWordPositions.toSet());
   }
 
   if (notValid.isEmpty) {
     print("Row Valid: $validWords");
-    return validWords;
+    return (words: validWords, positions: positions);
   } else {
     print("Row invalid: $notValid");
-    return notValid;
+    return (words: notValid, positions: <Set<int>>[].toSet());
   }
 }
 
 
 
 // Main function to find all valid words in the grid
-Future<({List<String> words, bool areValid})> findValidWords(List<String?> letterPositions, int gridSize) async {
+Future<({List<String> words, bool areValid, bool areConnected})>
+findValidWords(List<String?> letterPositions, int gridSize) async {
   await initSpellCheck();
   List<String> allValidWords = [];
   List<String> allInvalidWords = [];
+  List<Set<int>> wordTilePositions = [];
 
   // Check columns
-  for (int columnIndex = 0; columnIndex < gridSize && columnIndex * gridSize < 100; columnIndex++) {
-    List<String> columnResult = await checkColumn(letterPositions, columnIndex, gridSize);
-    if (columnResult.isNotEmpty && await isValidWord(columnResult.first)) {
-      allValidWords.addAll(columnResult);
+  for (int columnIndex = 0;
+  columnIndex < gridSize && columnIndex * gridSize < 100;
+  columnIndex++) {
+    var result =
+    await checkColumnWithPositions(letterPositions, columnIndex, gridSize);
+    if (result.words.isNotEmpty && await isValidWord(result.words.first)) {
+      allValidWords.addAll(result.words);
+      wordTilePositions.addAll(result.positions);
     } else {
-      allInvalidWords.addAll(columnResult);
+      allInvalidWords.addAll(result.words);
     }
   }
 
   // Check rows
-  for (int rowIndex = 0; rowIndex < gridSize && rowIndex * gridSize < 100; rowIndex++) {
-    List<String> rowResult = await checkRow(letterPositions, rowIndex, gridSize);
-    if (rowResult.isNotEmpty && await isValidWord(rowResult.first)) {
-      allValidWords.addAll(rowResult);
+  for (int rowIndex = 0;
+  rowIndex < gridSize && rowIndex * gridSize < 100;
+  rowIndex++) {
+    var result =
+    await checkRowWithPositions(letterPositions, rowIndex, gridSize);
+    if (result.words.isNotEmpty && await isValidWord(result.words.first)) {
+      allValidWords.addAll(result.words);
+      wordTilePositions.addAll(result.positions);
     } else {
-      allInvalidWords.addAll(rowResult);
+      allInvalidWords.addAll(result.words);
+    }
+  }
+
+  // Check if all words are connected
+  bool areConnected = true;
+  //String unconnectedWord = "";
+  if (wordTilePositions.length > 1) {
+    for (int i = 0; i < wordTilePositions.length; i++) {
+      bool isConnected = false;
+
+      // Check if the current word overlaps with ANY other word
+      for (int j = 0; j < wordTilePositions.length; j++) {
+        if (i != j && wordTilePositions[i].intersection(wordTilePositions[j]).isNotEmpty) {
+          isConnected = true;
+          break; // No need to check further for this word
+        }
+      }
+
+      if (!isConnected) {
+        areConnected = false;
+        String unconnectedWord = findWordFromPositions(wordTilePositions[i]);
+        print("Unconnected word: $unconnectedWord");
+        break;
+      }
     }
   }
 
   print("Valid words: $allValidWords");
-  print("invalid words: $allInvalidWords");
-  //print(allInvalidWords.isEmpty);
+  print("Invalid words: $allInvalidWords");
+  print("Are words connected: $areConnected");
 
-  // Return correct list
-  if (allInvalidWords.isEmpty) {
-    return (words: allValidWords, areValid: true);
-  } else {
-    return (words: allInvalidWords, areValid: false);
+  // Return the result
+  return (
+  words: allInvalidWords.isEmpty ? allValidWords : allInvalidWords,
+  areValid: allInvalidWords.isEmpty,
+  areConnected: areConnected
+  );
+}
+
+String findWordFromPositions(Set<int> positions) {
+  for (var entry in wordPositionsMap.entries) {
+    if (entry.value.toSet() == positions) {
+      return entry.key;
+    }
   }
+  return ""; // Or handle the case where the word is not found
 }

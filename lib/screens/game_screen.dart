@@ -94,8 +94,10 @@ class _GameScreenState extends State<GameScreen> {
             ElevatedButton(
               onPressed: () async {
                 var result = await findValidWords(letterPositions, 10);
-                Widget dialog = buildWordListDialog(result.words, result.areValid);
+                Widget dialog = buildWordListDialog(result.words,
+                    result.areValid);
                 Widget winnerDialog = winDialog();
+                Widget notConnectedDialog = unconnectedDialog();
 
                 int takenSpots = 0;
                 for (int i = 0; i < 100; i++) {
@@ -109,12 +111,16 @@ class _GameScreenState extends State<GameScreen> {
                 print(takenSpots);
                 print(allLetters);
                 print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
-                if (isWin && result.areValid) {
+                if (isWin && result.areValid && result.areConnected) {
                   showDialog(
-                      context: context,
-                      builder: (context) => winnerDialog,
+                    context: context,
+                    builder: (context) => winnerDialog,
                   );
-
+                } else if (!result.areConnected && result.areValid){
+                  showDialog(
+                    context: context,
+                    builder: (context) => notConnectedDialog,
+                  );
                 } else {
                   showDialog(
                     context: context,
@@ -312,6 +318,14 @@ class _GameScreenState extends State<GameScreen> {
   Widget winDialog() {
     return AlertDialog(
       title: Text('You Win!'),
+      content: Column(mainAxisSize: MainAxisSize.min,
+      ),
+    );
+  }
+
+  Widget unconnectedDialog() {
+    return AlertDialog(
+      title: Text('All valid words must be connected'),
       content: Column(mainAxisSize: MainAxisSize.min,
       ),
     );
