@@ -211,7 +211,7 @@ class _GameScreenState extends State<GameScreen> {
               decoration: BoxDecoration(
                 color: candidateData.isNotEmpty
                     ? Colors.blue[100] // Highlight when hovering
-                    : (isTopGrid ? Colors.amber[50] : Colors.grey[200]),
+                    : (isTopGrid ? Colors.orangeAccent : Colors.deepPurple),
                 border: Border.all(
                   color: isTopGrid ? Colors.black : Colors.grey,
                   width: 1.0,
@@ -256,6 +256,8 @@ class _GameScreenState extends State<GameScreen> {
                       child: Text(
                         letterPositions[index]!,
                         style: TextStyle(
+                          fontFamily: "Open Sans",
+                          fontWeight: FontWeight.w900,
                           fontSize: isTopGrid ? 9.0 : 15.0,
                         ),
                       ),

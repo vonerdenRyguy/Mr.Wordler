@@ -29,3 +29,4 @@ flutter:
     - lib_assests/scrabble.jpg
     - lib_assests/trade.png
     - lib_assests/words.txt
+    - lib_assests/letterBackground.png
