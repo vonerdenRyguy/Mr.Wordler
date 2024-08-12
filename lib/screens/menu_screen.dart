@@ -9,7 +9,7 @@ class MenuScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Menu'),
+        //title: const Text('Menu'),
         actions: [
             IconButton(
                 icon: const Icon(Icons.settings),
@@ -24,8 +24,9 @@ class MenuScreen extends StatelessWidget {
       ),
       body: Center(
         child: Column(
+          //mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Scrabble',
+            const Text('Annex',
               style: TextStyle(
                 fontSize: 60,
                 fontStyle: FontStyle.italic,
@@ -45,6 +46,33 @@ class MenuScreen extends StatelessWidget {
                   );
                 },
                 child: const Text('Play'),
+            ),
+            OutlinedButton(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Center(
+                        child: Text('Top Times',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orangeAccent,
+                          ),
+                        ),
+                      ),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Add content to your AlertDialog here
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+              child: const Text('Leaderboard'),
             ),
           ],
         )

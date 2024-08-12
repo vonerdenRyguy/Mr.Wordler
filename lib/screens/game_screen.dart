@@ -156,13 +156,19 @@ class _GameScreenState extends State<GameScreen> {
       ),
       body: Column(
         children: [
-          SizedBox(
-            height: MediaQuery.of(context).size.height * 0.6,
-            child: GridView.count(
-              crossAxisCount: 10,
-              children: List.generate(100, (index) {
-                return buildDragTarget(index);
-              }),
+          InteractiveViewer(
+            boundaryMargin: EdgeInsets.all(20.0), // Optional: Add some margin outside the grid
+            minScale: 0.5, // Minimum zoom level
+            maxScale: 2.0, // Maximum zoom level
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: GridView.count(
+                crossAxisCount: 10,
+                physics: NeverScrollableScrollPhysics(),
+                children: List.generate(100, (index) {
+                  return buildDragTarget(index);
+                }),
+              ),
             ),
           ),
           SizedBox(
@@ -174,14 +180,17 @@ class _GameScreenState extends State<GameScreen> {
                   width: 2.0,
                 ),
               ),
-              child: GridView.count(
-                crossAxisCount: 7,
-                childAspectRatio: 1.0,
-                mainAxisSpacing: 8.0,
-                crossAxisSpacing: 8.0,
-                children: List.generate(21, (index) {
-                  return buildDragTarget(100 + index);
-                }),
+              child: Center( // Add Center widget here
+                child: GridView.count(
+                  crossAxisCount: 7,
+                  childAspectRatio: 0.7,
+                  mainAxisSpacing: 1.0,
+                  crossAxisSpacing: 1.0,
+                  shrinkWrap: true, // Important for centering
+                  children: List.generate(21, (index) {
+                    return buildDragTarget(100 + index);
+                  }),
+                ),
               ),
             ),
           ),
@@ -192,7 +201,7 @@ class _GameScreenState extends State<GameScreen> {
   Widget buildDragTarget(int index) {
     final isTopGrid = index < 100;
     return Padding(
-      padding: EdgeInsets.all(isTopGrid ? 0.0 : 8.0),
+      padding: EdgeInsets.all(isTopGrid ? 0.0 : 4.0),
       child: AspectRatio(
         aspectRatio: 1.0,
         child: DragTarget<GlobalKey>(
@@ -208,7 +217,7 @@ class _GameScreenState extends State<GameScreen> {
                   width: 1.0,
                 ),
                 borderRadius: isTopGrid ? BorderRadius.circular(0.0)
-                  : BorderRadius.circular(8.0),
+                    : BorderRadius.circular(8.0),
               ),
               child: Center(
                 child: letterPositions[index] != null
@@ -216,7 +225,7 @@ class _GameScreenState extends State<GameScreen> {
                   data: tileKeys[index],
                   feedback: Material(
                     child: Container(
-                      padding: const EdgeInsets.all(12.0),
+                      padding: const EdgeInsets.all(0.0),
                       decoration: BoxDecoration(
                         color: Colors.amber[100],
                         border: Border.all(color: Colors.grey),
@@ -224,7 +233,9 @@ class _GameScreenState extends State<GameScreen> {
                       ),
                       child: Text(
                         letterPositions[index]!,
-                        style: const TextStyle(fontSize: 20),
+                        style: TextStyle(
+                          fontSize: isTopGrid ? 12.0 : 15.0,
+                        ),
                       ),
                     ),
                   ),
@@ -244,7 +255,9 @@ class _GameScreenState extends State<GameScreen> {
                     child: Center(
                       child: Text(
                         letterPositions[index]!,
-                        style: const TextStyle(fontSize: 20),
+                        style: TextStyle(
+                          fontSize: isTopGrid ? 9.0 : 15.0,
+                        ),
                       ),
                     ),
                   ),
