@@ -20,6 +20,7 @@ class _GameScreenState extends State<GameScreen> {
   List<GlobalKey> tileKeys = List.generate(121, (index) => GlobalKey());
   List<String> letters = [];
   late StopwatchManager _stopwatchManager;
+  DateTime? _lastPopAttempt;
 
   @override
   void initState() {
@@ -38,164 +39,184 @@ class _GameScreenState extends State<GameScreen> {
   }
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            DragTarget<GlobalKey>(
-              builder: (context, candidateData, rejectData) {
-                return Image.asset(
-                  'lib_assests/trade.png',
-                  height: kToolbarHeight - 5,
-                );
-              },
-              onWillAcceptWithDetails: (data) {
-                List<int> emptyIndices = [];
-                for (int i = 100; i < 121; i++) {
-                  if (letterPositions[i] == null) {
-                    emptyIndices.add(i);
-                  }
-                }
-                if (emptyIndices.length <= 2) {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text("Must have 3 open slots"),
-                    ),
+    return WillPopScope(
+      onWillPop: () async {
+        final now = DateTime.now();
+        if (_lastPopAttempt != null &&
+            now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
+          return true; // Exit if second swipe within 2 seconds
+        }
+        _lastPopAttempt = now;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Swipe again to exit'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        return false; // Don't exit on the first swipe
+      },
+      child:  Scaffold(
+        appBar: AppBar(
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              DragTarget<GlobalKey>(
+                builder: (context, candidateData, rejectData) {
+                  return Image.asset(
+                    'lib_assests/trade.png',
+                    height: kToolbarHeight - 5,
                   );
-                  return false;
-                }
-                return true;
-              },
-              onAcceptWithDetails: (DragTargetDetails<GlobalKey> details) {
-                setState(() {
-                  final GlobalKey draggedTileKey = details.data;
-                  int previousIndex = -1;
-                  for (int i = 0; i < tileKeys.length; i++) {
-                    if (tileKeys[i] == draggedTileKey) {
-                      previousIndex = i;
-                      break;
+                },
+                onWillAcceptWithDetails: (data) {
+                  List<int> emptyIndices = [];
+                  for (int i = 100; i < 121; i++) {
+                    if (letterPositions[i] == null) {
+                      emptyIndices.add(i);
                     }
                   }
-                  if (previousIndex != -1) {
-                    String? draggedLetter = letterPositions[previousIndex];
-                     if (draggedLetter != null) {
-                       letterPositions[previousIndex] = null;
-                       allLetters.remove(draggedLetter);
-                       letters.add(draggedLetter);
-                     }
-                    List<String> newLetters = [];
-                    for (int i = 0; i < 3 && letters.isNotEmpty; i++) {
-                      letters.shuffle();
-                      newLetters.add(letters.removeLast());
+                  if (emptyIndices.length <= 2) {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text("Must have 3 open slots"),
+                      ),
+                    );
+                    return false;
+                  }
+                  return true;
+                },
+                onAcceptWithDetails: (DragTargetDetails<GlobalKey> details) {
+                  setState(() {
+                    final GlobalKey draggedTileKey = details.data;
+                    int previousIndex = -1;
+                    for (int i = 0; i < tileKeys.length; i++) {
+                      if (tileKeys[i] == draggedTileKey) {
+                        previousIndex = i;
+                        break;
+                      }
                     }
-                    allLetters.addAll(newLetters);
-                    distributeLetters(newLetters);
-                  }
-                });
-              },
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                var result = await findValidWords(letterPositions, 10);
-                Widget dialog = buildWordListDialog(result.words,
-                    result.areValid);
-                Widget notConnectedDialog = unconnectedDialog();
-
-                int takenSpots = 0;
-                for (int i = 0; i < 100; i++) {
-                  if (letterPositions[i] != null) {
-                    takenSpots++;
-                  }
-                }
-                bool isWin = takenSpots == allLetters.length;
-                // Must handle this problem with repeated letters
-                //print("isWin: $isWin");
-                print(takenSpots);
-                print(allLetters);
-                print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
-                if (isWin && result.areValid && result.areConnected) {
-                  _stopwatchManager.stop();
-                  String finalTime = _stopwatchManager.getElapsedTime();
-                  showDialog(
-                    context: context,
-                    builder: (context) => winDialog(finalTime, result.words),
-                  );
-                } else if (!result.areConnected && result.areValid){
-                  showDialog(
-                    context: context,
-                    builder: (context) => notConnectedDialog,
-                  );
-                } else {
-                  showDialog(
-                    context: context,
-                    builder: (context) => dialog,
-                  );
-                }
-
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.greenAccent,
-                foregroundColor: Colors.green,
+                    if (previousIndex != -1) {
+                      String? draggedLetter = letterPositions[previousIndex];
+                       if (draggedLetter != null) {
+                         letterPositions[previousIndex] = null;
+                         allLetters.remove(draggedLetter);
+                         letters.add(draggedLetter);
+                       }
+                      List<String> newLetters = [];
+                      for (int i = 0; i < 3 && letters.isNotEmpty; i++) {
+                        letters.shuffle();
+                        newLetters.add(letters.removeLast());
+                      }
+                      allLetters.addAll(newLetters);
+                      distributeLetters(newLetters);
+                    }
+                  });
+                },
               ),
-              child: const Text('Check'),
+              ElevatedButton(
+                onPressed: () async {
+                  var result = await findValidWords(letterPositions, 10);
+                  Widget dialog = buildWordListDialog(result.words,
+                      result.areValid);
+                  Widget notConnectedDialog = unconnectedDialog();
 
-            ),
-            Container(
-              padding: const EdgeInsets.all(8.0),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white), // Customize border
-                borderRadius: BorderRadius.circular(8.0), // Customize border radius
+                  int takenSpots = 0;
+                  for (int i = 0; i < 100; i++) {
+                    if (letterPositions[i] != null) {
+                      takenSpots++;
+                    }
+                  }
+                  bool isWin = takenSpots == allLetters.length;
+                  // Must handle this problem with repeated letters
+                  //print("isWin: $isWin");
+                  print(takenSpots);
+                  print(allLetters);
+                  print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
+                  if (isWin && result.areValid && result.areConnected) {
+                    _stopwatchManager.stop();
+                    String finalTime = _stopwatchManager.getElapsedTime();
+                    showDialog(
+                      context: context,
+                      builder: (context) => winDialog(finalTime, result.words),
+                    );
+                  } else if (!result.areConnected && result.areValid){
+                    showDialog(
+                      context: context,
+                      builder: (context) => notConnectedDialog,
+                    );
+                  } else {
+                    showDialog(
+                      context: context,
+                      builder: (context) => dialog,
+                    );
+                  }
+
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.greenAccent,
+                  foregroundColor: Colors.green,
+                ),
+                child: const Text('Check'),
+
               ),
-              child: Text(_stopwatchManager.elapsedTime),
-            ),
-          ],
+              Container(
+                padding: const EdgeInsets.all(8.0),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white), // Customize border
+                  borderRadius: BorderRadius.circular(8.0), // Customize border radius
+                ),
+                child: Text(_stopwatchManager.elapsedTime),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.deepPurple,
+          automaticallyImplyLeading: false, // Remove back arrow
         ),
-        backgroundColor: Colors.deepPurple,
-        automaticallyImplyLeading: false, // Remove back arrow
-      ),
-      body: Column(
-        children: [
-          InteractiveViewer(
-            boundaryMargin: EdgeInsets.all(20.0), // Optional: Add some margin outside the grid
-            minScale: 0.5, // Minimum zoom level
-            maxScale: 2.0, // Maximum zoom level
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height * 0.5,
-              child: GridView.count(
-                crossAxisCount: 10,
-                physics: NeverScrollableScrollPhysics(),
-                children: List.generate(100, (index) {
-                  return buildDragTarget(index);
-                }),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: MediaQuery.of(context).size.height * 0.3,
-            child: Container( // Wrap the bottom GridView with a Container
-              decoration: BoxDecoration(
-                border: Border.all( // Apply border to the Container
-                  color: Colors.black,
-                  width: 2.0,
+        body: Column(
+            children: [
+              InteractiveViewer(
+                boundaryMargin: EdgeInsets.all(20.0), // Optional: Add some margin outside the grid
+                minScale: 0.4, // Minimum zoom level
+                maxScale: 2.0, // Maximum zoom level
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.47,
+                  child: GridView.count(
+                    crossAxisCount: 10,
+                    physics: NeverScrollableScrollPhysics(),
+                    children: List.generate(100, (index) {
+                      return buildDragTarget(index);
+                    }),
+                  ),
                 ),
               ),
-              child: Center( // Add Center widget here
-                child: GridView.count(
-                  crossAxisCount: 7,
-                  childAspectRatio: 0.7,
-                  mainAxisSpacing: 1.0,
-                  crossAxisSpacing: 1.0,
-                  shrinkWrap: true, // Important for centering
-                  children: List.generate(21, (index) {
-                    return buildDragTarget(100 + index);
-                  }),
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.3,
+                child: Container( // Wrap the bottom GridView with a Container
+                  decoration: BoxDecoration(
+                    border: Border.all( // Apply border to the Container
+                      color: Colors.black,
+                      width: 2.0,
+                    ),
+                  ),
+                  child: Center( // Add Center widget here
+                    child: GridView.count(
+                      crossAxisCount: 7,
+                      childAspectRatio: 0.7,
+                      mainAxisSpacing: 1.0,
+                      crossAxisSpacing: 1.0,
+                      shrinkWrap: true, // Important for centering
+                      children: List.generate(21, (index) {
+                        return buildDragTarget(100 + index);
+                      }),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          //),
+        ),
       ),
     );
   }
@@ -209,6 +230,7 @@ class _GameScreenState extends State<GameScreen> {
           key:  tileKeys[index],
           builder: (context, candidateData, rejectedData) {
             return Container(
+              padding: EdgeInsets.zero,
               decoration: BoxDecoration(
                 color: candidateData.isNotEmpty
                     ? Colors.blue[100] // Highlight when hovering
@@ -225,16 +247,19 @@ class _GameScreenState extends State<GameScreen> {
                     ? Draggable<GlobalKey>(
                   data: tileKeys[index],
                   feedback: Material(
+                    color: Colors.transparent,
                     child: Container(
-                      padding: const EdgeInsets.all(0.0),
+                      padding: const EdgeInsets.all(10.0),
                       decoration: BoxDecoration(
-                        color: Colors.amber[100],
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8.0),
+                        color: Colors.deepPurple,
+                        //border: Border.all(color: Colors.grey),
+                        shape: BoxShape.circle,
                       ),
                       child: Text(
                         letterPositions[index]!,
                         style: TextStyle(
+                          fontFamily: "Open Sans",
+                          fontWeight: FontWeight.w900,
                           fontSize: isTopGrid ? 12.0 : 15.0,
                         ),
                       ),
@@ -259,7 +284,7 @@ class _GameScreenState extends State<GameScreen> {
                         style: TextStyle(
                           fontFamily: "Open Sans",
                           fontWeight: FontWeight.w900,
-                          fontSize: isTopGrid ? 9.0 : 15.0,
+                          fontSize: isTopGrid ? 10.0 : 15.0,
                         ),
                       ),
                     ),
