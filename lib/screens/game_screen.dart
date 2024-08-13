@@ -4,6 +4,7 @@ import 'package:namer_app/components/timer.dart';
 
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -330,19 +331,49 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget winDialog(String winningTime, List<String> winningWords) {
+    final nameController = TextEditingController();
+
     return AlertDialog(
       title: Text("You Win!"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text("Your Time: $winningTime"),
-          SizedBox(height: 10),
-          Text("Winning Words:"),
-          ...winningWords.map((word) => Text("- $word")).toList(),
-        ],
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Your Time: $winningTime"),
+            SizedBox(height: 10),
+            Text("Winning Words:"),
+            ...winningWords.map((word) => Text("- $word")).toList(),
+            SizedBox(height: 10.0),
+            TextField(
+              controller: nameController,
+              decoration: InputDecoration(hintText: 'Enter your name'),
+            ),
+          ],
+        ),
       ),
       actions: [
+        TextButton(
+          onPressed: () async {
+            String playerName = nameController.text;
+            if (playerName.isNotEmpty) {
+              final prefs = await SharedPreferences.getInstance();
+
+              List<String> entries = prefs.getStringList('leaderboardEntries') ?? [];
+
+              // Limit the list to 100 entries
+              if (entries.length >= 100) {
+                entries.removeAt(0); // Remove the oldest entry
+              }
+
+              final newEntry = '$playerName - $winningTime';
+              entries.add(newEntry);
+              await prefs.setStringList('leaderboardEntries', entries);
+            }
+            Navigator.of(context).popUntil((route) => route.isFirst); // Close the dialog
+          },
+          child: Text("Submit"),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text("Close"),
@@ -358,4 +389,12 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
+
+  // void saveWinningData(String name, String time) async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //   List<String> existingEntries = prefs.getStringList('winningEntries') ?? [];
+  //   final newEntry = '$name - $time';
+  //   existingEntries.add(newEntry);
+  //   await prefs.setStringList('winningEntries', existingEntries);
+  // }
 }
