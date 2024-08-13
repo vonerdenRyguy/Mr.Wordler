@@ -17,6 +17,7 @@ dependencies:
   spell_check_on_client: ^0.0.8
   scrabble_word_checker: ^0.0.8
   shared_preferences: ^2.3.1
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:

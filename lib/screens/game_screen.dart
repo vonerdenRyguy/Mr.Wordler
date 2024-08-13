@@ -5,6 +5,7 @@ import 'package:namer_app/components/timer.dart';
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:confetti/confetti.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -58,6 +59,7 @@ class _GameScreenState extends State<GameScreen> {
         return false; // Don't exit on the first swipe
       },
       child:  Scaffold(
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -365,53 +367,80 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget winDialog(String winningTime, List<String> winningWords) {
     final nameController = TextEditingController();
+    late ConfettiController _confettiController;
 
-    return AlertDialog(
-      title: Text("You Win!"),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Your Time: $winningTime"),
-            SizedBox(height: 10),
-            Text("Winning Words:"),
-            ...winningWords.map((word) => Text("- $word")).toList(),
-            SizedBox(height: 10.0),
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(hintText: 'Enter your name'),
+    return StatefulBuilder(
+      builder: (context, setState) {
+        _confettiController =
+            ConfettiController(duration: const Duration(seconds: 5));
+        _confettiController.play();
+
+        return AlertDialog(
+          title: const Text("You Win!"),
+          content: Stack(
+            children: [
+              SingleChildScrollView( // Wrap content in SingleChildScrollView
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Your Time: $winningTime"),
+                    const SizedBox(height: 10),
+                    const Text("Winning Words:"),
+                    ...winningWords.map((word) => Text("- $word")).toList(),
+                    const SizedBox(height: 10.0),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                          hintText: 'Enter your name'),
+                    ),
+                    //const SizedBox(height: 80), // Add spacing below content
+                  ],
+                ),
+              ),
+              Positioned.fill( // Position ConfettiWidget within the Stack
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConfettiWidget(
+                    confettiController: _confettiController,
+                    blastDirectionality: BlastDirectionality.explosive,
+                    // Customize other properties as needed
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                String playerName = nameController.text;
+                if (playerName.isNotEmpty) {
+                  final prefs = await SharedPreferences.getInstance();
+
+                  List<String> entries = prefs.getStringList(
+                      'leaderboardEntries') ?? [];
+
+                  // Limit the list to 100 entries
+                  if (entries.length >= 100) {
+                    entries.removeAt(0); // Remove the oldest entry
+                  }
+
+                  final newEntry = '$playerName - $winningTime';
+                  entries.add(newEntry);
+                  await prefs.setStringList('leaderboardEntries', entries);
+                }
+                Navigator.of(context).popUntil((route) =>
+                route.isFirst); // Close the dialog
+              },
+              child: Text("Submit"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Close"),
             ),
           ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            String playerName = nameController.text;
-            if (playerName.isNotEmpty) {
-              final prefs = await SharedPreferences.getInstance();
-
-              List<String> entries = prefs.getStringList('leaderboardEntries') ?? [];
-
-              // Limit the list to 100 entries
-              if (entries.length >= 100) {
-                entries.removeAt(0); // Remove the oldest entry
-              }
-
-              final newEntry = '$playerName - $winningTime';
-              entries.add(newEntry);
-              await prefs.setStringList('leaderboardEntries', entries);
-            }
-            Navigator.of(context).popUntil((route) => route.isFirst); // Close the dialog
-          },
-          child: Text("Submit"),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text("Close"),
-        ),
-      ],
+        );
+      },
     );
   }
 
