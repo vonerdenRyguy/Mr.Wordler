@@ -104,13 +104,17 @@ class _GameScreenState extends State<GameScreen> {
                          allLetters.remove(draggedLetter);
                          letters.add(draggedLetter);
                        }
-                      List<String> newLetters = [];
-                      for (int i = 0; i < 3 && letters.isNotEmpty; i++) {
-                        letters.shuffle();
-                        newLetters.add(letters.removeLast());
-                      }
-                      allLetters.addAll(newLetters);
-                      distributeLetters(newLetters);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        setState(() {
+                          List<String> newLetters = [];
+                          for (int i = 0; i < 3 && letters.isNotEmpty; i++) {
+                            letters.shuffle();
+                            newLetters.add(letters.removeLast());
+                          }
+                          allLetters.addAll(newLetters);
+                          distributeLetters(newLetters);
+                        });
+                      });
                     }
                   });
                 },
