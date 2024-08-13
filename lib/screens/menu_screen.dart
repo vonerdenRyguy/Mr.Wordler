@@ -30,7 +30,7 @@ class MenuScreen extends StatelessWidget {
           child: Column(
             //mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              SizedBox(height: 30),
+              //SizedBox(height: 20),
               Text('Mr. Wordler',
                 style: TextStyle(
                   fontSize: 60,

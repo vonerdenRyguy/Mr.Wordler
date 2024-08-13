@@ -218,6 +218,10 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ),
               ),
+              Container(
+                height: MediaQuery.of(context).size.height * 0.1275,
+                color: Colors.orangeAccent,
+              ),
             ],
           //),
         ),
