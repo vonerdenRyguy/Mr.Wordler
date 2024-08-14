@@ -65,9 +65,16 @@ class _GameScreenState extends State<GameScreen> {
             children: [
               DragTarget<GlobalKey>(
                 builder: (context, candidateData, rejectData) {
-                  return Image.asset(
-                    'lib_assests/trade.png',
-                    height: kToolbarHeight - 5,
+                  return  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.orangeAccent,
+                      //border: Border.all(color: Colors.white),
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    child: Image.asset(
+                      'lib_assests/trade.png',
+                      height: kToolbarHeight - 5,
+                    ),
                   );
                 },
                 onWillAcceptWithDetails: (data) {
@@ -169,10 +176,14 @@ class _GameScreenState extends State<GameScreen> {
               Container(
                 padding: const EdgeInsets.all(8.0),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white), // Customize border
-                  borderRadius: BorderRadius.circular(8.0), // Customize border radius
+                  color: Colors.orangeAccent,
+                  border: Border.all(color: Colors.white),
+                  borderRadius: BorderRadius.circular(8.0),
                 ),
-                child: Text(_stopwatchManager.elapsedTime),
+                child: Text(
+                  _stopwatchManager.elapsedTime,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -189,7 +200,7 @@ class _GameScreenState extends State<GameScreen> {
                 height: MediaQuery.of(context).size.height * 0.47,
                 child: GridView.count(
                   crossAxisCount: 10,
-                  physics: NeverScrollableScrollPhysics(),
+                  //physics: NeverScrollableScrollPhysics(),
                   children: List.generate(100, (index) {
                     return buildDragTarget(index);
                   }),
@@ -209,8 +220,8 @@ class _GameScreenState extends State<GameScreen> {
                   child: GridView.count(
                     physics: NeverScrollableScrollPhysics(),
                     crossAxisCount: 7,
-                    //childAspectRatio: 1,
                     childAspectRatio: 0.7,
+                    //: 0.7,
                     shrinkWrap: true, // Important for centering
                     children: List.generate(21, (index) {
                       return buildDragTarget(100 + index);
@@ -352,6 +363,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget buildWordListDialog(List<String> words, bool areWordsValid) {
     return AlertDialog(
+      backgroundColor: Colors.orangeAccent,
       title: Text(areWordsValid ? 'Valid Words!' : 'Invalid Words:'),
       content: Column(mainAxisSize: MainAxisSize.min,
         children: words.map((word) => Text(word, style: TextStyle(
@@ -442,6 +454,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget unconnectedDialog() {
     return AlertDialog(
+      backgroundColor: Colors.orangeAccent,
       title: Text('All valid words must be connected'),
       content: Column(mainAxisSize: MainAxisSize.min,
       ),
