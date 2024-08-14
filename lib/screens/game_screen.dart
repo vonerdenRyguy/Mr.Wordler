@@ -1,15 +1,14 @@
 
-import 'package:flutter/material.dart';
 import 'package:namer_app/components/timer.dart';
-
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart';
+
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
-
 
   @override
   State<GameScreen> createState() => _GameScreenState();
