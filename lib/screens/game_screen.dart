@@ -208,10 +208,10 @@ class _GameScreenState extends State<GameScreen> {
                 ),
                 child: Center( // Add Center widget here
                   child: GridView.count(
+                    physics: NeverScrollableScrollPhysics(),
                     crossAxisCount: 7,
-                    childAspectRatio: 0.7,
-                    mainAxisSpacing: 1.0,
-                    crossAxisSpacing: 1.0,
+                    childAspectRatio: (1 / 1.5),
+                    //childAspectRatio: 0.7,
                     shrinkWrap: true, // Important for centering
                     children: List.generate(21, (index) {
                       return buildDragTarget(100 + index);
@@ -315,8 +315,6 @@ class _GameScreenState extends State<GameScreen> {
             }
             return true;
           },
-          // onLeave: (data) {
-          // },
           onAcceptWithDetails: (DragTargetDetails<GlobalKey> details) {
             setState(() {
               final GlobalKey draggedTileKey = details.data;
@@ -375,6 +373,7 @@ class _GameScreenState extends State<GameScreen> {
         _confettiController.play();
 
         return AlertDialog(
+          backgroundColor: Colors.orangeAccent,
           title: const Text("You Win!"),
           content: Stack(
             children: [
@@ -393,11 +392,10 @@ class _GameScreenState extends State<GameScreen> {
                       decoration: const InputDecoration(
                           hintText: 'Enter your name'),
                     ),
-                    //const SizedBox(height: 80), // Add spacing below content
                   ],
                 ),
               ),
-              Positioned.fill( // Position ConfettiWidget within the Stack
+              Positioned.fill(
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: ConfettiWidget(
@@ -450,12 +448,4 @@ class _GameScreenState extends State<GameScreen> {
       ),
     );
   }
-
-  // void saveWinningData(String name, String time) async {
-  //   final prefs = await SharedPreferences.getInstance();
-  //   List<String> existingEntries = prefs.getStringList('winningEntries') ?? [];
-  //   final newEntry = '$name - $time';
-  //   existingEntries.add(newEntry);
-  //   await prefs.setStringList('winningEntries', existingEntries);
-  // }
 }
