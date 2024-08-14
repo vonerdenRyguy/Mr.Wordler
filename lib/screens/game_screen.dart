@@ -210,8 +210,8 @@ class _GameScreenState extends State<GameScreen> {
                   child: GridView.count(
                     physics: NeverScrollableScrollPhysics(),
                     crossAxisCount: 7,
-                    childAspectRatio: (1 / 1.5),
-                    //childAspectRatio: 0.7,
+                    //childAspectRatio: 1,
+                    childAspectRatio: 0.7,
                     shrinkWrap: true, // Important for centering
                     children: List.generate(21, (index) {
                       return buildDragTarget(100 + index);
@@ -364,13 +364,13 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget winDialog(String winningTime, List<String> winningWords) {
     final nameController = TextEditingController();
-    late ConfettiController _confettiController;
+    late ConfettiController confettiController;
 
     return StatefulBuilder(
       builder: (context, setState) {
-        _confettiController =
+        confettiController =
             ConfettiController(duration: const Duration(seconds: 6));
-        _confettiController.play();
+        confettiController.play();
 
         return AlertDialog(
           backgroundColor: Colors.orangeAccent,
@@ -399,7 +399,7 @@ class _GameScreenState extends State<GameScreen> {
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: ConfettiWidget(
-                    confettiController: _confettiController,
+                    confettiController: confettiController,
                     blastDirectionality: BlastDirectionality.explosive,
                     // Customize other properties as needed
                   ),
