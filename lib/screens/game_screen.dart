@@ -181,51 +181,50 @@ class _GameScreenState extends State<GameScreen> {
           automaticallyImplyLeading: false, // Remove back arrow
         ),
         body: Column(
-            children: [
-              InteractiveViewer(
-                boundaryMargin: EdgeInsets.all(20.0), // Optional: Add some margin outside the grid
-                minScale: 0.4, // Minimum zoom level
-                maxScale: 2.0, // Maximum zoom level
-                child: SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.47,
+          children: [
+            InteractiveViewer(
+              boundaryMargin: EdgeInsets.all(0.0),
+              minScale: 0.4, // Minimum zoom level
+              maxScale: 2.5, // Maximum zoom level
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.47,
+                child: GridView.count(
+                  crossAxisCount: 10,
+                  physics: NeverScrollableScrollPhysics(),
+                  children: List.generate(100, (index) {
+                    return buildDragTarget(index);
+                  }),
+                ),
+              ),
+            ),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.3,
+              child: Container( // Wrap the bottom GridView with a Container
+                decoration: BoxDecoration(
+                  border: Border.all( // Apply border to the Container
+                    color: Colors.black,
+                    width: 2.0,
+                  ),
+                ),
+                child: Center( // Add Center widget here
                   child: GridView.count(
-                    crossAxisCount: 10,
-                    physics: NeverScrollableScrollPhysics(),
-                    children: List.generate(100, (index) {
-                      return buildDragTarget(index);
+                    crossAxisCount: 7,
+                    childAspectRatio: 0.7,
+                    mainAxisSpacing: 1.0,
+                    crossAxisSpacing: 1.0,
+                    shrinkWrap: true, // Important for centering
+                    children: List.generate(21, (index) {
+                      return buildDragTarget(100 + index);
                     }),
                   ),
                 ),
               ),
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.3,
-                child: Container( // Wrap the bottom GridView with a Container
-                  decoration: BoxDecoration(
-                    border: Border.all( // Apply border to the Container
-                      color: Colors.black,
-                      width: 2.0,
-                    ),
-                  ),
-                  child: Center( // Add Center widget here
-                    child: GridView.count(
-                      crossAxisCount: 7,
-                      childAspectRatio: 0.7,
-                      mainAxisSpacing: 1.0,
-                      crossAxisSpacing: 1.0,
-                      shrinkWrap: true, // Important for centering
-                      children: List.generate(21, (index) {
-                        return buildDragTarget(100 + index);
-                      }),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                height: MediaQuery.of(context).size.height * 0.1275,
-                color: Colors.orangeAccent,
-              ),
-            ],
-          //),
+            ),
+            Container(
+              height: MediaQuery.of(context).size.height * 0.1275,
+              color: Colors.orangeAccent,
+            ),
+          ],
         ),
       ),
     );
@@ -247,7 +246,7 @@ class _GameScreenState extends State<GameScreen> {
                     : (isTopGrid ? Colors.orangeAccent : Colors.deepPurple),
                 border: Border.all(
                   color: isTopGrid ? Colors.black : Colors.grey,
-                  width: 1.0,
+                  width: 1.5,
                 ),
                 borderRadius: isTopGrid ? BorderRadius.circular(0.0)
                     : BorderRadius.circular(8.0),
@@ -284,19 +283,19 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                   child: Container(
-                    padding: const EdgeInsets.all(12.0),
+                    padding: EdgeInsets.zero,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8.0),
                     ),
                     child: Center(
-                      child: Text(
-                        letterPositions[index]!,
-                        style: TextStyle(
-                          fontFamily: "Open Sans",
-                          fontWeight: FontWeight.w900,
-                          fontSize: isTopGrid ? 10.0 : 15.0,
+                        child: Text(
+                          letterPositions[index]!,
+                          style: TextStyle(
+                            fontFamily: "Open Sans",
+                            fontWeight: FontWeight.w900,
+                            fontSize: isTopGrid ? 15.0 : 15.0,
+                          ),
                         ),
-                      ),
                     ),
                   ),
                   onDragCompleted: () {
@@ -372,7 +371,7 @@ class _GameScreenState extends State<GameScreen> {
     return StatefulBuilder(
       builder: (context, setState) {
         _confettiController =
-            ConfettiController(duration: const Duration(seconds: 5));
+            ConfettiController(duration: const Duration(seconds: 6));
         _confettiController.play();
 
         return AlertDialog(
