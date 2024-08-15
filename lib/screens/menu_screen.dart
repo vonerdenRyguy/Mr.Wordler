@@ -109,7 +109,9 @@ class MenuScreen extends StatelessWidget {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         for (int i = 0; i < (snapshot.data ?? []).length; i++)
-                                          Text('${i + 1}. ${snapshot.data![i]['name']}: ${snapshot.data![i]['time']}'),
+                                          Text('${i + 1}. ${snapshot.data![i]['name']}: ${snapshot.data![i]['time']}',
+                                          style: TextStyle(color: Colors.deepPurple),
+                                          ),
                                       ],
                                     ),
                                   );

@@ -200,7 +200,7 @@ class _GameScreenState extends State<GameScreen> {
                 height: MediaQuery.of(context).size.height * 0.47,
                 child: GridView.count(
                   crossAxisCount: 10,
-                  //physics: NeverScrollableScrollPhysics(),
+                  physics: NeverScrollableScrollPhysics(),
                   children: List.generate(100, (index) {
                     return buildDragTarget(index);
                   }),
@@ -367,6 +367,7 @@ class _GameScreenState extends State<GameScreen> {
       title: Text(areWordsValid ? 'Valid Words!' : 'Invalid Words:'),
       content: Column(mainAxisSize: MainAxisSize.min,
         children: words.map((word) => Text(word, style: TextStyle(
+          fontWeight: FontWeight.bold,
           color: areWordsValid ? Colors.green : Colors.red,
         ))).toList(),
       ),
