@@ -62,7 +62,7 @@ Mr. Wordler isn’t just a game, it’s a fun, brain‑stimulating word workout.
 
 ---
 
-##  **Screenshots & Demo**
+##  **Screenshots**
 
 ![Screenshot_20251118_144459](https://github.com/user-attachments/assets/b7bc8e35-22e1-4f0b-9764-fa1f42e0c89d)
 
