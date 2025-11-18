@@ -22,7 +22,7 @@ Start each game with a randomized set of letters.
 
 ### **2. Drag & Drop Tiles Onto the Grid**
 
-Use your mouse to drag tiles around the board and place them exactly where you want.
+Use your finger to drag tiles around the board and place them exactly where you want.
 
 ### **3. Build Valid Words**
 
@@ -42,7 +42,7 @@ You win when:
 
 ### **6. Rearrange Freely**
 
-Not working? No problem — drag things around until it does.
+Not working? No problem, drag things around until it does.
 
 ---
 
@@ -56,7 +56,6 @@ I’ve always loved **Bananagrams**, word puzzles, and anything that challenges 
 
   * **Improving spelling**
   * **Learning new definitions**
-  * **Pattern recognition**
   * **Vocabulary expansion**
 
 Mr. Wordler isn’t just a game, it’s a fun, brain‑stimulating word workout.
@@ -64,13 +63,13 @@ Mr. Wordler isn’t just a game, it’s a fun, brain‑stimulating word workout.
 ---
 
 ##  **Screenshots & Demo**
+![Screenshot_20251118_144459](https://github.com/user-attachments/assets/b7bc8e35-22e1-4f0b-9764-fa1f42e0c89d)
 
-*(Add images, GIFs, or demos here)*
+![Screenshot_20251118_144504](https://github.com/user-attachments/assets/c377e3ab-59b6-4646-b994-d809023381a3)
 
-```md
-![Gameplay Screenshot](path/to/screenshot.png)
-![Tile Dragging Demo](path/to/demo.gif)
-```
+![Screenshot_20251118_145040](https://github.com/user-attachments/assets/719f65bd-4963-458b-8003-716e82be9e9a)
+
+![Screenshot_20251118_145044](https://github.com/user-attachments/assets/bee4af76-3b21-477f-bd02-6fc9cfff2144)
 
 ---
 
