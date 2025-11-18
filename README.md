@@ -82,25 +82,14 @@ Mr. Wordler isn’t just a game, it’s a fun, brain‑stimulating word workout.
 
 ---
 
-##  **Installation & Running**
-
-*(Modify based on your actual tech stack)*
-
-```bash
-git clone https://github.com/YourUsername/Mr-Wordler.git
-cd Mr-Wordler
-# Run your app (React, Shiny, Python, etc.)
-```
-
----
-
 ##  **Roadmap**
 
 *  Timed challenge mode
+*  Word Playground mode
+*  Provide Definition of Spelled Words
 *  Daily puzzle
-*  Hint system
 *  Dark mode
-*  Mobile‑friendly layout
+*  All-Device‑friendly layout
 
 ---
 
