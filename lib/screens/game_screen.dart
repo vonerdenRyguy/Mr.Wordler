@@ -41,6 +41,10 @@ class _GameScreenState extends State<GameScreen> {
   // implement "press back twice within 2 seconds to exit".
   DateTime? _lastPopAttempt;
 
+  // Starts false so PopScope blocks the first back gesture; flipped to
+  // true right before we programmatically pop on the second attempt.
+  bool _canPop = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,30 +55,41 @@ class _GameScreenState extends State<GameScreen> {
     // Generate the full Bananagrams-style letter pool (144 tiles).
     letters = LetterGenerator.generateLetters(144);
 
-    // Deal the first 21 letters into the rack slots (100-120).
+    // Deal the first 21 letters into the rack slots (100-120), then
+    // remove those same tiles from the draw pool so they can't be
+    // drawn again later (e.g. during a trade-in), which would create
+    // duplicate copies of a letter in play.
+    List<String> dealt = letters.sublist(0, 21);
+    letters.removeRange(0, 21);
     for (int i = 0; i < 21; i++) {
-      letterPositions[100 + i] = letters[i];
+      letterPositions[100 + i] = dealt[i];
     }
-    // NOTE: `letters.remove(i)` below removes by VALUE, not by index
-    // (List.remove takes an Object, and `i` gets treated as an int value
-    // to remove, which is likely not the intended behavior for popping
-    // dealt tiles out of the draw pool). This mirrors existing behavior
-    // and has not been changed.
-    for (int i = 0; i < 21; i++) {
-      letters.remove(i);
-      allLetters.add(letters[i]);
-    }
+    allLetters.addAll(dealt);
+  }
+
+  @override
+  void dispose() {
+    // Stop the stopwatch's periodic timer so it doesn't keep firing
+    // (and touching this screen's context) after the player navigates away.
+    _stopwatchManager.stop();
+    super.dispose();
   }
   @override
   Widget build(BuildContext context) {
-    // WillPopScope intercepts the Android back gesture/button so we can
+    // PopScope intercepts the Android back gesture/button so we can
     // require a second swipe/press within 2 seconds before actually exiting.
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: _canPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
         final now = DateTime.now();
         if (_lastPopAttempt != null &&
             now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          return true; // Exit if second swipe within 2 seconds
+          // Second swipe within 2 seconds: allow the pop through.
+          setState(() => _canPop = true);
+          Navigator.of(context).maybePop();
+          return;
         }
         _lastPopAttempt = now;
 
@@ -84,8 +99,6 @@ class _GameScreenState extends State<GameScreen> {
             duration: Duration(seconds: 2),
           ),
         );
-
-        return false; // Don't exit on the first swipe
       },
       child:  Scaffold(
         resizeToAvoidBottomInset: false,
@@ -175,6 +188,9 @@ class _GameScreenState extends State<GameScreen> {
                   // Scan the board for words (rows + columns), check them
                   // against the dictionary, and check word connectivity.
                   var result = await findValidWords(letterPositions, 10);
+                  // The word check is async; bail out if the player left
+                  // this screen while it was running.
+                  if (!context.mounted) return;
                   Widget dialog = buildWordListDialog(result.words,
                       result.areValid);
                   Widget notConnectedDialog = unconnectedDialog();
@@ -316,7 +332,22 @@ class _GameScreenState extends State<GameScreen> {
       padding: EdgeInsets.all(isTopGrid ? 0.0 : 4.0),
       child: AspectRatio(
         aspectRatio: 1.0,
-        child: DragTarget<GlobalKey>(
+        // Size tile text off of the tile's actual rendered dimensions
+        // (rather than a fixed pixel value) so letters stay legible and
+        // proportionate whether the board is on a small phone or a tablet.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double fontSize =
+                (constraints.maxWidth * 0.5).clamp(10.0, 28.0);
+            return _buildDragTargetTile(index, isTopGrid, fontSize);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDragTargetTile(int index, bool isTopGrid, double fontSize) {
+    return DragTarget<GlobalKey>(
           key:  tileKeys[index],
           builder: (context, candidateData, rejectedData) {
             return Container(
@@ -354,7 +385,7 @@ class _GameScreenState extends State<GameScreen> {
                         style: TextStyle(
                           fontFamily: "Open Sans",
                           fontWeight: FontWeight.w900,
-                          fontSize: isTopGrid ? 12.0 : 15.0,
+                          fontSize: fontSize,
                         ),
                       ),
                     ),
@@ -380,7 +411,7 @@ class _GameScreenState extends State<GameScreen> {
                           style: TextStyle(
                             fontFamily: "Open Sans",
                             fontWeight: FontWeight.w900,
-                            fontSize: isTopGrid ? 15.0 : 15.0,
+                            fontSize: fontSize,
                           ),
                         ),
                     ),
@@ -422,9 +453,7 @@ class _GameScreenState extends State<GameScreen> {
               }
             });
           },
-        ),
-      ),
-    );
+        );
   }
 
   // After a trade-in, places the newly drawn letters into the first
@@ -557,6 +586,8 @@ class _GameScreenState extends State<GameScreen> {
                   await prefs.setStringList('leaderboardEntries', encoded);
                 }
 
+                // Bail out if the dialog's context is gone after the awaits above.
+                if (!context.mounted) return;
                 // Return to the very first route (the menu screen).
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },

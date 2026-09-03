@@ -12,6 +12,13 @@ class StopwatchManager {
   void start() {
     _stopwatch.start();
     _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      // If the screen that owns this context has been popped (e.g. the
+      // player exited without winning), the element is no longer mounted.
+      // Calling markNeedsBuild on it throws, so stop the timer instead.
+      if (!_buildContext.mounted) {
+        timer.cancel();
+        return;
+      }
       elapsedTime = _formatElapsedTime(_stopwatch.elapsed);
       (_buildContext as Element).markNeedsBuild();
     });
