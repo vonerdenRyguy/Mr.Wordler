@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:namer_app/screens/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -109,7 +111,7 @@ class MenuScreen extends StatelessWidget {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         for (int i = 0; i < (snapshot.data ?? []).length; i++)
-                                          Text('${i + 1}. ${snapshot.data![i]['name']}: ${snapshot.data![i]['time']}',
+                                          Text('${i + 1}. ${snapshot.data![i]['name']}: ${snapshot.data![i]['displayTime']}',
                                           style: TextStyle(color: Colors.deepPurple),
                                           ),
                                       ],
@@ -139,35 +141,21 @@ class MenuScreen extends StatelessWidget {
   }
 }
 
+// Entries are stored (in game_screen.dart's winDialog) as JSON objects:
+// {"name": ..., "time": <seconds as int>, "displayTime": "MM:SS"}.
+// This must decode that same shape rather than treating entries as
+// plain "name - time" strings, or parsing silently fails and nothing
+// is shown.
 Future<List<Map<String, dynamic>>> _loadLeaderboardData() async {
   final prefs = await SharedPreferences.getInstance();
   final entries = prefs.getStringList('leaderboardEntries') ?? [];
 
-  List<Map<String, dynamic>> parsedEntries = [];
-  for (String entry in entries) {
-    final parts = entry.split(' - ');
-    if (parts.length == 2) {
-      parsedEntries.add({
-        'name': parts[0],
-        'time': parts[1],
-        'totalTimeInSeconds': _timeToSeconds(parts[1]), // Calculate total seconds
-      });
-    }
-  }
+  List<Map<String, dynamic>> parsedEntries = entries
+      .map((entry) => Map<String, dynamic>.from(jsonDecode(entry) as Map<String, dynamic>))
+      .toList();
 
-  // Sort entries based on totalTimeInSeconds (ascending order for shortest time first)
-  parsedEntries.sort((a, b) {
-    return (a['totalTimeInSeconds'] as int).compareTo(b['totalTimeInSeconds'] as int);
-  });
+  // Sort by the stored time in seconds (ascending = fastest time first).
+  parsedEntries.sort((a, b) => (a['time'] as int).compareTo(b['time'] as int));
 
   return parsedEntries;
-}
-
-// Helper function to convert "hr:min:sec" to total seconds
-int _timeToSeconds(String timeString) {
-  final parts = timeString.split(':').map((s) => int.tryParse(s) ?? 0).toList();
-  if (parts.length == 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-  return 0;
 }

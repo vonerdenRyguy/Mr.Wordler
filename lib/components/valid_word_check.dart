@@ -15,7 +15,6 @@ Then it repeats it for the rows
 
  */
 
-// DIFFICULTY: HARD
 // ATTEMPTING TO ADD CHECK F0R IF ALL WORDS ARE CONNECTED
 late SpellCheck spellCheck;
 Map<String, Set<int>> wordPositionsMap = {};
