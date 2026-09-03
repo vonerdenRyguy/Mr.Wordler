@@ -1,8 +1,9 @@
 import 'dart:math';
 
-
 class LetterGenerator {
 
+  // Map of available letters that the user may use
+  // and their associated number for each letter
   static List<String> generateLetters(int count) {
     final letterCounts = {
       'A': 13,
@@ -33,6 +34,8 @@ class LetterGenerator {
       'Z': 2,
     };
 
+    // Make a list of all available letters
+
     List<String> allLetters = [];
     letterCounts.forEach((letter, count) {
       for (int i = 0; i < count; i++) {
@@ -42,9 +45,11 @@ class LetterGenerator {
 
     allLetters.shuffle(Random());
 
-    return allLetters.sublist(0, count); // Return the first 'count' letters
+    // Return the first 'count' letters (should be the starting letters)
+    return allLetters.sublist(0, count);
   }
 
+  // Trade in logic for the 1 for 3
   List<String>tradeIn(List<String> allLetters, String takenLetter) {
     //List<String> shuffled = [];
     allLetters.add(takenLetter);
