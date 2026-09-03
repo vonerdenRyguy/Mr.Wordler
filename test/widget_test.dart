@@ -1,7 +1,6 @@
 // Basic smoke test: the app boots and the menu screen shows up with
 // its title and both action buttons.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
