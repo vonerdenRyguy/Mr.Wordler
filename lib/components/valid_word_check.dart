@@ -77,7 +77,7 @@ checkColumnWithPositions(
     return (words: validWords, positions: positions);
   } else {
     print("Column invalid: $notValid");
-    return (words: notValid, positions: <Set<int>>[].toSet()); // Return empty positions for invalid words
+    return (words: notValid, positions: <Set<int>>{}); // Return empty positions for invalid words
   }
 }
 
@@ -126,7 +126,7 @@ checkRowWithPositions(
     return (words: validWords, positions: positions);
   } else {
     print("Row invalid: $notValid");
-    return (words: notValid, positions: <Set<int>>[].toSet());
+    return (words: notValid, positions: <Set<int>>{});
   }
 }
 
