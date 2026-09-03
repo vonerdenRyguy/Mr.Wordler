@@ -41,10 +41,6 @@ class _GameScreenState extends State<GameScreen> {
   // implement "press back twice within 2 seconds to exit".
   DateTime? _lastPopAttempt;
 
-  // Starts false so PopScope blocks the first back gesture; flipped to
-  // true right before we programmatically pop on the second attempt.
-  bool _canPop = false;
-
   @override
   void initState() {
     super.initState();
@@ -78,17 +74,24 @@ class _GameScreenState extends State<GameScreen> {
   Widget build(BuildContext context) {
     // PopScope intercepts the Android back gesture/button so we can
     // require a second swipe/press within 2 seconds before actually exiting.
+    // canPop stays false always: we decide fresh on every attempt below,
+    // rather than trying to flip canPop and pop in the same callback (that
+    // races PopScope's internal state, which only updates on the *next*
+    // rebuild, so the immediate pop attempt sees the stale "blocked" value
+    // and silently does nothing).
     return PopScope(
-      canPop: _canPop,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
         final now = DateTime.now();
         if (_lastPopAttempt != null &&
             now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          // Second swipe within 2 seconds: allow the pop through.
-          setState(() => _canPop = true);
-          Navigator.of(context).maybePop();
+          // Second swipe within 2 seconds: pop directly. Navigator.pop is
+          // an unconditional, imperative pop -- unlike maybePop, it does
+          // not consult PopScope's canPop, so it isn't blocked here.
+          _stopwatchManager.stop();
+          Navigator.of(context).pop();
           return;
         }
         _lastPopAttempt = now;
