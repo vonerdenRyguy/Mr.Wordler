@@ -46,3 +46,53 @@ class StopwatchManager {
     return elapsedTime;
   }
 }
+
+// Counts down from `duration` to zero, calling `onExpired` once when it
+// hits zero. Used by Time Attack (and any other timed mode). Mirrors
+// StopwatchManager's context-mounted guard for the same reason: the timer
+// must not touch a disposed screen's Element after the player navigates
+// away before time runs out.
+class CountdownManager {
+  CountdownManager(this._buildContext, {required Duration duration, this.onExpired})
+      : _remaining = duration;
+
+  final BuildContext _buildContext;
+  final VoidCallback? onExpired;
+  Duration _remaining;
+  Timer? _timer;
+  bool _expiredCalled = false;
+
+  String get remainingTime => _formatDuration(_remaining);
+  bool get isExpired => _remaining <= Duration.zero;
+
+  void start() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_buildContext.mounted) {
+        timer.cancel();
+        return;
+      }
+      _remaining -= const Duration(seconds: 1);
+      if (_remaining <= Duration.zero) {
+        _remaining = Duration.zero;
+        timer.cancel();
+      }
+      (_buildContext as Element).markNeedsBuild();
+      if (_remaining <= Duration.zero && !_expiredCalled) {
+        _expiredCalled = true;
+        onExpired?.call();
+      }
+    });
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$twoDigitMinutes:$twoDigitSeconds';
+  }
+}

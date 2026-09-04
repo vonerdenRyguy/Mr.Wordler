@@ -1,0 +1,104 @@
+import 'package:flutter/material.dart';
+
+import 'time_attack_screen.dart';
+
+// Entry point to the four game modes (Daily Estate Challenge, Time Attack,
+// Theme Rush, Infinite Estate). Only Time Attack is built so far; the
+// others are wired up as they're built in later phases. Streak / today's
+// Daily Challenge status will show here once the Portfolio system exists.
+class ModeSelectScreen extends StatelessWidget {
+  const ModeSelectScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Game Modes'),
+        backgroundColor: Colors.deepPurple,
+      ),
+      backgroundColor: Colors.orangeAccent,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _ModeCard(
+              title: 'Daily Estate Challenge',
+              subtitle: 'One shared puzzle a day. Coming soon.',
+              icon: Icons.today,
+              enabled: false,
+              onTap: () => _showComingSoon(context, 'Daily Estate Challenge'),
+            ),
+            const SizedBox(height: 12),
+            _ModeCard(
+              title: 'Time Attack',
+              subtitle: 'Empty the pool before the clock runs out.',
+              icon: Icons.timer,
+              enabled: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const TimeAttackScreen()),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _ModeCard(
+              title: 'Theme Rush',
+              subtitle: 'Race to place one themed word. Coming soon.',
+              icon: Icons.category,
+              enabled: false,
+              onTap: () => _showComingSoon(context, 'Theme Rush'),
+            ),
+            const SizedBox(height: 12),
+            _ModeCard(
+              title: 'Infinite Estate',
+              subtitle: 'Endless board, endless letters. Coming soon.',
+              icon: Icons.all_inclusive,
+              enabled: false,
+              onTap: () => _showComingSoon(context, 'Infinite Estate'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showComingSoon(BuildContext context, String modeName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$modeName is coming soon!')),
+    );
+  }
+}
+
+class _ModeCard extends StatelessWidget {
+  const _ModeCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: enabled ? Colors.white : Colors.white70,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        side: const BorderSide(color: Colors.deepPurple, width: 2.0),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: Colors.deepPurple, size: 32),
+        title: Text(title,
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+        subtitle: Text(subtitle),
+        trailing: enabled ? const Icon(Icons.chevron_right, color: Colors.deepPurple) : null,
+      ),
+    );
+  }
+}
