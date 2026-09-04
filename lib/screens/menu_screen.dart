@@ -5,6 +5,7 @@ import 'package:namer_app/screens/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'game_screen.dart';
+import 'mode_select_screen.dart';
 
 class MenuScreen extends StatelessWidget {
   const MenuScreen({super.key});
@@ -27,10 +28,12 @@ class MenuScreen extends StatelessWidget {
         backgroundColor: Colors.deepPurple,
       ),
       backgroundColor: Colors.orangeAccent,
-      body: Center(
-        child: Padding(padding: EdgeInsets.only(top: 100.0),
+      // SingleChildScrollView so adding buttons (Game Modes, and future
+      // ones) never overflows on a shorter screen -- it only scrolls if
+      // the content actually exceeds the available height.
+      body: SingleChildScrollView(
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 60.0),
           child: Column(
-            //mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               //SizedBox(height: 20),
               Text('Mr. Wordler',
@@ -124,6 +127,21 @@ class MenuScreen extends StatelessWidget {
                         );
                       },
                       child: const Text('Leaderboard',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ModeSelectScreen()),
+                        );
+                      },
+                      child: const Text('Game Modes',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.deepPurple,
