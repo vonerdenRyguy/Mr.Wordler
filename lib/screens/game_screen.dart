@@ -2,38 +2,45 @@
 import 'dart:convert';
 
 import 'package:namer_app/components/timer.dart';
-import '../components/bananagramsTiles.dart';
-import '../components/valid_word_check.dart';
+import '../components/valid_word_check.dart' show initSpellCheck;
+import '../game/grid_board_widget.dart';
+import '../game/grid_config.dart';
+import '../game/grid_providers.dart';
+import '../game/tile_location.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:confetti/confetti.dart';
 
-class GameScreen extends StatefulWidget {
+// Free Play: the original, untimed mode -- empty a 21-letter rack onto a
+// 10x10 board with no time limit. Runs on the shared grid-game engine
+// (see lib/game/) so its board/rack/validation logic is the same code
+// every other mode (Time Attack, Daily Estate Challenge, etc.) uses.
+class GameScreen extends StatelessWidget {
   const GameScreen({super.key});
 
   @override
-  State<GameScreen> createState() => _GameScreenState();
+  Widget build(BuildContext context) {
+    return ProviderScope(
+      overrides: [
+        gridConfigProvider.overrideWithValue(
+          const GridConfig(boardWidth: 10, boardHeight: 10, rackSize: 21),
+        ),
+      ],
+      child: const _GameScreenBody(),
+    );
+  }
 }
 
-class _GameScreenState extends State<GameScreen> {
-  // All letters currently "in play" for the player (board + rack combined).
-  List<String> allLetters = [];
+class _GameScreenBody extends ConsumerStatefulWidget {
+  const _GameScreenBody();
 
-  // Flat representation of every tile slot in the game.
-  // Indices 0-99   -> the 10x10 board grid.
-  // Indices 100-120 -> the 21-slot letter rack (the player's hand).
-  // A null entry means that slot is empty.
-  List<String?> letterPositions = List.filled(121, null);
+  @override
+  ConsumerState<_GameScreenBody> createState() => _GameScreenBodyState();
+}
 
-  // One GlobalKey per slot so DragTarget/Draggable widgets can identify
-  // which slot a tile came from/is going to during drag-and-drop.
-  List<GlobalKey> tileKeys = List.generate(121, (index) => GlobalKey());
-
-  // The remaining "pool" of letters not yet dealt to the player
-  // (used when trading in / drawing new tiles).
-  List<String> letters = [];
-
+class _GameScreenBodyState extends ConsumerState<_GameScreenBody> {
   // Tracks and displays elapsed game time.
   late StopwatchManager _stopwatchManager;
 
@@ -46,21 +53,7 @@ class _GameScreenState extends State<GameScreen> {
     super.initState();
     _stopwatchManager = StopwatchManager(context);
     _stopwatchManager.start();
-    initSpellCheck(); // Load the dictionary used for word validation.
-
-    // Generate the full Bananagrams-style letter pool (144 tiles).
-    letters = LetterGenerator.generateLetters(144);
-
-    // Deal the first 21 letters into the rack slots (100-120), then
-    // remove those same tiles from the draw pool so they can't be
-    // drawn again later (e.g. during a trade-in), which would create
-    // duplicate copies of a letter in play.
-    List<String> dealt = letters.sublist(0, 21);
-    letters.removeRange(0, 21);
-    for (int i = 0; i < 21; i++) {
-      letterPositions[100 + i] = dealt[i];
-    }
-    allLetters.addAll(dealt);
+    initSpellCheck(); // Start loading the dictionary now, not on first Check tap.
   }
 
   @override
@@ -70,6 +63,7 @@ class _GameScreenState extends State<GameScreen> {
     _stopwatchManager.stop();
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     // PopScope intercepts the Android back gesture/button so we can
@@ -112,12 +106,11 @@ class _GameScreenState extends State<GameScreen> {
             children: [
               // "Trade in" drop zone: drag a rack tile here to swap it
               // for 3 fresh letters drawn from the pool.
-              DragTarget<GlobalKey>(
+              DragTarget<TileLocation>(
                 builder: (context, candidateData, rejectData) {
                   return  Container(
                     decoration: BoxDecoration(
                       color: Colors.orangeAccent,
-                      //border: Border.all(color: Colors.white),
                       borderRadius: BorderRadius.circular(8.0),
                     ),
                     child: Image.asset(
@@ -126,19 +119,21 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   );
                 },
-                onWillAcceptWithDetails: (data) {
+                onWillAcceptWithDetails: (details) {
+                  if (details.data.zone != TileZone.rack) return false;
                   // Only allow a trade-in if the rack has more than 2
-                  // open slots, since a trade removes 1 tile and adds 3.
-                  List<int> emptyIndices = [];
-                  for (int i = 100; i < 121; i++) {
-                    if (letterPositions[i] == null) {
-                      emptyIndices.add(i);
-                    }
-                  }
-                  if (emptyIndices.length <= 2) {
+                  // open slots (once this tile leaves too), since a trade
+                  // removes 1 tile and adds 3.
+                  final rack = ref.read(gridGameControllerProvider).rackCells;
+                  final emptyCount = rack
+                      .asMap()
+                      .entries
+                      .where((e) => e.value == null || e.key == details.data.index)
+                      .length;
+                  if (emptyCount < 3) {
                     showDialog(
                       context: context,
-                      builder: (context) => AlertDialog(
+                      builder: (context) => const AlertDialog(
                         title: Text("Must have 3 open slots"),
                       ),
                     );
@@ -146,41 +141,8 @@ class _GameScreenState extends State<GameScreen> {
                   }
                   return true;
                 },
-                onAcceptWithDetails: (DragTargetDetails<GlobalKey> details) {
-                  setState(() {
-                    // Find which slot the dropped tile came from.
-                    final GlobalKey draggedTileKey = details.data;
-                    int previousIndex = -1;
-                    for (int i = 0; i < tileKeys.length; i++) {
-                      if (tileKeys[i] == draggedTileKey) {
-                        previousIndex = i;
-                        break;
-                      }
-                    }
-                    if (previousIndex != -1) {
-                      // Remove the traded letter from play and return it
-                      // to the draw pool.
-                      String? draggedLetter = letterPositions[previousIndex];
-                       if (draggedLetter != null) {
-                         letterPositions[previousIndex] = null;
-                         allLetters.remove(draggedLetter);
-                         letters.add(draggedLetter);
-                       }
-                      // Deal 3 replacement letters after the current frame
-                      // finishes, so the removal above is reflected first.
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        setState(() {
-                          List<String> newLetters = [];
-                          for (int i = 0; i < 3 && letters.isNotEmpty; i++) {
-                            letters.shuffle();
-                            newLetters.add(letters.removeLast());
-                          }
-                          allLetters.addAll(newLetters);
-                          distributeLetters(newLetters);
-                        });
-                      });
-                    }
-                  });
+                onAcceptWithDetails: (DragTargetDetails<TileLocation> details) {
+                  ref.read(gridGameControllerProvider.notifier).tradeIn(details.data.index);
                 },
               ),
               // "Check" button: validates the current board state and
@@ -188,31 +150,20 @@ class _GameScreenState extends State<GameScreen> {
               // disconnected words).
               ElevatedButton(
                 onPressed: () async {
+                  final controller = ref.read(gridGameControllerProvider.notifier);
                   // Scan the board for words (rows + columns), check them
                   // against the dictionary, and check word connectivity.
-                  var result = await findValidWords(letterPositions, 10);
+                  var result = await controller.checkWords();
                   // The word check is async; bail out if the player left
                   // this screen while it was running.
                   if (!context.mounted) return;
-                  Widget dialog = buildWordListDialog(result.words,
-                      result.areValid);
+                  Widget dialog = buildWordListDialog(result.words, result.areValid);
                   Widget notConnectedDialog = unconnectedDialog();
 
-                  // Count how many board slots are filled.
-                  int takenSpots = 0;
-                  for (int i = 0; i < 100; i++) {
-                    if (letterPositions[i] != null) {
-                      takenSpots++;
-                    }
-                  }
                   // Win condition: every letter the player has been dealt
-                  // is placed on the board.
-                  bool isWin = takenSpots == allLetters.length;
-                  // Must handle this problem with repeated letters
-                  //print("isWin: $isWin");
-                  print(takenSpots);
-                  print(allLetters);
-                  print("Valid words letters: ${result.words.join().replaceAll(RegExp(r'[^a-zA-Z]'), '')}");
+                  // is placed on the board. Read state fresh (post-await)
+                  // in case a tile moved while the check was running.
+                  bool isWin = ref.read(gridGameControllerProvider).isPoolEmptied;
                   if (isWin && result.areValid && result.areConnected) {
                     // All letters placed, all words valid, all connected -> win.
                     _stopwatchManager.stop();
@@ -234,14 +185,12 @@ class _GameScreenState extends State<GameScreen> {
                       builder: (context) => dialog,
                     );
                   }
-
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.greenAccent,
                   foregroundColor: Colors.green,
                 ),
                 child: const Text('Check'),
-
               ),
               // Elapsed-time display, kept in sync by _stopwatchManager.
               Container(
@@ -261,216 +210,23 @@ class _GameScreenState extends State<GameScreen> {
           backgroundColor: Colors.deepPurple,
           automaticallyImplyLeading: false, // Remove back arrow
         ),
-        body: SafeArea(
+        body: const SafeArea(
             child: Column(
               children: [
-                // Top section: the 10x10 game board where words are formed.
-                Expanded(
-                  flex: 5,
-                  child: InteractiveViewer(
-                    // Lets the player pinch-zoom/pan the board.
-                    boundaryMargin: EdgeInsets.zero,
-                    minScale: 0.4,
-                    maxScale: 2.5,
-                    child: Center(   // 👈 keeps it centered if taller than wide
-                      child: AspectRatio(
-                        aspectRatio: 1.0,  // 👈 force it to stay square
-                        child: GridView.count(
-                          crossAxisCount: 10,
-                          physics: NeverScrollableScrollPhysics(),
-                          // Board slots are indices 0-99.
-                          children: List.generate(100, (index) {
-                            return buildDragTarget(index);
-                          }),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Middle section: the player's letter rack (21 tiles).
-                Expanded(
-                  flex: 3,
-                  child: Container( // Wrap the bottom GridView with a Container
-                    decoration: BoxDecoration(
-                      border: Border.all( // Apply border to the Container
-                        color: Colors.black,
-                        width: 2.0,
-                      ),
-                    ),
-                    child: Center( // Add Center widget here
-                      child: GridView.count(
-                        physics: NeverScrollableScrollPhysics(),
-                        crossAxisCount: 7,
-                        childAspectRatio: 0.7,
-                        //: 0.7,
-                        shrinkWrap: true, // Important for centering
-                        // Rack slots are indices 100-120.
-                        children: List.generate(21, (index) {
-                          return buildDragTarget(100 + index);
-                        }),
-                      ),
-                    ),
-                  ),
-                ),
+                // Top section: the board where words are formed.
+                Expanded(flex: 5, child: GridBoardView()),
+                // Middle section: the player's letter rack.
+                Expanded(flex: 3, child: GridRackView()),
                 // Bottom decorative filler strip.
                 Expanded(
                   flex: 1,
-                  child: Container(color: Colors.orangeAccent),
+                  child: ColoredBox(color: Colors.orangeAccent),
                 ),
               ],
             ),
         ),
       ),
     );
-  }
-
-  // Builds a single drag-and-drop tile slot for either the board
-  // (index < 100) or the rack (index >= 100). Handles rendering the
-  // letter (if any), the drag "feedback" preview, and accepting drops
-  // from other slots.
-  Widget buildDragTarget(int index) {
-    final isTopGrid = index < 100;
-    return Padding(
-      padding: EdgeInsets.all(isTopGrid ? 0.0 : 4.0),
-      child: AspectRatio(
-        aspectRatio: 1.0,
-        // Size tile text off of the tile's actual rendered dimensions
-        // (rather than a fixed pixel value) so letters stay legible and
-        // proportionate whether the board is on a small phone or a tablet.
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double fontSize =
-                (constraints.maxWidth * 0.5).clamp(10.0, 28.0);
-            return _buildDragTargetTile(index, isTopGrid, fontSize);
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDragTargetTile(int index, bool isTopGrid, double fontSize) {
-    return DragTarget<GlobalKey>(
-          key:  tileKeys[index],
-          builder: (context, candidateData, rejectedData) {
-            return Container(
-              padding: EdgeInsets.zero,
-              decoration: BoxDecoration(
-                // Highlight the slot blue while a tile is being dragged over it.
-                color: candidateData.isNotEmpty
-                    ? Colors.blue[100] // Highlight when hovering
-                    : (isTopGrid ? Colors.orangeAccent : Colors.deepPurple),
-                border: Border.all(
-                  color: isTopGrid ? Colors.black : Colors.grey,
-                  width: 1.5,
-                ),
-                borderRadius: isTopGrid ? BorderRadius.circular(0.0)
-                    : BorderRadius.circular(8.0),
-              ),
-              child: Center(
-                // Only render a draggable letter tile if this slot is occupied;
-                // otherwise leave it empty.
-                child: letterPositions[index] != null
-                    ? Draggable<GlobalKey>(
-                  data: tileKeys[index],
-                  // What's shown under the finger/cursor while dragging.
-                  feedback: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      padding: const EdgeInsets.all(10.0),
-                      decoration: BoxDecoration(
-                        color: Colors.deepPurple,
-                        //border: Border.all(color: Colors.grey),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        letterPositions[index]!,
-                        style: TextStyle(
-                          fontFamily: "Open Sans",
-                          fontWeight: FontWeight.w900,
-                          fontSize: fontSize,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // What remains in the original slot while a drag is in progress.
-                  childWhenDragging: Container(
-                    padding: const EdgeInsets.all(3.0),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                  ),
-                  // Normal (non-dragging) appearance of the tile.
-                  child: Container(
-                    padding: EdgeInsets.zero,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: Center(
-                        child: Text(
-                          letterPositions[index]!,
-                          style: TextStyle(
-                            fontFamily: "Open Sans",
-                            fontWeight: FontWeight.w900,
-                            fontSize: fontSize,
-                          ),
-                        ),
-                    ),
-                  ),
-                  // Once the drop is accepted elsewhere, clear this slot.
-                  onDragCompleted: () {
-                    setState(() {
-                      letterPositions[index] = null;
-                    });
-                  },
-                )
-                    : const SizedBox.shrink(),
-              ),
-            );
-          },
-          // prevents overlapping of letters
-          onWillAcceptWithDetails: (data) {
-            if (letterPositions[index] != null) {
-              return false;
-            }
-            return true;
-          },
-          onAcceptWithDetails: (DragTargetDetails<GlobalKey> details) {
-            setState(() {
-              final GlobalKey draggedTileKey = details.data;
-              int previousIndex = -1;
-              for (int i = 0; i < tileKeys.length; i++) {
-                if (tileKeys[i] == draggedTileKey) {
-                  previousIndex = i;
-                  break;
-                }
-              }
-              int currentIndex = index;
-              if (previousIndex != -1 && currentIndex != -1) {
-                // Move the letter to the new position
-                String? draggedLetter = letterPositions[previousIndex]; // Get the letter from the previous position
-                letterPositions[currentIndex] = draggedLetter; // Set the letter in the new position
-                letterPositions[previousIndex] = null; // Clear the previous position
-              }
-            });
-          },
-        );
-  }
-
-  // After a trade-in, places the newly drawn letters into the first
-  // available empty rack slots (indices 100-120).
-  void distributeLetters( List<String> newLetters) {
-    List<int> emptyIndices = [];
-    for (int i = 100; i < 121; i++) {
-      if (letterPositions[i] == null) {
-        emptyIndices.add(i);
-      }
-    }
-    for (int i = 0; i < newLetters.length && i < emptyIndices.length; i++) {
-      letterPositions[emptyIndices[i]] = newLetters[i];
-    }
   }
 
   // Dialog listing the words found on the board, styled green if they're
@@ -532,7 +288,6 @@ class _GameScreenState extends State<GameScreen> {
                   child: ConfettiWidget(
                     confettiController: confettiController,
                     blastDirectionality: BlastDirectionality.explosive,
-                    // Customize other properties as needed
                   ),
                 ),
               ),
@@ -594,11 +349,11 @@ class _GameScreenState extends State<GameScreen> {
                 // Return to the very first route (the menu screen).
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
-              child: Text("Submit"),
+              child: const Text("Submit"),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text("Close"),
+              child: const Text("Close"),
             ),
           ],
         );
@@ -609,11 +364,10 @@ class _GameScreenState extends State<GameScreen> {
   // Dialog shown when valid words exist on the board but they don't all
   // connect into a single group (a Bananagrams rule violation).
   Widget unconnectedDialog() {
-    return AlertDialog(
+    return const AlertDialog(
       backgroundColor: Colors.orangeAccent,
       title: Text('All valid words must be connected'),
-      content: Column(mainAxisSize: MainAxisSize.min,
-      ),
+      content: Column(mainAxisSize: MainAxisSize.min),
     );
   }
 }
