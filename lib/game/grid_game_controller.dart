@@ -36,9 +36,20 @@ class GridGameController extends StateNotifier<GridGameState> {
   List<String?> _cellsFor(TileZone zone) =>
       zone == TileZone.board ? state.boardCells : state.rackCells;
 
+  static const _vowels = {'A', 'E', 'I', 'O', 'U'};
+
   // Moves a tile from one slot to another (board<->board, rack<->rack, or
   // board<->rack). No-ops if `from` is empty or `to` is already occupied.
-  void moveTile(TileLocation from, TileLocation to) {
+  //
+  // `preferBalancedRefill` (used by Infinite Estate/Village's Farm
+  // structure ability, off by default/for every other mode) only affects
+  // the auto-refill-on-place behavior below: instead of a uniformly
+  // random draw, it prefers whichever of vowel/consonant the rack (after
+  // this move) has fewer of, falling back to a random draw if the pool
+  // has none of that type. Purely a nicer distribution, never a worse one
+  // -- an unlucky player never ends up worse off than the random draw
+  // would have left them.
+  void moveTile(TileLocation from, TileLocation to, {bool preferBalancedRefill = false}) {
     final fromCells = List<String?>.from(_cellsFor(from.zone));
     final letter = fromCells[from.index];
     if (letter == null) return;
@@ -64,8 +75,7 @@ class GridGameController extends StateNotifier<GridGameState> {
         to.zone == TileZone.board &&
         state.pool.isNotEmpty) {
       final newPool = List<String>.from(state.pool);
-      newPool.shuffle();
-      final drawn = newPool.removeLast();
+      final drawn = preferBalancedRefill ? _drawBalancedLetter(newPool, rack) : _drawRandomLetter(newPool);
       rack = List<String?>.from(rack);
       rack[from.index] = drawn;
       state = state.copyWith(
@@ -78,6 +88,27 @@ class GridGameController extends StateNotifier<GridGameState> {
     }
 
     state = state.copyWith(boardCells: board, rackCells: rack);
+  }
+
+  // Mutates `pool` (removing the drawn letter) and returns it.
+  String _drawRandomLetter(List<String> pool) {
+    pool.shuffle();
+    return pool.removeLast();
+  }
+
+  String _drawBalancedLetter(List<String> pool, List<String?> currentRack) {
+    final vowelCount = currentRack.where((c) => c != null && _vowels.contains(c)).length;
+    final consonantCount = currentRack.where((c) => c != null && !_vowels.contains(c)).length;
+    final wantVowel = vowelCount < consonantCount;
+
+    pool.shuffle();
+    final matchIndex = pool.indexWhere((letter) => _vowels.contains(letter) == wantVowel);
+    if (matchIndex != -1) {
+      return pool.removeAt(matchIndex);
+    }
+    // Pool has none of the preferred type right now -- fall back to a
+    // normal random draw rather than leaving the rack slot empty.
+    return pool.removeLast();
   }
 
   // Trades one rack tile back into the pool for 3 fresh ones (classic

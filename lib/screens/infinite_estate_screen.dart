@@ -5,6 +5,7 @@ import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
+import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/landmark.dart';
 import '../village/village_board_view.dart';
@@ -99,6 +100,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   final _saveController = VillageSaveController();
   bool _restoring = true;
+  // Kept as both an ordered list (so the Bridge jump dialog can number
+  // landmarks in a stable, meaningful order) and a Set (for the O(1)
+  // membership checks GridTileWidget/VillageBoardView need every build).
+  late final List<int> _landmarkOrder;
   late final Set<int> _landmarkIndices;
   Set<int> _reachedLandmarks = {};
   Set<String> _discoveredWords = {};
@@ -107,16 +112,39 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // single visit, not a permanent record.
   final Set<int> _pinnedRackIndices = {};
 
+  // Well structure ability: one free bonus letter draw per visit to the
+  // village (not per session-open -- reopening the app doesn't reset it,
+  // since that would just be a way to farm free letters). Session-only,
+  // not persisted.
+  bool _wellUsedThisVisit = false;
+
+  // Bridge structure ability: drives GridBoardView's InteractiveViewer to
+  // jump/pan to a reached landmark. _boardViewportSize is captured by the
+  // LayoutBuilder wrapping the board area and used to compute the jump
+  // transform (see bridge_transform.dart) -- it's only known once that
+  // area has actually been laid out, hence nullable.
+  final _transformController = TransformationController();
+  Size? _boardViewportSize;
+
   @override
   void initState() {
     super.initState();
     initSpellCheck();
-    _landmarkIndices = landmarkBoardIndices(
+    _landmarkOrder = landmarkBoardIndices(
       InfiniteEstateScreen.boardSize,
       InfiniteEstateScreen.boardSize,
-    ).toSet();
+    );
+    _landmarkIndices = _landmarkOrder.toSet();
     _loadSavedVillage();
   }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  bool _hasStructure(String magicWord) => _structures.any((s) => s.def.word == magicWord);
 
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
@@ -251,6 +279,59 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(newScore);
       }
     }
+  }
+
+  void _drawFromWell() {
+    if (_wellUsedThisVisit) return;
+    ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+    setState(() => _wellUsedThisVisit = true);
+  }
+
+  // Pans/zooms the Words-view board to center a reached landmark. Switches
+  // to Words view first since only GridBoardView (not VillageBoardView) is
+  // wired to a TransformationController -- Village view has no meaningful
+  // "zoom in on one spot" reading anyway, it's the whole-estate overview.
+  void _jumpToLandmark(int boardIndex) {
+    setState(() => _viewMode = _ViewMode.words);
+    final viewportSize = _boardViewportSize;
+    if (viewportSize == null) return;
+    _transformController.value = computeCenterTransform(
+      viewportSize: viewportSize,
+      boardIndex: boardIndex,
+      boardWidth: InfiniteEstateScreen.boardSize,
+      scale: 1.5,
+    );
+  }
+
+  void _openBridgeJumpMenu() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFDCEDC8),
+        title: const Text('Jump to Landmark'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final entry in _landmarkOrder.asMap().entries)
+                if (_reachedLandmarks.contains(entry.value))
+                  ListTile(
+                    leading: Icon(Icons.star, color: Colors.amber.shade800),
+                    title: Text('Landmark ${entry.key + 1}'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _jumpToLandmark(entry.value);
+                    },
+                  ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
   }
 
   bool _cashingOut = false;
@@ -388,6 +469,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           backgroundColor: const Color(0xFF33691E),
           automaticallyImplyLeading: false,
           actions: [
+            if (_hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.alt_route, color: Colors.white),
+                tooltip: 'Jump to Landmark',
+                onPressed: _openBridgeJumpMenu,
+              ),
             IconButton(
               icon: const Icon(Icons.menu_book, color: Colors.white),
               tooltip: 'Discovery Journal',
@@ -395,6 +482,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
             ),
           ],
         ),
+        floatingActionButton: _hasStructure('WELL')
+            ? FloatingActionButton.extended(
+                onPressed: _wellUsedThisVisit ? null : _drawFromWell,
+                backgroundColor: _wellUsedThisVisit ? Colors.grey : Colors.lightBlue,
+                icon: const Icon(Icons.water_drop),
+                label: Text(_wellUsedThisVisit ? 'Well used this visit' : 'Draw from Well'),
+              )
+            : null,
         body: SafeArea(
           child: Column(
             children: [
@@ -411,28 +506,38 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
               ),
               Expanded(
                 flex: 6,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _viewMode == _ViewMode.words
-                      ? GridBoardView(
-                          key: const ValueKey('words'),
-                          theme: _estateTheme,
-                          // A wide zoom range and generous pan boundary make a
-                          // bounded-but-large board feel open: zoomed all the
-                          // way out, the whole estate is a distant patchwork;
-                          // panning past the built edges still shows empty
-                          // space to grow into rather than stopping dead at
-                          // the boundary.
-                          minScale: 0.06,
-                          maxScale: 3.0,
-                          boundaryMargin: const EdgeInsets.all(600),
-                          landmarkIndices: _landmarkIndices,
-                        )
-                      : VillageBoardView(
-                          key: const ValueKey('village'),
-                          structures: _structures,
-                          landmarkIndices: _landmarkIndices,
-                        ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Recorded (not setState'd -- this must never trigger a
+                    // rebuild mid-layout) purely so the Bridge jump ability
+                    // knows the current viewport size when it's used later.
+                    _boardViewportSize = constraints.biggest;
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: _viewMode == _ViewMode.words
+                          ? GridBoardView(
+                              key: const ValueKey('words'),
+                              theme: _estateTheme,
+                              // A wide zoom range and generous pan boundary make a
+                              // bounded-but-large board feel open: zoomed all the
+                              // way out, the whole estate is a distant patchwork;
+                              // panning past the built edges still shows empty
+                              // space to grow into rather than stopping dead at
+                              // the boundary.
+                              minScale: 0.06,
+                              maxScale: 3.0,
+                              boundaryMargin: const EdgeInsets.all(600),
+                              landmarkIndices: _landmarkIndices,
+                              preferBalancedRefill: _hasStructure('FARM'),
+                              transformController: _transformController,
+                            )
+                          : VillageBoardView(
+                              key: const ValueKey('village'),
+                              structures: _structures,
+                              landmarkIndices: _landmarkIndices,
+                            ),
+                    );
+                  },
                 ),
               ),
               Expanded(

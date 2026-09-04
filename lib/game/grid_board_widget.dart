@@ -62,6 +62,7 @@ class GridTileWidget extends ConsumerWidget {
     this.isLandmark = false,
     this.isPinned = false,
     this.onTogglePin,
+    this.preferBalancedRefill = false,
   });
 
   final TileLocation location;
@@ -79,6 +80,9 @@ class GridTileWidget extends ConsumerWidget {
   // gesture entirely rather than just no-op'ing it.
   final bool isPinned;
   final ValueChanged<int>? onTogglePin;
+  // Farm structure ability (Infinite Estate/Village only): see
+  // GridGameController.moveTile's preferBalancedRefill doc.
+  final bool preferBalancedRefill;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -188,7 +192,7 @@ class GridTileWidget extends ConsumerWidget {
             return currentLetter == null;
           },
           onAcceptWithDetails: (details) {
-            controller.moveTile(details.data, location);
+            controller.moveTile(details.data, location, preferBalancedRefill: preferBalancedRefill);
           },
         );
       },
@@ -210,6 +214,8 @@ class GridBoardView extends ConsumerWidget {
     this.maxScale = 2.5,
     this.boundaryMargin = EdgeInsets.zero,
     this.landmarkIndices = const {},
+    this.preferBalancedRefill = false,
+    this.transformController,
   });
 
   final GridTheme theme;
@@ -220,11 +226,21 @@ class GridBoardView extends ConsumerWidget {
   // -- see GridTileWidget.isLandmark). Empty by default for every mode
   // except Infinite Estate/Village, which passes its own set.
   final Set<int> landmarkIndices;
+  // Farm structure ability -- see GridGameController.moveTile.
+  final bool preferBalancedRefill;
+  // Bridge structure ability: lets the caller programmatically pan/zoom
+  // (e.g. jump to a landmark) by driving this controller. Null (the
+  // default, every other mode) lets InteractiveViewer manage its own
+  // internal controller as usual -- passing one in doesn't change
+  // anything about normal manual pan/zoom, it just also allows external
+  // control.
+  final TransformationController? transformController;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(gridGameControllerProvider.select((s) => s.config));
     return InteractiveViewer(
+      transformationController: transformController,
       boundaryMargin: boundaryMargin,
       minScale: minScale,
       maxScale: maxScale,
@@ -244,6 +260,7 @@ class GridBoardView extends ConsumerWidget {
                     isBoardStyle: true,
                     isLandmark: landmarkIndices.contains(index),
                     theme: theme,
+                    preferBalancedRefill: preferBalancedRefill,
                   ),
                 ),
               );

@@ -337,6 +337,11 @@ void main() {
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
 
+    // Structure abilities (Well/Bridge) only appear once their magic word
+    // is actually built -- a fresh board has none, so neither should show.
+    expect(find.text('Draw from Well'), findsNothing);
+    expect(find.byTooltip('Jump to Landmark'), findsNothing);
+
     // Switching to Village view should render without error. A fresh
     // board has no magic words built yet, so Words view's 21 rack tiles
     // are still there (the rack is unaffected by the toggle) but the
