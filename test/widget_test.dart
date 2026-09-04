@@ -226,4 +226,54 @@ void main() {
     expect(find.text("You've already played today!"), findsOneWidget);
     expect(find.textContaining('gave up'), findsOneWidget);
   });
+
+  testWidgets('Theme Rush shows a theme, then deals a rack once started',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Theme Rush'));
+    // No perpetual timer yet -- it only starts after tapping Start.
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text("Today's theme:"), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
+
+    await tester.tap(find.text('Start'));
+    // Starting begins a perpetual stopwatch, so wait with bounded pumps.
+    await pumpUntilFound(tester, oneLetterTileFinder());
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+  });
+
+  testWidgets('Infinite Estate deals a rack on a larger board', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Infinite Estate'));
+    // No perpetual timer in this mode -- pumpAndSettle is safe throughout.
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Check Score'), findsOneWidget);
+    expect(find.text('End Session'), findsOneWidget);
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+  });
 }

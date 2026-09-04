@@ -4,6 +4,7 @@ import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../game/tile_location.dart';
+import '../portfolio/portfolio_controller.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,16 +103,24 @@ class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
     if (isWin && result.areValid && result.areConnected) {
       _roundEnded = true;
       _countdown.stop();
-      // TODO(portfolio): award portfolio currency here once the
-      // Portfolio system exists (Phase 4+) -- Time Attack wins are meant
-      // to grant a small amount of currency (more for a faster clear),
-      // not a property tile.
+
+      // Small amount of currency, more for a faster clear -- Time Attack
+      // is about quick replayable sessions, not primary progression, so
+      // it grants currency rather than a property tile.
+      final remainingParts = _countdown.remainingTime.split(':');
+      final remainingSeconds =
+          (int.tryParse(remainingParts[0]) ?? 0) * 60 + (int.tryParse(remainingParts[1]) ?? 0);
+      final coins = 10 + (remainingSeconds ~/ 15);
+      ref.read(portfolioProvider.notifier)
+        ..addCurrency(coins)
+        ..addXp(20);
+
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: Colors.orangeAccent,
           title: const Text("You Win!"),
-          content: Text("Time remaining: ${_countdown.remainingTime}"),
+          content: Text("Time remaining: ${_countdown.remainingTime}\n+$coins coins, +20 XP"),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
