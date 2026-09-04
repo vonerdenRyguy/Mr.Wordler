@@ -115,6 +115,28 @@ class GridGameController extends StateNotifier<GridGameState> {
     return true;
   }
 
+  // Replaces the current board/rack/pool wholesale, e.g. to resume a
+  // previously-saved session (Infinite Estate's persisted village).
+  // Ignored (no-op) if the saved shapes don't match this controller's
+  // config -- e.g. an old save from before a board-size change -- so a
+  // stale save can't corrupt a fresh session; the caller should treat a
+  // no-op as "nothing to restore" and fall back to a fresh board.
+  void restoreState({
+    required List<String?> boardCells,
+    required List<String?> rackCells,
+    required List<String> pool,
+    required List<String> dealtLetters,
+  }) {
+    if (boardCells.length != state.config.boardCellCount) return;
+    if (rackCells.length != state.config.rackSize) return;
+    state = state.copyWith(
+      boardCells: boardCells,
+      rackCells: rackCells,
+      pool: pool,
+      dealtLetters: dealtLetters,
+    );
+  }
+
   Future<WordCheckResult> checkWords() {
     return _validator.findValidWords(
       state.boardCells,

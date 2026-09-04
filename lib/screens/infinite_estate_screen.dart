@@ -6,20 +6,26 @@ import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/village_board_view.dart';
+import '../village/village_save.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 enum _ViewMode { words, village }
 
-// Infinite Estate: an endless-feeling session on a large (60x60, pannable/
-// zoomable) board -- not literally unbounded, but big enough that a normal
-// session never reaches an edge, with a wide zoom range and generous pan
-// boundary so the space reads as open rather than a small fixed grid. The
-// rack refills itself the instant a tile leaves it for the board
-// (GridConfig.refillRackOnPlace), so there's no separate "trade in"
-// affordance and no win condition -- the player just keeps building until
-// they choose to end the session.
+// Infinite Estate / Village Builder: an endless-feeling session on a large
+// (60x60, pannable/zoomable) board -- not literally unbounded, but big
+// enough that a normal session never reaches an edge, with a wide zoom
+// range and generous pan boundary so the space reads as open rather than
+// a small fixed grid. The rack refills itself the instant a tile leaves
+// it for the board (GridConfig.refillRackOnPlace), so there's no separate
+// "trade in" affordance.
+//
+// The village persists across sessions: the board is saved after every
+// change and restored on open, so structures a player builds stay built.
+// There's no win condition -- "End Session" just cashes out the score
+// growth since the last cash-out into currency/XP and lets the player
+// leave; the village itself is never reset.
 class InfiniteEstateScreen extends StatelessWidget {
   const InfiniteEstateScreen({super.key});
 
@@ -80,16 +86,53 @@ class _InfiniteEstateBody extends ConsumerStatefulWidget {
 
 class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   int _score = 0;
-  bool _sessionEnded = false;
+  // Score value already paid out as currency/XP -- End Session only
+  // rewards growth past this, so re-visiting an unchanged village and
+  // ending again doesn't re-pay the same structures.
+  int _lastCashedOutScore = 0;
   DateTime? _lastPopAttempt;
   _ViewMode _viewMode = _ViewMode.words;
   List<BoardStructure> _structures = [];
   bool _computingStructures = false;
 
+  final _saveController = VillageSaveController();
+  bool _restoring = true;
+
   @override
   void initState() {
     super.initState();
     initSpellCheck();
+    _loadSavedVillage();
+  }
+
+  Future<void> _loadSavedVillage() async {
+    final saved = await _saveController.load();
+    if (!mounted) return;
+    if (saved != null) {
+      ref.read(gridGameControllerProvider.notifier).restoreState(
+            boardCells: saved.boardCells,
+            rackCells: saved.rackCells,
+            pool: saved.pool,
+            dealtLetters: saved.dealtLetters,
+          );
+      _lastCashedOutScore = saved.lastCashedOutScore;
+    }
+    setState(() => _restoring = false);
+    // Bring score/structures in sync with whatever board we ended up
+    // with (restored or fresh).
+    await _refreshStructures();
+    await _refreshScore();
+  }
+
+  Future<void> _saveVillage() async {
+    final gridState = ref.read(gridGameControllerProvider);
+    await _saveController.save(VillageSaveData(
+      boardCells: gridState.boardCells,
+      rackCells: gridState.rackCells,
+      pool: gridState.pool,
+      dealtLetters: gridState.dealtLetters,
+      lastCashedOutScore: _lastCashedOutScore,
+    ));
   }
 
   // Re-derives which magic words are currently built (see BoardStructure's
@@ -126,40 +169,52 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     }
   }
 
+  bool _cashingOut = false;
+
   Future<void> _endSession() async {
-    if (_sessionEnded) return;
+    if (_cashingOut) return;
+    // Only newly-grown score since the last cash-out is ever paid out, so
+    // reopening an unchanged village and ending again awards nothing.
+    final earned = (_score - _lastCashedOutScore).clamp(0, 1 << 30);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFDCEDC8),
-        title: const Text('End session?'),
-        content: Text('Final score: $_score'),
+        title: const Text('Wrap up for now?'),
+        content: Text(earned > 0
+            ? 'Cash out $earned points of growth since your last visit? Your village stays exactly as built.'
+            : "You haven't grown the village since your last visit, so there's nothing new to cash out -- but your village is saved either way."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Playing')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('End Session')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Leave Village')),
         ],
       ),
     );
     if (confirmed != true) return;
-    _sessionEnded = true;
+    _cashingOut = true;
 
     final isNewHighScore = ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(_score);
-    final portfolioController = ref.read(portfolioProvider.notifier);
-    portfolioController.addCurrency(_score ~/ 20);
-    portfolioController.addXp(_score ~/ 10);
+    if (earned > 0) {
+      final portfolioController = ref.read(portfolioProvider.notifier);
+      portfolioController.addCurrency(earned ~/ 20);
+      portfolioController.addXp(earned ~/ 10);
+      _lastCashedOutScore = _score;
+      await _saveVillage();
+    }
 
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFFDCEDC8),
-        title: const Text('Session Complete'),
+        title: const Text('See You Next Time!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Final score: $_score'),
-            Text('+${_score ~/ 20} coins, +${_score ~/ 10} XP'),
+            Text('Village score: $_score'),
+            if (earned > 0) Text('+${earned ~/ 20} coins, +${earned ~/ 10} XP this visit'),
             if (isNewHighScore) ...[
               const SizedBox(height: 8),
               const Text('New high score!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
@@ -174,18 +229,28 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         ],
       ),
     );
+    _cashingOut = false;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Recompute which magic words are currently built any time the board
-    // changes, so Village view stays in sync with Words view without the
-    // player needing to press anything.
+    // Recompute which magic words are currently built, and re-save, any
+    // time the board/rack/pool changes -- keeps Village view in sync and
+    // keeps the persisted village current without the player needing to
+    // press anything or remember to save before leaving.
     ref.listen(gridGameControllerProvider, (previous, next) {
       if (previous?.boardCells != next.boardCells) {
         _refreshStructures();
       }
+      if (!_restoring) _saveVillage();
     });
+
+    if (_restoring) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Infinite Estate'), backgroundColor: const Color(0xFF33691E)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return PopScope(
       canPop: false,
@@ -198,7 +263,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         }
         _lastPopAttempt = now;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Swipe again to exit (use End Session to save your score)'), duration: Duration(seconds: 2)),
+          const SnackBar(content: Text('Swipe again to exit -- your village is saved automatically'), duration: Duration(seconds: 2)),
         );
       },
       child: Scaffold(
