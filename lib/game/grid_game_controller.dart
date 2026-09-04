@@ -123,6 +123,19 @@ class GridGameController extends StateNotifier<GridGameState> {
     );
   }
 
+  // Every valid word currently on the board, freshly re-scanned, mapped to
+  // its tile positions. Generic (no notion of "magic words" -- that's a
+  // Village-specific concept layered on top by callers, e.g.
+  // lib/village/, so the shared engine stays mode-agnostic).
+  Future<Map<String, Set<int>>> currentWordPositions() async {
+    await _validator.findValidWords(
+      state.boardCells,
+      state.config.boardWidth,
+      state.config.boardHeight,
+    );
+    return _validator.validWordPositions;
+  }
+
   // The valid dictionary word (if any) currently occupying board index
   // `boardIndex`, freshly re-scanned. Used for tap-for-definition -- a
   // long-press only shows a definition for a word that's actually validly
