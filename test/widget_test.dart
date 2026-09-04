@@ -42,6 +42,14 @@ void main() {
     await tester.tap(find.text('Play'));
     await tester.pumpAndSettle();
 
+    // A build-time exception in one subtree (e.g. GridBoardView) doesn't
+    // fail pumpAndSettle by itself -- Flutter swaps just that subtree for
+    // a red ErrorWidget and keeps going, which let a real Riverpod scoping
+    // bug here slip past this test once already. Assert both explicitly:
+    // no exception was recorded, and no error widget is anywhere in the tree.
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+
     expect(find.text('Check'), findsOneWidget);
     // 21 letters should have been dealt into the rack -- confirms the
     // Riverpod-backed GridGameController actually initialized and dealt
