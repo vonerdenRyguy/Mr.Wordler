@@ -28,6 +28,8 @@ class PortfolioScreen extends ConsumerWidget {
           children: [
             _LevelCard(levelInfo: levelInfo, currency: portfolio.currency),
             const SizedBox(height: 16),
+            const _TierGuideCard(),
+            const SizedBox(height: 16),
             for (final neighborhood in kNeighborhoods) ...[
               _NeighborhoodCard(neighborhood: neighborhood),
               const SizedBox(height: 12),
@@ -104,6 +106,87 @@ class _LevelCard extends StatelessWidget {
   }
 }
 
+// Explains the property tier ladder and how each tier is actually earned,
+// so a grayed-out slot elsewhere on the screen means something concrete
+// instead of just looking locked.
+class _TierGuideCard extends StatelessWidget {
+  const _TierGuideCard();
+
+  static const _tiers = [
+    (
+      tier: PropertyTier.vacantLot,
+      how: 'Complete the Daily Estate Challenge (any time), or spend coins earned from '
+          'Time Attack / Theme Rush / Infinite Estate to fill an empty slot directly.',
+    ),
+    (
+      tier: PropertyTier.cottage,
+      how: 'Complete the Daily Estate Challenge in under 6 minutes.',
+    ),
+    (
+      tier: PropertyTier.house,
+      how: 'Complete the Daily Estate Challenge in under 3 minutes, or find the hidden '
+          'bonus word.',
+    ),
+    (
+      tier: PropertyTier.mansion,
+      how: 'Complete the Daily Estate Challenge quickly (under 6 minutes) AND find the '
+          'hidden bonus word in the same run.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        side: const BorderSide(color: Colors.deepPurple, width: 2.0),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('How Properties Work',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+            const SizedBox(height: 4),
+            const Text(
+              'Every neighborhood below has a few empty slots. Fill them all to complete '
+              "the set and unlock that neighborhood's perk.",
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            for (final entry in _tiers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(entry.tier.icon, color: Colors.deepPurple, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: DefaultTextStyle.of(context).style.copyWith(fontSize: 13),
+                          children: [
+                            TextSpan(
+                                text: '${entry.tier.label}: ',
+                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                            TextSpan(text: entry.how),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _NeighborhoodCard extends ConsumerWidget {
   const _NeighborhoodCard({required this.neighborhood});
 
@@ -114,6 +197,7 @@ class _NeighborhoodCard extends ConsumerWidget {
     final portfolio = ref.watch(portfolioProvider);
     final slots = portfolio.neighborhoodSlots[neighborhood.id] ?? const [];
     final isComplete = portfolio.isNeighborhoodComplete(neighborhood.id);
+    final ownedCount = slots.where((t) => t.isOwned).length;
 
     return Card(
       color: Colors.white,
@@ -132,36 +216,68 @@ class _NeighborhoodCard extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Text(neighborhood.name,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const Spacer(),
+                Text('$ownedCount / ${slots.length}',
+                    style: const TextStyle(fontSize: 12, color: Colors.black54)),
                 if (isComplete) ...[
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   const Icon(Icons.star, color: Colors.amber, size: 20),
                 ],
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: [
-                for (final tier in slots) ...[
-                  Column(
-                    children: [
-                      Icon(tier.icon,
-                          color: tier.isOwned ? neighborhood.color : Colors.grey.shade400,
-                          size: 32),
-                      Text(tier.label, style: const TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
+                for (int i = 0; i < slots.length; i++) ...[
+                  _PropertySlotTile(tier: slots[i], color: neighborhood.color),
+                  if (i != slots.length - 1) const SizedBox(width: 12),
                 ],
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              isComplete ? 'Complete! Perk: ${neighborhood.perkDescription}' : neighborhood.perkDescription,
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: isComplete ? Colors.green.shade700 : Colors.black54,
-                fontWeight: isComplete ? FontWeight.bold : FontWeight.normal,
+            const SizedBox(height: 12),
+            // The neighborhood's perk, framed as a "feature you can unlock" --
+            // grayed out with a lock until every slot above is filled.
+            Container(
+              padding: const EdgeInsets.all(10.0),
+              decoration: BoxDecoration(
+                color: isComplete ? Colors.green.withOpacity(0.1) : Colors.black.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(8.0),
+                border: Border.all(color: isComplete ? Colors.green : Colors.grey.shade300),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    isComplete ? Icons.bolt : Icons.lock_outline,
+                    color: isComplete ? Colors.green.shade700 : Colors.grey,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isComplete ? 'Perk unlocked!' : 'Perk (locked)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isComplete ? Colors.green.shade700 : Colors.black54,
+                          ),
+                        ),
+                        Text(
+                          neighborhood.perkDescription,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        if (!isComplete)
+                          Text(
+                            'Fill all ${slots.length} slots in ${neighborhood.name} to unlock this.',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
             if (!isComplete && portfolio.currency >= PortfolioController.vacantLotCost)
@@ -176,6 +292,45 @@ class _NeighborhoodCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// One property slot. Owned slots show the tier icon in the neighborhood's
+// color; empty slots are grayed out with a dashed outline and a lock, so
+// it's visually clear they're something you can still get, not just
+// missing.
+class _PropertySlotTile extends StatelessWidget {
+  const _PropertySlotTile({required this.tier, required this.color});
+
+  final PropertyTier tier;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tier.isOwned) {
+      return Column(
+        children: [
+          Icon(tier.icon, color: color, size: 32),
+          Text(tier.label, style: const TextStyle(fontSize: 10)),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade400, width: 1.5, style: BorderStyle.solid),
+            borderRadius: BorderRadius.circular(6.0),
+            color: Colors.grey.shade100,
+          ),
+          child: Icon(Icons.lock_outline, color: Colors.grey.shade500, size: 18),
+        ),
+        Text('Empty', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+      ],
     );
   }
 }
