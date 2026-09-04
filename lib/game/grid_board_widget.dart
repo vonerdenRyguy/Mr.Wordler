@@ -60,6 +60,8 @@ class GridTileWidget extends ConsumerWidget {
     required this.isBoardStyle,
     this.theme = GridTheme.classic,
     this.isLandmark = false,
+    this.isPinned = false,
+    this.onTogglePin,
   });
 
   final TileLocation location;
@@ -70,6 +72,13 @@ class GridTileWidget extends ConsumerWidget {
   // tile is still empty; once a letter lands here it renders normally,
   // and the landmark-reached event is handled by the caller, not here.
   final bool isLandmark;
+  // Rack "pin" (Infinite Estate/Village only): a UI-only marker the
+  // player toggles via long-press to remind themselves they're saving
+  // this letter for something -- it doesn't affect gameplay at all.
+  // onTogglePin null (the default, every other mode) disables the
+  // gesture entirely rather than just no-op'ing it.
+  final bool isPinned;
+  final ValueChanged<int>? onTogglePin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -78,6 +87,7 @@ class GridTileWidget extends ConsumerWidget {
     ));
     final controller = ref.read(gridGameControllerProvider.notifier);
     final showLandmarkGlow = isLandmark && letter == null;
+    final showPin = location.zone == TileZone.rack && isPinned && letter != null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -93,68 +103,81 @@ class GridTileWidget extends ConsumerWidget {
                         ? Colors.amber.shade200
                         : (isBoardStyle ? theme.boardColor : theme.rackColor)),
                 border: Border.all(
-                  color: showLandmarkGlow ? Colors.amber.shade800 : (isBoardStyle ? theme.boardBorderColor : Colors.grey),
-                  width: showLandmarkGlow ? 2.5 : 1.5,
+                  color: showLandmarkGlow
+                      ? Colors.amber.shade800
+                      : (showPin ? Colors.amber.shade400 : (isBoardStyle ? theme.boardBorderColor : Colors.grey)),
+                  width: showLandmarkGlow ? 2.5 : (showPin ? 2.5 : 1.5),
                 ),
                 borderRadius: isBoardStyle ? BorderRadius.circular(0.0) : BorderRadius.circular(8.0),
                 boxShadow: showLandmarkGlow
                     ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)]
                     : null,
               ),
-              child: Center(
-                child: showLandmarkGlow
-                    ? LayoutBuilder(
-                        builder: (context, c) =>
-                            Icon(Icons.star, color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
-                      )
-                    : letter != null
-                    ? Draggable<TileLocation>(
-                        data: location,
-                        feedback: Material(
-                          color: Colors.transparent,
-                          child: Container(
-                            padding: const EdgeInsets.all(10.0),
-                            decoration: const BoxDecoration(
-                              color: Colors.deepPurple,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              letter,
-                              style: TextStyle(
-                                fontFamily: "Open Sans",
-                                fontWeight: FontWeight.w900,
-                                fontSize: fontSize,
+              child: Stack(
+                children: [
+                  Center(
+                    child: showLandmarkGlow
+                        ? LayoutBuilder(
+                            builder: (context, c) => Icon(Icons.star,
+                                color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
+                          )
+                        : letter != null
+                        ? Draggable<TileLocation>(
+                            data: location,
+                            feedback: Material(
+                              color: Colors.transparent,
+                              child: Container(
+                                padding: const EdgeInsets.all(10.0),
+                                decoration: const BoxDecoration(
+                                  color: Colors.deepPurple,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  letter,
+                                  style: TextStyle(
+                                    fontFamily: "Open Sans",
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: fontSize,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        childWhenDragging: Container(
-                          padding: const EdgeInsets.all(3.0),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            border: Border.all(color: Colors.grey),
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                        ),
-                        child: GestureDetector(
-                          // Only board tiles can be part of a placed word;
-                          // rack tiles have nothing to define yet.
-                          onLongPress: location.zone == TileZone.board
-                              ? () => _showDefinitionIfAny(context, ref, location.index)
-                              : null,
-                          child: Center(
-                            child: Text(
-                              letter,
-                              style: TextStyle(
-                                fontFamily: "Open Sans",
-                                fontWeight: FontWeight.w900,
-                                fontSize: fontSize,
+                            childWhenDragging: Container(
+                              padding: const EdgeInsets.all(3.0),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8.0),
                               ),
                             ),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                            child: GestureDetector(
+                              // Board tiles can be part of a placed word
+                              // (long-press for a definition); rack tiles
+                              // can be pinned instead, if enabled.
+                              onLongPress: location.zone == TileZone.board
+                                  ? () => _showDefinitionIfAny(context, ref, location.index)
+                                  : (onTogglePin != null ? () => onTogglePin!(location.index) : null),
+                              child: Center(
+                                child: Text(
+                                  letter,
+                                  style: TextStyle(
+                                    fontFamily: "Open Sans",
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: fontSize,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  if (showPin)
+                    Positioned(
+                      top: 1,
+                      right: 1,
+                      child: Icon(Icons.push_pin, size: (fontSize * 0.5).clamp(8.0, 14.0), color: Colors.amber.shade900),
+                    ),
+                ],
               ),
             );
           },
@@ -234,10 +257,19 @@ class GridBoardView extends ConsumerWidget {
 
 // Renders the player's rack.
 class GridRackView extends ConsumerWidget {
-  const GridRackView({super.key, this.crossAxisCount = 7, this.theme = GridTheme.classic});
+  const GridRackView({
+    super.key,
+    this.crossAxisCount = 7,
+    this.theme = GridTheme.classic,
+    this.pinnedIndices = const {},
+    this.onTogglePin,
+  });
 
   final int crossAxisCount;
   final GridTheme theme;
+  // Rack pinning (Infinite Estate/Village only -- see GridTileWidget.isPinned).
+  final Set<int> pinnedIndices;
+  final ValueChanged<int>? onTogglePin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -259,6 +291,8 @@ class GridRackView extends ConsumerWidget {
                   location: TileLocation(TileZone.rack, index),
                   isBoardStyle: false,
                   theme: theme,
+                  isPinned: pinnedIndices.contains(index),
+                  onTogglePin: onTogglePin,
                 ),
               ),
             );

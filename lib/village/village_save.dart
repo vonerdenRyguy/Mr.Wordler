@@ -15,6 +15,7 @@ class VillageSaveData {
   final List<String> dealtLetters;
   final int lastCashedOutScore;
   final Set<int> reachedLandmarks;
+  final Set<String> discoveredWords;
 
   const VillageSaveData({
     required this.boardCells,
@@ -23,6 +24,7 @@ class VillageSaveData {
     required this.dealtLetters,
     required this.lastCashedOutScore,
     this.reachedLandmarks = const {},
+    this.discoveredWords = const {},
   });
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +34,7 @@ class VillageSaveData {
         'dealtLetters': dealtLetters,
         'lastCashedOutScore': lastCashedOutScore,
         'reachedLandmarks': reachedLandmarks.toList(),
+        'discoveredWords': discoveredWords.toList(),
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -42,6 +45,8 @@ class VillageSaveData {
         lastCashedOutScore: json['lastCashedOutScore'] as int? ?? 0,
         reachedLandmarks:
             (json['reachedLandmarks'] as List?)?.map((e) => e as int).toSet() ?? const {},
+        discoveredWords:
+            (json['discoveredWords'] as List?)?.map((e) => e as String).toSet() ?? const {},
       );
 }
 

@@ -5,6 +5,7 @@ import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
+import '../village/discovery_journal_view.dart';
 import '../village/landmark.dart';
 import '../village/village_board_view.dart';
 import '../village/village_save.dart';
@@ -100,6 +101,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   bool _restoring = true;
   late final Set<int> _landmarkIndices;
   Set<int> _reachedLandmarks = {};
+  Set<String> _discoveredWords = {};
+  // Rack pinning is a pure UI affordance (no mechanical effect), so it's
+  // deliberately not persisted -- it's about tracking intent within a
+  // single visit, not a permanent record.
+  final Set<int> _pinnedRackIndices = {};
 
   @override
   void initState() {
@@ -124,6 +130,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           );
       _lastCashedOutScore = saved.lastCashedOutScore;
       _reachedLandmarks = saved.reachedLandmarks;
+      _discoveredWords = saved.discoveredWords;
     }
     setState(() => _restoring = false);
     // Bring score/structures in sync with whatever board we ended up
@@ -141,7 +148,31 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       dealtLetters: gridState.dealtLetters,
       lastCashedOutScore: _lastCashedOutScore,
       reachedLandmarks: _reachedLandmarks,
+      discoveredWords: _discoveredWords,
     ));
+  }
+
+  void _togglePin(int rackIndex) {
+    setState(() {
+      if (_pinnedRackIndices.contains(rackIndex)) {
+        _pinnedRackIndices.remove(rackIndex);
+      } else {
+        _pinnedRackIndices.add(rackIndex);
+      }
+    });
+  }
+
+  void _openJournal() {
+    final rackCells = ref.read(gridGameControllerProvider).rackCells;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DiscoveryJournalView(
+        rackCells: rackCells,
+        discoveredWords: _discoveredWords,
+      ),
+    );
   }
 
   // A landmark is "reached" the instant a letter lands on its tile.
@@ -178,6 +209,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // a separately persisted structures list). Triggered after every board
   // change via ref.listen in build(); guarded against overlapping runs the
   // same way Theme Rush guards its own auto-check.
+  //
+  // "Discovered" (for the Discovery Journal) is a separate, permanent
+  // record: once a magic word has been built at least once, it stays
+  // marked discovered even if its letters are later moved away and the
+  // structure itself disappears.
   Future<void> _refreshStructures() async {
     if (_computingStructures) return;
     _computingStructures = true;
@@ -186,7 +222,17 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       final wordPositions = await controller.currentWordPositions();
       if (!mounted) return;
       final structures = computeStructures(wordPositions);
-      setState(() => _structures = structures);
+      final newlyDiscovered = structures
+          .map((s) => s.def.word)
+          .where((w) => !_discoveredWords.contains(w))
+          .toSet();
+      setState(() {
+        _structures = structures;
+        if (newlyDiscovered.isNotEmpty) {
+          _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
+        }
+      });
+      if (newlyDiscovered.isNotEmpty) await _saveVillage();
     } finally {
       _computingStructures = false;
     }
@@ -341,6 +387,13 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           ),
           backgroundColor: const Color(0xFF33691E),
           automaticallyImplyLeading: false,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.menu_book, color: Colors.white),
+              tooltip: 'Discovery Journal',
+              onPressed: _openJournal,
+            ),
+          ],
         ),
         body: SafeArea(
           child: Column(
@@ -382,7 +435,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                         ),
                 ),
               ),
-              Expanded(flex: 3, child: GridRackView(theme: _estateTheme)),
+              Expanded(
+                flex: 3,
+                child: GridRackView(
+                  theme: _estateTheme,
+                  pinnedIndices: _pinnedRackIndices,
+                  onTogglePin: _togglePin,
+                ),
+              ),
               const Expanded(flex: 1, child: ColoredBox(color: Color(0xFF6D4C41))),
             ],
           ),
