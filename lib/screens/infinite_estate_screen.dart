@@ -5,9 +5,12 @@ import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
+import '../village/village_board_view.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+enum _ViewMode { words, village }
 
 // Infinite Estate: an endless-feeling session on a large (60x60, pannable/
 // zoomable) board -- not literally unbounded, but big enough that a normal
@@ -79,11 +82,33 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   int _score = 0;
   bool _sessionEnded = false;
   DateTime? _lastPopAttempt;
+  _ViewMode _viewMode = _ViewMode.words;
+  List<BoardStructure> _structures = [];
+  bool _computingStructures = false;
 
   @override
   void initState() {
     super.initState();
     initSpellCheck();
+  }
+
+  // Re-derives which magic words are currently built (see BoardStructure's
+  // doc comment: this is a rendering computation over the live board, not
+  // a separately persisted structures list). Triggered after every board
+  // change via ref.listen in build(); guarded against overlapping runs the
+  // same way Theme Rush guards its own auto-check.
+  Future<void> _refreshStructures() async {
+    if (_computingStructures) return;
+    _computingStructures = true;
+    try {
+      final controller = ref.read(gridGameControllerProvider.notifier);
+      final wordPositions = await controller.currentWordPositions();
+      if (!mounted) return;
+      final structures = computeStructures(wordPositions);
+      setState(() => _structures = structures);
+    } finally {
+      _computingStructures = false;
+    }
   }
 
   Future<void> _refreshScore() async {
@@ -153,6 +178,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   @override
   Widget build(BuildContext context) {
+    // Recompute which magic words are currently built any time the board
+    // changes, so Village view stays in sync with Words view without the
+    // player needing to press anything.
+    ref.listen(gridGameControllerProvider, (previous, next) {
+      if (previous?.boardCells != next.boardCells) {
+        _refreshStructures();
+      }
+    });
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -207,18 +241,36 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         body: SafeArea(
           child: Column(
             children: [
-              const Expanded(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: SegmentedButton<_ViewMode>(
+                  segments: const [
+                    ButtonSegment(value: _ViewMode.words, label: Text('Words'), icon: Icon(Icons.abc)),
+                    ButtonSegment(value: _ViewMode.village, label: Text('Village'), icon: Icon(Icons.holiday_village)),
+                  ],
+                  selected: {_viewMode},
+                  onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
+                ),
+              ),
+              Expanded(
                 flex: 6,
-                child: GridBoardView(
-                  theme: _estateTheme,
-                  // A wide zoom range and generous pan boundary make a
-                  // bounded-but-large board feel open: zoomed all the way
-                  // out, the whole estate is a distant patchwork; panning
-                  // past the built edges still shows empty space to grow
-                  // into rather than stopping dead at the boundary.
-                  minScale: 0.06,
-                  maxScale: 3.0,
-                  boundaryMargin: EdgeInsets.all(600),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _viewMode == _ViewMode.words
+                      ? const GridBoardView(
+                          key: ValueKey('words'),
+                          theme: _estateTheme,
+                          // A wide zoom range and generous pan boundary make a
+                          // bounded-but-large board feel open: zoomed all the
+                          // way out, the whole estate is a distant patchwork;
+                          // panning past the built edges still shows empty
+                          // space to grow into rather than stopping dead at
+                          // the boundary.
+                          minScale: 0.06,
+                          maxScale: 3.0,
+                          boundaryMargin: EdgeInsets.all(600),
+                        )
+                      : VillageBoardView(key: const ValueKey('village'), structures: _structures),
                 ),
               ),
               Expanded(flex: 3, child: GridRackView(theme: _estateTheme)),

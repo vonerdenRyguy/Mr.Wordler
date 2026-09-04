@@ -336,6 +336,27 @@ void main() {
     expect(find.text('Score'), findsOneWidget);
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
+
+    // Switching to Village view should render without error. A fresh
+    // board has no magic words built yet, so Words view's 21 rack tiles
+    // are still there (the rack is unaffected by the toggle) but the
+    // board itself shows no letters in Village view.
+    expect(find.text('Words'), findsOneWidget);
+    expect(find.text('Village'), findsOneWidget);
+    await tester.tap(find.text('Village'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    // The rack (unaffected by the toggle) still shows its 21 letters;
+    // the empty board itself contributes none in Village view.
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+
+    // Switching back to Words view should restore the interactive board.
+    await tester.tap(find.text('Words'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
   });
 
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
