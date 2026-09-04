@@ -19,4 +19,4 @@ final gridGameControllerProvider =
     StateNotifierProvider.autoDispose<GridGameController, GridGameState>((ref) {
   final config = ref.watch(gridConfigProvider);
   return GridGameController(config);
-});
+}, dependencies: [gridConfigProvider]);
