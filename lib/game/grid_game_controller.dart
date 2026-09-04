@@ -122,4 +122,17 @@ class GridGameController extends StateNotifier<GridGameState> {
       state.config.boardHeight,
     );
   }
+
+  // The valid dictionary word (if any) currently occupying board index
+  // `boardIndex`, freshly re-scanned. Used for tap-for-definition -- a
+  // long-press only shows a definition for a word that's actually validly
+  // formed right now, not stale from an earlier Check.
+  Future<String?> validWordAtBoardIndex(int boardIndex) async {
+    await _validator.findValidWords(
+      state.boardCells,
+      state.config.boardWidth,
+      state.config.boardHeight,
+    );
+    return _validator.validWordContaining(boardIndex);
+  }
 }

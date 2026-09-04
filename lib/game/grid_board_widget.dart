@@ -1,8 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../dictionary/definition_service.dart';
 import 'grid_providers.dart';
 import 'tile_location.dart';
+
+// Long-press a board tile that's part of a currently valid word to see a
+// short definition. Fails silently (no dialog at all) if the word isn't
+// valid right now, or no definition is available/cached and the device
+// is offline -- this must never interrupt gameplay with an error.
+Future<void> _showDefinitionIfAny(BuildContext context, WidgetRef ref, int boardIndex) async {
+  final controller = ref.read(gridGameControllerProvider.notifier);
+  final word = await controller.validWordAtBoardIndex(boardIndex);
+  if (word == null) return;
+
+  final definition = await ref.read(definitionServiceProvider).getDefinition(word);
+  if (definition == null) return;
+  if (!context.mounted) return;
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: Colors.orangeAccent,
+      title: Text(word),
+      content: Text(definition),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+      ],
+    ),
+  );
+}
 
 // One board cell or rack slot: a drag source/target rendering the letter
 // (if any) at `location`. Font size is derived from the tile's own
@@ -69,13 +96,20 @@ class GridTileWidget extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(8.0),
                           ),
                         ),
-                        child: Center(
-                          child: Text(
-                            letter,
-                            style: TextStyle(
-                              fontFamily: "Open Sans",
-                              fontWeight: FontWeight.w900,
-                              fontSize: fontSize,
+                        child: GestureDetector(
+                          // Only board tiles can be part of a placed word;
+                          // rack tiles have nothing to define yet.
+                          onLongPress: location.zone == TileZone.board
+                              ? () => _showDefinitionIfAny(context, ref, location.index)
+                              : null,
+                          child: Center(
+                            child: Text(
+                              letter,
+                              style: TextStyle(
+                                fontFamily: "Open Sans",
+                                fontWeight: FontWeight.w900,
+                                fontSize: fontSize,
+                              ),
                             ),
                           ),
                         ),

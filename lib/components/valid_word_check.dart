@@ -207,4 +207,15 @@ class WordValidator {
     }
     return "";
   }
+
+  // The valid dictionary word (if any) that currently occupies `index`,
+  // as of the most recent findValidWords call. Used for tap-for-definition:
+  // only a word that's actually validly formed on the board right now
+  // should show a definition.
+  String? validWordContaining(int index) {
+    for (final entry in _wordPositionsMap.entries) {
+      if (entry.value.contains(index)) return entry.key;
+    }
+    return null;
+  }
 }
