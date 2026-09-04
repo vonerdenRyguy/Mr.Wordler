@@ -1,21 +1,48 @@
-// Basic smoke test: the app boots and the menu screen shows up with
-// its title and both action buttons.
+// Basic smoke tests: the app boots, and navigating into each built mode
+// renders without error.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:namer_app/main.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 
-void main() {
-  testWidgets('Menu screen shows title and buttons', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      ChangeNotifierProvider(
+// Mirrors main()'s actual widget nesting (ProviderScope wraps
+// ChangeNotifierProvider wraps MyApp) so tests exercise the same provider
+// setup the real app runs with -- ModeSelectScreen/PortfolioScreen read
+// the global portfolioProvider directly and need an ancestor ProviderScope
+// to do that, the same as they would in production.
+Future<void> pumpApp(WidgetTester tester) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      child: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(),
         child: const MyApp(),
       ),
-    );
+    ),
+  );
+}
+
+Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
+    widget is Text &&
+    widget.data != null &&
+    widget.data!.length == 1 &&
+    RegExp(r'^[A-Z]$').hasMatch(widget.data!));
+
+void main() {
+  // PortfolioController reads SharedPreferences as soon as it's created
+  // (unlike ThemeNotifier, whose loadFromPrefs() these tests never call);
+  // without a mock, SharedPreferences.getInstance() throws in the test
+  // environment.
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('Menu screen shows title and buttons', (WidgetTester tester) async {
+    await pumpApp(tester);
 
     expect(find.text('Mr. Wordler'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
@@ -32,12 +59,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => ThemeNotifier(),
-        child: const MyApp(),
-      ),
-    );
+    await pumpApp(tester);
 
     await tester.tap(find.text('Play'));
     await tester.pumpAndSettle();
@@ -54,12 +76,7 @@ void main() {
     // 21 letters should have been dealt into the rack -- confirms the
     // Riverpod-backed GridGameController actually initialized and dealt
     // tiles rather than throwing during setup.
-    final letterFinder = find.byWidgetPredicate((widget) =>
-        widget is Text &&
-        widget.data != null &&
-        widget.data!.length == 1 &&
-        RegExp(r'^[A-Z]$').hasMatch(widget.data!));
-    expect(letterFinder, findsNWidgets(21));
+    expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
   testWidgets('Time Attack mode deals a rack via the shared grid engine', (WidgetTester tester) async {
@@ -68,12 +85,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => ThemeNotifier(),
-        child: const MyApp(),
-      ),
-    );
+    await pumpApp(tester);
 
     await tester.tap(find.text('Game Modes'));
     await tester.pumpAndSettle();
@@ -89,11 +101,43 @@ void main() {
     expect(find.byType(ErrorWidget), findsNothing);
 
     expect(find.text('Check'), findsOneWidget);
-    final letterFinder = find.byWidgetPredicate((widget) =>
-        widget is Text &&
-        widget.data != null &&
-        widget.data!.length == 1 &&
-        RegExp(r'^[A-Z]$').hasMatch(widget.data!));
-    expect(letterFinder, findsNWidgets(21));
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+  });
+
+  testWidgets('Portfolio screen shows neighborhoods and test controls work', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+
+    await tester.tap(find.byTooltip('Portfolio'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Level 1'), findsOneWidget);
+    for (final name in ['Ocean Ave', 'Downtown', 'Old Town']) {
+      expect(find.text(name), findsOneWidget);
+    }
+
+    // A fresh portfolio starts at 0 coins.
+    expect(find.text('0'), findsOneWidget);
+
+    await tester.tap(find.text('+10 coins'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    // The currency display should now read 10 instead of 0.
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('0'), findsNothing);
   });
 }
