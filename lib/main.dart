@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+// ChangeNotifierProvider is defined by both riverpod and provider; this
+// app uses provider's version for ThemeNotifier, so hide riverpod's.
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:namer_app/screens/menu_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
@@ -8,9 +11,14 @@ void main() async {
   final themeNotifier = ThemeNotifier();
   await themeNotifier.loadFromPrefs();
   runApp(
-    ChangeNotifierProvider.value(
-      value: themeNotifier,
-      child: const MyApp(),
+    // ProviderScope hosts the Riverpod state used by the game-mode engine
+    // and the Portfolio/XP meta-layer. ThemeNotifier stays on `provider`
+    // (already working, out of scope to migrate) -- the two coexist fine.
+    ProviderScope(
+      child: ChangeNotifierProvider.value(
+        value: themeNotifier,
+        child: const MyApp(),
+      ),
     ),
   );
 }
