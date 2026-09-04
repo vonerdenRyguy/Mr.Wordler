@@ -31,16 +31,39 @@ Future<void> _showDefinitionIfAny(BuildContext context, WidgetRef ref, int board
   );
 }
 
+// Board/rack color theme. Defaults match the look every mode has always
+// had; a mode can pass its own (e.g. Infinite Estate's land/estate
+// palette) without affecting the others, since they all share this widget.
+class GridTheme {
+  final Color boardColor;
+  final Color rackColor;
+  final Color boardBorderColor;
+
+  const GridTheme({
+    this.boardColor = Colors.orangeAccent,
+    this.rackColor = Colors.deepPurple,
+    this.boardBorderColor = Colors.black,
+  });
+
+  static const classic = GridTheme();
+}
+
 // One board cell or rack slot: a drag source/target rendering the letter
 // (if any) at `location`. Font size is derived from the tile's own
 // rendered size (via LayoutBuilder) rather than a fixed pixel value, so
 // text stays legible whether this is a 10x10 board on a phone or a 25x25
 // board on a tablet.
 class GridTileWidget extends ConsumerWidget {
-  const GridTileWidget({super.key, required this.location, required this.isBoardStyle});
+  const GridTileWidget({
+    super.key,
+    required this.location,
+    required this.isBoardStyle,
+    this.theme = GridTheme.classic,
+  });
 
   final TileLocation location;
   final bool isBoardStyle;
+  final GridTheme theme;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,9 +82,9 @@ class GridTileWidget extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: candidateData.isNotEmpty
                     ? Colors.blue[100]
-                    : (isBoardStyle ? Colors.orangeAccent : Colors.deepPurple),
+                    : (isBoardStyle ? theme.boardColor : theme.rackColor),
                 border: Border.all(
-                  color: isBoardStyle ? Colors.black : Colors.grey,
+                  color: isBoardStyle ? theme.boardBorderColor : Colors.grey,
                   width: 1.5,
                 ),
                 borderRadius: isBoardStyle ? BorderRadius.circular(0.0) : BorderRadius.circular(8.0),
@@ -136,16 +159,30 @@ class GridTileWidget extends ConsumerWidget {
 // Renders the board as a `boardWidth`-column square grid, pannable/
 // zoomable via InteractiveViewer (so a larger-than-phone board, like
 // Infinite Estate's, still fits and stays usable on any screen size).
+// `boundaryMargin`/`minScale` are configurable so a mode with a much
+// larger board (Infinite Estate) can allow zooming further out and
+// panning further past the edges, making the space feel more expansive.
 class GridBoardView extends ConsumerWidget {
-  const GridBoardView({super.key});
+  const GridBoardView({
+    super.key,
+    this.theme = GridTheme.classic,
+    this.minScale = 0.2,
+    this.maxScale = 2.5,
+    this.boundaryMargin = EdgeInsets.zero,
+  });
+
+  final GridTheme theme;
+  final double minScale;
+  final double maxScale;
+  final EdgeInsets boundaryMargin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(gridGameControllerProvider.select((s) => s.config));
     return InteractiveViewer(
-      boundaryMargin: EdgeInsets.zero,
-      minScale: 0.2,
-      maxScale: 2.5,
+      boundaryMargin: boundaryMargin,
+      minScale: minScale,
+      maxScale: maxScale,
       child: Center(
         child: AspectRatio(
           aspectRatio: config.boardWidth / config.boardHeight,
@@ -160,6 +197,7 @@ class GridBoardView extends ConsumerWidget {
                   child: GridTileWidget(
                     location: TileLocation(TileZone.board, index),
                     isBoardStyle: true,
+                    theme: theme,
                   ),
                 ),
               );
@@ -173,9 +211,10 @@ class GridBoardView extends ConsumerWidget {
 
 // Renders the player's rack.
 class GridRackView extends ConsumerWidget {
-  const GridRackView({super.key, this.crossAxisCount = 7});
+  const GridRackView({super.key, this.crossAxisCount = 7, this.theme = GridTheme.classic});
 
   final int crossAxisCount;
+  final GridTheme theme;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -196,6 +235,7 @@ class GridRackView extends ConsumerWidget {
                 child: GridTileWidget(
                   location: TileLocation(TileZone.rack, index),
                   isBoardStyle: false,
+                  theme: theme,
                 ),
               ),
             );
