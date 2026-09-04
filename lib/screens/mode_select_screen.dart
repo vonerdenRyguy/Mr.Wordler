@@ -5,7 +5,9 @@ import '../daily/daily_challenge_controller.dart';
 import '../portfolio/level_info.dart';
 import '../portfolio/portfolio_controller.dart';
 import 'daily_challenge_screen.dart';
+import 'infinite_estate_screen.dart';
 import 'portfolio_screen.dart';
+import 'theme_rush_screen.dart';
 import 'time_attack_screen.dart';
 
 // Entry point to the four game modes (Daily Estate Challenge, Time Attack,
@@ -85,28 +87,28 @@ class ModeSelectScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             _ModeCard(
               title: 'Theme Rush',
-              subtitle: 'Race to place one themed word. Coming soon.',
+              subtitle: 'Race to place one themed word.',
               icon: Icons.category,
-              enabled: false,
-              onTap: () => _showComingSoon(context, 'Theme Rush'),
+              enabled: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ThemeRushScreen()),
+              ),
             ),
             const SizedBox(height: 12),
             _ModeCard(
               title: 'Infinite Estate',
-              subtitle: 'Endless board, endless letters. Coming soon.',
+              subtitle: 'Endless board, endless letters.',
               icon: Icons.all_inclusive,
-              enabled: false,
-              onTap: () => _showComingSoon(context, 'Infinite Estate'),
+              enabled: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const InfiniteEstateScreen()),
+              ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  void _showComingSoon(BuildContext context, String modeName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$modeName is coming soon!')),
     );
   }
 }

@@ -42,18 +42,28 @@ class LetterGenerator {
     'Y': 4, 'Z': 10,
   };
 
-  // Generates `count` letters from the full weighted pool. If `seed` is
-  // given, the shuffle is deterministic for that seed (used by the Daily
-  // Estate Challenge so every player gets the same letters on a given
-  // date); otherwise it's a fresh random draw each call.
+  // Generates `count` letters from the weighted pool. If `seed` is given,
+  // the shuffle is deterministic for that seed (used by the Daily Estate
+  // Challenge so every player gets the same letters on a given date);
+  // otherwise it's a fresh random draw each call.
+  //
+  // The base distribution totals 144 letters (standard Bananagrams); for
+  // `count` above that (e.g. Infinite Estate's much larger pool) the
+  // distribution repeats enough times to cover it, preserving the same
+  // relative letter frequencies rather than just running out.
   static List<String> generateLetters(int count, {int? seed}) {
-    // Make a list of all available letters
-    List<String> allLetters = [];
-    letterCounts.forEach((letter, count) {
-      for (int i = 0; i < count; i++) {
-        allLetters.add(letter);
+    List<String> baseLetters = [];
+    letterCounts.forEach((letter, n) {
+      for (int i = 0; i < n; i++) {
+        baseLetters.add(letter);
       }
     });
+
+    final repeats = (count / baseLetters.length).ceil();
+    List<String> allLetters = [];
+    for (int i = 0; i < repeats; i++) {
+      allLetters.addAll(baseLetters);
+    }
 
     allLetters.shuffle(seed != null ? Random(seed) : Random());
 
