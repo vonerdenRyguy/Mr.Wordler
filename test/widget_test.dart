@@ -91,6 +91,32 @@ void main() {
     expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
+  testWidgets('Game Modes: swiping changes page and shows each explanation',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+
+    // Starts on Daily Estate Challenge, with its explanation and Play button.
+    expect(find.text('Daily Estate Challenge'), findsOneWidget);
+    expect(find.text('Play Daily Estate Challenge'), findsOneWidget);
+
+    // Swiping left should move to the next page (Time Attack) without
+    // needing to tap the bottom nav bar.
+    await tester.fling(find.text('Daily Estate Challenge').first, const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Play Time Attack'), findsOneWidget);
+  });
+
   testWidgets('Time Attack mode deals a rack via the shared grid engine', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -101,9 +127,16 @@ void main() {
 
     await tester.tap(find.text('Game Modes'));
     await tester.pumpAndSettle();
+    // "Time Attack" is unambiguous here: the default page (Daily Estate
+    // Challenge) doesn't show that text yet, only the bottom nav item does.
     expect(find.text('Time Attack'), findsOneWidget);
-
     await tester.tap(find.text('Time Attack'));
+    await tester.pumpAndSettle();
+
+    // Now on the Time Attack detail page -- "Time Attack" matches both the
+    // bottom nav item and the page title, so target the unique Play button.
+    expect(find.text('Play Time Attack'), findsOneWidget);
+    await tester.tap(find.text('Play Time Attack'));
     await tester.pumpAndSettle();
 
     // Same explicit checks as the Free Play test -- see the comment there
@@ -139,6 +172,21 @@ void main() {
     for (final name in ['Ocean Ave', 'Downtown', 'Old Town']) {
       expect(find.text(name), findsOneWidget);
     }
+
+    // The tier guide explains how each property tier is earned (rendered
+    // as RichText/TextSpan -- find.text needs findRichText: true for that,
+    // and matches against the whole span's concatenated text, so use
+    // textContaining rather than an exact match against just the label).
+    expect(find.text('How Properties Work'), findsOneWidget);
+    expect(find.textContaining('Vacant Lot', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Cottage', findRichText: true), findsOneWidget);
+    expect(find.textContaining('House', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Mansion', findRichText: true), findsOneWidget);
+
+    // A fresh portfolio has every slot empty, grayed out with a lock.
+    expect(find.text('Empty'), findsNWidgets(9)); // 3 neighborhoods x 3 slots
+    expect(find.byIcon(Icons.lock_outline), findsWidgets);
+    expect(find.text('Perk (locked)'), findsNWidgets(3));
 
     // A fresh portfolio starts at 0 coins.
     expect(find.text('0'), findsOneWidget);
@@ -244,7 +292,10 @@ void main() {
 
     await tester.tap(find.text('Game Modes'));
     await tester.pumpAndSettle();
+    // Unambiguous here: the default page doesn't show "Theme Rush" yet.
     await tester.tap(find.text('Theme Rush'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Play Theme Rush'));
     // No perpetual timer yet -- it only starts after tapping Start.
     await tester.pumpAndSettle();
 
@@ -272,7 +323,11 @@ void main() {
 
     await tester.tap(find.text('Game Modes'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Infinite Estate'));
+    // Bottom nav label is the short "Infinite"; the page itself says
+    // "Infinite Estate".
+    await tester.tap(find.text('Infinite'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Play Infinite Estate'));
     // No perpetual timer in this mode -- pumpAndSettle is safe throughout.
     await tester.pumpAndSettle();
 
