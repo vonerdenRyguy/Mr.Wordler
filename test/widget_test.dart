@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:namer_app/main.dart';
+import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 
 // Mirrors main()'s actual widget nesting (ProviderScope wraps
@@ -24,6 +25,17 @@ Future<void> pumpApp(WidgetTester tester) async {
       ),
     ),
   );
+}
+
+// Screens with a perpetual Timer.periodic (a running stopwatch/countdown)
+// never fully "settle" -- pumpAndSettle is documented as unsuitable for
+// that and can time out waiting for a quiet frame that never comes. Pump
+// a bounded number of times instead, stopping as soon as `finder` appears.
+Future<void> pumpUntilFound(WidgetTester tester, Finder finder,
+    {int maxTries = 60, Duration step = const Duration(milliseconds: 300)}) async {
+  for (int i = 0; i < maxTries && finder.evaluate().isEmpty; i++) {
+    await tester.pump(step);
+  }
 }
 
 Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
@@ -139,5 +151,79 @@ void main() {
     // The currency display should now read 10 instead of 0.
     expect(find.text('10'), findsOneWidget);
     expect(find.text('0'), findsNothing);
+  });
+
+  testWidgets('Daily Challenge deals a rack, and giving up locks today out',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // A small stand-in dictionary, injected via DailyChallengeScreen's
+    // test-only dictionaryLoader. The real ~1.5MB words.txt can't be used
+    // here: flutter_test's mocked asset channel hangs on messages roughly
+    // above 45-90KB (verified directly; not a production issue -- see
+    // pickBonusWord's doc comment). Whether this list happens to contain a
+    // word formable from today's actual dealt letters doesn't matter for
+    // this test; a null bonus word is a normal, handled case.
+    Future<String> tinyDictionary() async => 'cat\ndog\nrat\nsun\nrun\ntree\nstar\nrose\nnote\ngate\n';
+
+    // A minimal two-route harness (root screen -> Daily Challenge) instead
+    // of the full app/menu, since ModeSelectScreen's navigation always
+    // constructs a real DailyChallengeScreen with no way to inject the
+    // test dictionary loader from outside.
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DailyChallengeScreen(dictionaryLoader: tinyDictionary),
+                  ),
+                ),
+                child: const Text('open daily'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open daily'));
+    // Reaching the ready state starts a perpetual stopwatch, so wait for
+    // it with bounded pumps instead of pumpAndSettle (see pumpUntilFound).
+    await pumpUntilFound(tester, find.text('Check'));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Check'), findsOneWidget);
+    expect(find.text('Give Up'), findsOneWidget);
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+
+    await tester.tap(find.text('Give Up'));
+    await pumpUntilFound(tester, find.text('Keep Playing'));
+    // Confirm the "you'll lose today's attempt" dialog.
+    await tester.tap(find.text('Give Up').last);
+    // This pop leaves the screen with the perpetual stopwatch, so
+    // pumpAndSettle is safe again from here on.
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    // Giving up pops back to the root screen.
+    expect(find.text('open daily'), findsOneWidget);
+
+    // Reopening today should now show the locked-out view, not a fresh board.
+    await tester.tap(find.text('open daily'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text("You've already played today!"), findsOneWidget);
+    expect(find.textContaining('gave up'), findsOneWidget);
   });
 }

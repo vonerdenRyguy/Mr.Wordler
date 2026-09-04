@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../daily/daily_challenge_controller.dart';
 import '../portfolio/level_info.dart';
 import '../portfolio/portfolio_controller.dart';
+import 'daily_challenge_screen.dart';
 import 'portfolio_screen.dart';
 import 'time_attack_screen.dart';
 
@@ -17,6 +19,7 @@ class ModeSelectScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final portfolio = ref.watch(portfolioProvider);
     final levelInfo = levelInfoForXp(portfolio.totalXp);
+    final dailyStreak = ref.watch(dailyChallengeProvider).streak;
 
     return Scaffold(
       appBar: AppBar(
@@ -47,7 +50,7 @@ class ModeSelectScreen extends ConsumerWidget {
               child: ListTile(
                 leading: const Icon(Icons.emoji_events, color: Colors.deepPurple),
                 title: Text('Level ${levelInfo.level}'),
-                subtitle: Text('${portfolio.currency} coins  |  Streak: coming soon'),
+                subtitle: Text('${portfolio.currency} coins  |  Streak: $dailyStreak day${dailyStreak == 1 ? '' : 's'}'),
                 trailing: TextButton(
                   onPressed: () => Navigator.push(
                     context,
@@ -60,10 +63,13 @@ class ModeSelectScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             _ModeCard(
               title: 'Daily Estate Challenge',
-              subtitle: 'One shared puzzle a day. Coming soon.',
+              subtitle: "Today's shared puzzle. One attempt a day.",
               icon: Icons.today,
-              enabled: false,
-              onTap: () => _showComingSoon(context, 'Daily Estate Challenge'),
+              enabled: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DailyChallengeScreen()),
+              ),
             ),
             const SizedBox(height: 12),
             _ModeCard(
