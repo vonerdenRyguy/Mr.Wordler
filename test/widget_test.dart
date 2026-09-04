@@ -333,7 +333,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Check Score'), findsOneWidget);
+    expect(find.text('Score'), findsOneWidget);
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
   });

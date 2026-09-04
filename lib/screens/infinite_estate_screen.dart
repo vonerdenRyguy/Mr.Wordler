@@ -9,13 +9,24 @@ import '../stats/mode_stats_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Infinite Estate: an endless, unbounded-feeling session on a large
-// (25x25, pannable/zoomable) board. The rack refills itself the instant a
-// tile leaves it for the board (GridConfig.refillRackOnPlace), so there's
-// no separate "trade in" affordance and no win condition -- the player
-// just keeps building until they choose to end the session.
+// Infinite Estate: an endless-feeling session on a large (60x60, pannable/
+// zoomable) board -- not literally unbounded, but big enough that a normal
+// session never reaches an edge, with a wide zoom range and generous pan
+// boundary so the space reads as open rather than a small fixed grid. The
+// rack refills itself the instant a tile leaves it for the board
+// (GridConfig.refillRackOnPlace), so there's no separate "trade in"
+// affordance and no win condition -- the player just keeps building until
+// they choose to end the session.
 class InfiniteEstateScreen extends StatelessWidget {
   const InfiniteEstateScreen({super.key});
+
+  // 60x60 = 3,600 cells: a large jump from a 10x10 mode board without
+  // eagerly building an amount of tile widgets that risks jank on a phone.
+  static const int boardSize = 60;
+  // Comfortably more than a long session will draw through; the letter
+  // pool repeats its weighted distribution to cover any size (see
+  // LetterGenerator.generateLetters), so this just needs to be "a lot".
+  static const int totalPoolSize = 3000;
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +34,10 @@ class InfiniteEstateScreen extends StatelessWidget {
       overrides: [
         gridConfigProvider.overrideWithValue(
           const GridConfig(
-            boardWidth: 25,
-            boardHeight: 25,
+            boardWidth: boardSize,
+            boardHeight: boardSize,
             rackSize: 21,
-            totalPoolSize: 720,
+            totalPoolSize: totalPoolSize,
             refillRackOnPlace: true,
           ),
         ),
@@ -35,6 +46,14 @@ class InfiniteEstateScreen extends StatelessWidget {
     );
   }
 }
+
+// Earthy green/brown palette so Infinite Estate reads as "open land" at a
+// glance instead of reusing every other mode's orange/purple board.
+const _estateTheme = GridTheme(
+  boardColor: Color(0xFFA5D6A7), // soft green plot
+  boardBorderColor: Color(0xFF33691E),
+  rackColor: Color(0xFF6D4C41), // warm soil brown
+);
 
 // Weights a set of currently-valid board words by length x letter rarity.
 int scoreForWords(List<String> words) {
@@ -87,7 +106,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
+        backgroundColor: const Color(0xFFDCEDC8),
         title: const Text('End session?'),
         content: Text('Final score: $_score'),
         actions: [
@@ -108,7 +127,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
+        backgroundColor: const Color(0xFFDCEDC8),
         title: const Text('Session Complete'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -155,34 +174,55 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ElevatedButton(
+              ElevatedButton.icon(
                 onPressed: _refreshScore,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.green),
-                child: const Text('Check Score'),
+                icon: const Icon(Icons.calculate, size: 18),
+                label: const Text('Score'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.lightGreenAccent, foregroundColor: Colors.green.shade900),
               ),
               Container(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                 decoration: BoxDecoration(
-                    color: Colors.orangeAccent,
+                    color: Colors.white,
                     border: Border.all(color: Colors.white),
                     borderRadius: BorderRadius.circular(8.0)),
-                child: Text('Score: $_score', style: const TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  children: [
+                    Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
+                    const SizedBox(width: 6),
+                    Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                  ],
+                ),
               ),
-              TextButton(
+              TextButton.icon(
                 onPressed: _endSession,
-                child: const Text('End Session', style: TextStyle(color: Colors.white)),
+                icon: const Icon(Icons.flag, size: 18, color: Colors.white),
+                label: const Text('End Session', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
-          backgroundColor: Colors.deepPurple,
+          backgroundColor: const Color(0xFF33691E),
           automaticallyImplyLeading: false,
         ),
-        body: const SafeArea(
+        body: SafeArea(
           child: Column(
             children: [
-              Expanded(flex: 5, child: GridBoardView()),
-              Expanded(flex: 3, child: GridRackView()),
-              Expanded(flex: 1, child: ColoredBox(color: Colors.orangeAccent)),
+              const Expanded(
+                flex: 6,
+                child: GridBoardView(
+                  theme: _estateTheme,
+                  // A wide zoom range and generous pan boundary make a
+                  // bounded-but-large board feel open: zoomed all the way
+                  // out, the whole estate is a distant patchwork; panning
+                  // past the built edges still shows empty space to grow
+                  // into rather than stopping dead at the boundary.
+                  minScale: 0.06,
+                  maxScale: 3.0,
+                  boundaryMargin: EdgeInsets.all(600),
+                ),
+              ),
+              Expanded(flex: 3, child: GridRackView(theme: _estateTheme)),
+              const Expanded(flex: 1, child: ColoredBox(color: Color(0xFF6D4C41))),
             ],
           ),
         ),
