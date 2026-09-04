@@ -59,11 +59,17 @@ class GridTileWidget extends ConsumerWidget {
     required this.location,
     required this.isBoardStyle,
     this.theme = GridTheme.classic,
+    this.isLandmark = false,
   });
 
   final TileLocation location;
   final bool isBoardStyle;
   final GridTheme theme;
+  // Marks this as a landmark spot (Infinite Estate/Village only -- every
+  // other mode leaves this false). Only shows the glow/star while the
+  // tile is still empty; once a letter lands here it renders normally,
+  // and the landmark-reached event is handled by the caller, not here.
+  final bool isLandmark;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,6 +77,7 @@ class GridTileWidget extends ConsumerWidget {
       (s) => (location.zone == TileZone.board ? s.boardCells : s.rackCells)[location.index],
     ));
     final controller = ref.read(gridGameControllerProvider.notifier);
+    final showLandmarkGlow = isLandmark && letter == null;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -82,15 +89,25 @@ class GridTileWidget extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: candidateData.isNotEmpty
                     ? Colors.blue[100]
-                    : (isBoardStyle ? theme.boardColor : theme.rackColor),
+                    : (showLandmarkGlow
+                        ? Colors.amber.shade200
+                        : (isBoardStyle ? theme.boardColor : theme.rackColor)),
                 border: Border.all(
-                  color: isBoardStyle ? theme.boardBorderColor : Colors.grey,
-                  width: 1.5,
+                  color: showLandmarkGlow ? Colors.amber.shade800 : (isBoardStyle ? theme.boardBorderColor : Colors.grey),
+                  width: showLandmarkGlow ? 2.5 : 1.5,
                 ),
                 borderRadius: isBoardStyle ? BorderRadius.circular(0.0) : BorderRadius.circular(8.0),
+                boxShadow: showLandmarkGlow
+                    ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)]
+                    : null,
               ),
               child: Center(
-                child: letter != null
+                child: showLandmarkGlow
+                    ? LayoutBuilder(
+                        builder: (context, c) =>
+                            Icon(Icons.star, color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
+                      )
+                    : letter != null
                     ? Draggable<TileLocation>(
                         data: location,
                         feedback: Material(
@@ -169,12 +186,17 @@ class GridBoardView extends ConsumerWidget {
     this.minScale = 0.2,
     this.maxScale = 2.5,
     this.boundaryMargin = EdgeInsets.zero,
+    this.landmarkIndices = const {},
   });
 
   final GridTheme theme;
   final double minScale;
   final double maxScale;
   final EdgeInsets boundaryMargin;
+  // Board indices to render as landmark spots (empty ones get a glow/star
+  // -- see GridTileWidget.isLandmark). Empty by default for every mode
+  // except Infinite Estate/Village, which passes its own set.
+  final Set<int> landmarkIndices;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -197,6 +219,7 @@ class GridBoardView extends ConsumerWidget {
                   child: GridTileWidget(
                     location: TileLocation(TileZone.board, index),
                     isBoardStyle: true,
+                    isLandmark: landmarkIndices.contains(index),
                     theme: theme,
                   ),
                 ),

@@ -43,12 +43,14 @@ class VillageBoardView extends ConsumerWidget {
     this.minScale = 0.06,
     this.maxScale = 3.0,
     this.boundaryMargin = const EdgeInsets.all(600),
+    this.landmarkIndices = const {},
   });
 
   final List<BoardStructure> structures;
   final double minScale;
   final double maxScale;
   final EdgeInsets boundaryMargin;
+  final Set<int> landmarkIndices;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -78,10 +80,17 @@ class VillageBoardView extends ConsumerWidget {
             physics: const NeverScrollableScrollPhysics(),
             children: List.generate(config.boardCellCount, (index) {
               final def = structureByIndex[index];
+              final isUnclaimedLandmark = def == null && landmarkIndices.contains(index);
               return Container(
                 decoration: BoxDecoration(
-                  color: def?.color ?? _plainLandColor,
-                  border: Border.all(color: _plotBorderColor, width: 0.4),
+                  color: def?.color ?? (isUnclaimedLandmark ? Colors.amber.shade200 : _plainLandColor),
+                  border: Border.all(
+                    color: isUnclaimedLandmark ? Colors.amber.shade800 : _plotBorderColor,
+                    width: isUnclaimedLandmark ? 1.2 : 0.4,
+                  ),
+                  boxShadow: isUnclaimedLandmark
+                      ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 5, spreadRadius: 1)]
+                      : null,
                 ),
                 child: (def != null && anchorIndices.contains(index))
                     ? LayoutBuilder(
@@ -91,7 +100,15 @@ class VillageBoardView extends ConsumerWidget {
                           size: (constraints.maxWidth * 0.55).clamp(8.0, 24.0),
                         ),
                       )
-                    : null,
+                    : isUnclaimedLandmark
+                        ? LayoutBuilder(
+                            builder: (context, constraints) => Icon(
+                              Icons.star,
+                              color: Colors.amber.shade900,
+                              size: (constraints.maxWidth * 0.5).clamp(8.0, 20.0),
+                            ),
+                          )
+                        : null,
               );
             }),
           ),

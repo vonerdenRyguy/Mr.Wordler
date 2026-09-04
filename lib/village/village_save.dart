@@ -4,16 +4,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // Everything needed to resume a village exactly where it was left: the
 // board/rack/pool (so structures can be re-derived and play continues
-// seamlessly), and lastCashedOutScore -- the score value already paid out
-// as currency/XP, so ending a session again without having grown the
-// village in between awards nothing extra rather than re-paying the same
-// structures every time the player opens the mode.
+// seamlessly), lastCashedOutScore -- the score value already paid out as
+// currency/XP, so ending a session again without having grown the
+// village in between awards nothing extra -- and reachedLandmarks, so a
+// landmark's one-time event never fires twice.
 class VillageSaveData {
   final List<String?> boardCells;
   final List<String?> rackCells;
   final List<String> pool;
   final List<String> dealtLetters;
   final int lastCashedOutScore;
+  final Set<int> reachedLandmarks;
 
   const VillageSaveData({
     required this.boardCells,
@@ -21,6 +22,7 @@ class VillageSaveData {
     required this.pool,
     required this.dealtLetters,
     required this.lastCashedOutScore,
+    this.reachedLandmarks = const {},
   });
 
   Map<String, dynamic> toJson() => {
@@ -29,6 +31,7 @@ class VillageSaveData {
         'pool': pool,
         'dealtLetters': dealtLetters,
         'lastCashedOutScore': lastCashedOutScore,
+        'reachedLandmarks': reachedLandmarks.toList(),
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -37,6 +40,8 @@ class VillageSaveData {
         pool: (json['pool'] as List).cast<String>(),
         dealtLetters: (json['dealtLetters'] as List).cast<String>(),
         lastCashedOutScore: json['lastCashedOutScore'] as int? ?? 0,
+        reachedLandmarks:
+            (json['reachedLandmarks'] as List?)?.map((e) => e as int).toSet() ?? const {},
       );
 }
 
