@@ -3,8 +3,10 @@ import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
 import '../daily/bonus_word_picker.dart';
 import '../daily/daily_challenge_controller.dart';
+import '../daily/daily_challenge_data.dart';
 import '../daily/daily_seed.dart';
 import '../daily/daily_tier.dart';
+import '../daily/share_card.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
@@ -13,6 +15,7 @@ import '../portfolio/portfolio_controller.dart';
 import '../portfolio/property_tier.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // The flagship mode: everyone gets the same 21-letter bank on a given
@@ -127,6 +130,12 @@ class _AlreadyPlayedView extends ConsumerWidget {
                 Text(result.completed
                     ? 'Completed in ${_formatSeconds(result.timeSeconds)} -- ${result.tierAwarded.label}${result.bonusWordFound ? ' (bonus word found!)' : ''}'
                     : "Today's attempt: gave up"),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share Result'),
+                  onPressed: () => _shareResult(context, result, data.streak),
+                ),
               ],
               const SizedBox(height: 20),
               const Text('Come back tomorrow for a new puzzle!'),
@@ -141,6 +150,21 @@ class _AlreadyPlayedView extends ConsumerWidget {
     final m = totalSeconds ~/ 60;
     final s = totalSeconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  void _shareResult(BuildContext context, DailyResult result, int streak) {
+    final text = buildDailyShareText(
+      dateKey: result.dateKey,
+      completed: result.completed,
+      timeSeconds: result.timeSeconds,
+      streak: streak,
+      tier: result.tierAwarded,
+      bonusWordFound: result.bonusWordFound,
+    );
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Result copied to clipboard!')),
+    );
   }
 }
 
@@ -296,6 +320,23 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              final text = buildDailyShareText(
+                dateKey: dailyDateKey(widget.today),
+                completed: true,
+                timeSeconds: timeSeconds,
+                streak: ref.read(dailyChallengeProvider).streak,
+                tier: tier,
+                bonusWordFound: bonusWordFound,
+              );
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Result copied to clipboard!')),
+              );
+            },
+            child: const Text('Share'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
             child: const Text('Done'),

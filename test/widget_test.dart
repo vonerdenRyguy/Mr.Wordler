@@ -225,6 +225,12 @@ void main() {
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.text("You've already played today!"), findsOneWidget);
     expect(find.textContaining('gave up'), findsOneWidget);
+
+    // The share button should copy a result summary without throwing.
+    await tester.tap(find.text('Share Result'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Result copied to clipboard!'), findsOneWidget);
   });
 
   testWidgets('Theme Rush shows a theme, then deals a rack once started',
@@ -275,5 +281,29 @@ void main() {
     expect(find.text('Check Score'), findsOneWidget);
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
+  });
+
+  testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stats'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Overall'), findsOneWidget);
+    expect(find.text('Daily Estate Challenge'), findsOneWidget);
+    expect(find.text('Theme Rush (best times)'), findsOneWidget);
+    expect(find.text('Infinite Estate'), findsOneWidget);
+    for (final name in ['Animals', 'Food', 'Countries']) {
+      expect(find.text(name), findsOneWidget);
+    }
   });
 }
