@@ -5,6 +5,7 @@ import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
+import '../village/landmark.dart';
 import '../village/village_board_view.dart';
 import '../village/village_save.dart';
 
@@ -97,11 +98,17 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   final _saveController = VillageSaveController();
   bool _restoring = true;
+  late final Set<int> _landmarkIndices;
+  Set<int> _reachedLandmarks = {};
 
   @override
   void initState() {
     super.initState();
     initSpellCheck();
+    _landmarkIndices = landmarkBoardIndices(
+      InfiniteEstateScreen.boardSize,
+      InfiniteEstateScreen.boardSize,
+    ).toSet();
     _loadSavedVillage();
   }
 
@@ -116,6 +123,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
             dealtLetters: saved.dealtLetters,
           );
       _lastCashedOutScore = saved.lastCashedOutScore;
+      _reachedLandmarks = saved.reachedLandmarks;
     }
     setState(() => _restoring = false);
     // Bring score/structures in sync with whatever board we ended up
@@ -132,7 +140,37 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       pool: gridState.pool,
       dealtLetters: gridState.dealtLetters,
       lastCashedOutScore: _lastCashedOutScore,
+      reachedLandmarks: _reachedLandmarks,
     ));
+  }
+
+  // A landmark is "reached" the instant a letter lands on its tile.
+  // One-time and always positive: a bonus letter draw plus a celebratory
+  // message, never a penalty. reachedLandmarks (persisted) guards against
+  // firing again on a later visit.
+  Future<void> _checkLandmarks() async {
+    final boardCells = ref.read(gridGameControllerProvider).boardCells;
+    for (final index in _landmarkIndices) {
+      if (_reachedLandmarks.contains(index)) continue;
+      if (boardCells[index] == null) continue;
+
+      _reachedLandmarks = {..._reachedLandmarks, index};
+      ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+      await _saveVillage();
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFFFF9C4),
+          title: const Text('🌟 Landmark Discovered!'),
+          content: const Text(
+              "Your village has grown to reach a landmark. You've been granted a bonus letter draw!"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Wonderful!')),
+          ],
+        ),
+      );
+    }
   }
 
   // Re-derives which magic words are currently built (see BoardStructure's
@@ -241,6 +279,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     ref.listen(gridGameControllerProvider, (previous, next) {
       if (previous?.boardCells != next.boardCells) {
         _refreshStructures();
+        if (!_restoring) _checkLandmarks();
       }
       if (!_restoring) _saveVillage();
     });
@@ -322,8 +361,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
                   child: _viewMode == _ViewMode.words
-                      ? const GridBoardView(
-                          key: ValueKey('words'),
+                      ? GridBoardView(
+                          key: const ValueKey('words'),
                           theme: _estateTheme,
                           // A wide zoom range and generous pan boundary make a
                           // bounded-but-large board feel open: zoomed all the
@@ -333,9 +372,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                           // the boundary.
                           minScale: 0.06,
                           maxScale: 3.0,
-                          boundaryMargin: EdgeInsets.all(600),
+                          boundaryMargin: const EdgeInsets.all(600),
+                          landmarkIndices: _landmarkIndices,
                         )
-                      : VillageBoardView(key: const ValueKey('village'), structures: _structures),
+                      : VillageBoardView(
+                          key: const ValueKey('village'),
+                          structures: _structures,
+                          landmarkIndices: _landmarkIndices,
+                        ),
                 ),
               ),
               Expanded(flex: 3, child: GridRackView(theme: _estateTheme)),

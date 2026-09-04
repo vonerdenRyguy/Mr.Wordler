@@ -115,6 +115,28 @@ class GridGameController extends StateNotifier<GridGameState> {
     return true;
   }
 
+  // Draws one extra letter from the pool directly into the first empty
+  // rack slot -- a pure bonus, no cost. A no-op (never a penalty) if the
+  // pool is empty or the rack has no open slot. Generic, not landmark-
+  // specific: any mode/event that wants to hand the player a free letter
+  // can use this.
+  void drawBonusLetter() {
+    if (state.pool.isEmpty) return;
+    final emptyIndex = state.rackCells.indexWhere((c) => c == null);
+    if (emptyIndex == -1) return;
+
+    final pool = List<String>.from(state.pool)..shuffle();
+    final drawn = pool.removeLast();
+    final rack = List<String?>.from(state.rackCells);
+    rack[emptyIndex] = drawn;
+
+    state = state.copyWith(
+      rackCells: rack,
+      pool: pool,
+      dealtLetters: [...state.dealtLetters, drawn],
+    );
+  }
+
   // Replaces the current board/rack/pool wholesale, e.g. to resume a
   // previously-saved session (Infinite Estate's persisted village).
   // Ignored (no-op) if the saved shapes don't match this controller's
