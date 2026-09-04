@@ -357,6 +357,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
+
+    // Long-pressing a rack tile should pin it (a UI-only marker).
+    expect(find.byIcon(Icons.push_pin), findsNothing);
+    await tester.longPress(oneLetterTileFinder().first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+    // The Discovery Journal should open and list the magic word catalog.
+    await tester.tap(find.byTooltip('Discovery Journal'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Discovery Journal'), findsOneWidget);
+    expect(find.text('Well'), findsOneWidget);
+    expect(find.text('Farm'), findsOneWidget);
+    expect(find.text('Bridge'), findsOneWidget);
   });
 
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
