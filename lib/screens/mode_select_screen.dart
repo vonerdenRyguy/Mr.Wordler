@@ -7,6 +7,7 @@ import '../portfolio/portfolio_controller.dart';
 import 'daily_challenge_screen.dart';
 import 'infinite_estate_screen.dart';
 import 'portfolio_screen.dart';
+import 'stats_screen.dart';
 import 'theme_rush_screen.dart';
 import 'time_attack_screen.dart';
 
@@ -28,6 +29,14 @@ class ModeSelectScreen extends ConsumerWidget {
         title: const Text('Game Modes'),
         backgroundColor: Colors.deepPurple,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            tooltip: 'Stats',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const StatsScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.home_work),
             tooltip: 'Portfolio',
