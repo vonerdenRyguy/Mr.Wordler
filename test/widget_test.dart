@@ -381,6 +381,36 @@ void main() {
     expect(find.text('Bridge'), findsOneWidget);
   });
 
+  testWidgets('Infinite Estate AppBar does not overflow on a narrow screen with larger system text',
+      (WidgetTester tester) async {
+    // Regression test: the AppBar's Score/score-chip/End Session row
+    // previously overflowed by a few pixels once the Discovery Journal
+    // action icon ate into its available width -- reproduced with a
+    // narrower phone width and a larger text scale, both of which make
+    // that row wider relative to the toolbar than the default test size
+    // does.
+    tester.view.physicalSize = const Size(720, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Infinite'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Play Infinite Estate'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Score'), findsOneWidget);
+    expect(find.text('End Session'), findsOneWidget);
+  });
+
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
