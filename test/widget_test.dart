@@ -333,7 +333,12 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Score'), findsOneWidget);
+    // Tapping the score chip itself re-checks the score (there's no
+    // separate "Score" button).
+    expect(find.byIcon(Icons.landscape), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.landscape));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
 
@@ -407,7 +412,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Score'), findsOneWidget);
+    expect(find.byIcon(Icons.landscape), findsOneWidget);
     expect(find.text('End Session'), findsOneWidget);
   });
 
