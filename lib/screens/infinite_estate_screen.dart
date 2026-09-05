@@ -5,17 +5,40 @@ import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
+import '../village/bridge_transform.dart';
+import '../village/discovery_journal_view.dart';
+import '../village/landmark.dart';
+import '../village/village_board_view.dart';
+import '../village/village_save.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// Infinite Estate: an endless, unbounded-feeling session on a large
-// (25x25, pannable/zoomable) board. The rack refills itself the instant a
-// tile leaves it for the board (GridConfig.refillRackOnPlace), so there's
-// no separate "trade in" affordance and no win condition -- the player
-// just keeps building until they choose to end the session.
+enum _ViewMode { words, village }
+
+// Infinite Estate / Village Builder: an endless-feeling session on a large
+// (60x60, pannable/zoomable) board -- not literally unbounded, but big
+// enough that a normal session never reaches an edge, with a wide zoom
+// range and generous pan boundary so the space reads as open rather than
+// a small fixed grid. The rack refills itself the instant a tile leaves
+// it for the board (GridConfig.refillRackOnPlace), so there's no separate
+// "trade in" affordance.
+//
+// The village persists across sessions: the board is saved after every
+// change and restored on open, so structures a player builds stay built.
+// There's no win condition -- "End Session" just cashes out the score
+// growth since the last cash-out into currency/XP and lets the player
+// leave; the village itself is never reset.
 class InfiniteEstateScreen extends StatelessWidget {
   const InfiniteEstateScreen({super.key});
+
+  // 60x60 = 3,600 cells: a large jump from a 10x10 mode board without
+  // eagerly building an amount of tile widgets that risks jank on a phone.
+  static const int boardSize = 60;
+  // Comfortably more than a long session will draw through; the letter
+  // pool repeats its weighted distribution to cover any size (see
+  // LetterGenerator.generateLetters), so this just needs to be "a lot".
+  static const int totalPoolSize = 3000;
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +46,10 @@ class InfiniteEstateScreen extends StatelessWidget {
       overrides: [
         gridConfigProvider.overrideWithValue(
           const GridConfig(
-            boardWidth: 25,
-            boardHeight: 25,
+            boardWidth: boardSize,
+            boardHeight: boardSize,
             rackSize: 21,
-            totalPoolSize: 720,
+            totalPoolSize: totalPoolSize,
             refillRackOnPlace: true,
           ),
         ),
@@ -35,6 +58,14 @@ class InfiniteEstateScreen extends StatelessWidget {
     );
   }
 }
+
+// Earthy green/brown palette so Infinite Estate reads as "open land" at a
+// glance instead of reusing every other mode's orange/purple board.
+const _estateTheme = GridTheme(
+  boardColor: Color(0xFFA5D6A7), // soft green plot
+  boardBorderColor: Color(0xFF33691E),
+  rackColor: Color(0xFF6D4C41), // warm soil brown
+);
 
 // Weights a set of currently-valid board words by length x letter rarity.
 int scoreForWords(List<String> words) {
@@ -58,13 +89,181 @@ class _InfiniteEstateBody extends ConsumerStatefulWidget {
 
 class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   int _score = 0;
-  bool _sessionEnded = false;
+  // Score value already paid out as currency/XP -- End Session only
+  // rewards growth past this, so re-visiting an unchanged village and
+  // ending again doesn't re-pay the same structures.
+  int _lastCashedOutScore = 0;
   DateTime? _lastPopAttempt;
+  _ViewMode _viewMode = _ViewMode.words;
+  List<BoardStructure> _structures = [];
+  bool _computingStructures = false;
+
+  final _saveController = VillageSaveController();
+  bool _restoring = true;
+  // Kept as both an ordered list (so the Bridge jump dialog can number
+  // landmarks in a stable, meaningful order) and a Set (for the O(1)
+  // membership checks GridTileWidget/VillageBoardView need every build).
+  late final List<int> _landmarkOrder;
+  late final Set<int> _landmarkIndices;
+  Set<int> _reachedLandmarks = {};
+  Set<String> _discoveredWords = {};
+  // Rack pinning is a pure UI affordance (no mechanical effect), so it's
+  // deliberately not persisted -- it's about tracking intent within a
+  // single visit, not a permanent record.
+  final Set<int> _pinnedRackIndices = {};
+
+  // Well structure ability: one free bonus letter draw per visit to the
+  // village (not per session-open -- reopening the app doesn't reset it,
+  // since that would just be a way to farm free letters). Session-only,
+  // not persisted.
+  bool _wellUsedThisVisit = false;
+
+  // Bridge structure ability: drives GridBoardView's InteractiveViewer to
+  // jump/pan to a reached landmark. _boardViewportSize is captured by the
+  // LayoutBuilder wrapping the board area and used to compute the jump
+  // transform (see bridge_transform.dart) -- it's only known once that
+  // area has actually been laid out, hence nullable.
+  final _transformController = TransformationController();
+  Size? _boardViewportSize;
 
   @override
   void initState() {
     super.initState();
     initSpellCheck();
+    _landmarkOrder = landmarkBoardIndices(
+      InfiniteEstateScreen.boardSize,
+      InfiniteEstateScreen.boardSize,
+    );
+    _landmarkIndices = _landmarkOrder.toSet();
+    _loadSavedVillage();
+  }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  bool _hasStructure(String magicWord) => _structures.any((s) => s.def.word == magicWord);
+
+  Future<void> _loadSavedVillage() async {
+    final saved = await _saveController.load();
+    if (!mounted) return;
+    if (saved != null) {
+      ref.read(gridGameControllerProvider.notifier).restoreState(
+            boardCells: saved.boardCells,
+            rackCells: saved.rackCells,
+            pool: saved.pool,
+            dealtLetters: saved.dealtLetters,
+          );
+      _lastCashedOutScore = saved.lastCashedOutScore;
+      _reachedLandmarks = saved.reachedLandmarks;
+      _discoveredWords = saved.discoveredWords;
+    }
+    setState(() => _restoring = false);
+    // Bring score/structures in sync with whatever board we ended up
+    // with (restored or fresh).
+    await _refreshStructures();
+    await _refreshScore();
+  }
+
+  Future<void> _saveVillage() async {
+    final gridState = ref.read(gridGameControllerProvider);
+    await _saveController.save(VillageSaveData(
+      boardCells: gridState.boardCells,
+      rackCells: gridState.rackCells,
+      pool: gridState.pool,
+      dealtLetters: gridState.dealtLetters,
+      lastCashedOutScore: _lastCashedOutScore,
+      reachedLandmarks: _reachedLandmarks,
+      discoveredWords: _discoveredWords,
+    ));
+  }
+
+  void _togglePin(int rackIndex) {
+    setState(() {
+      if (_pinnedRackIndices.contains(rackIndex)) {
+        _pinnedRackIndices.remove(rackIndex);
+      } else {
+        _pinnedRackIndices.add(rackIndex);
+      }
+    });
+  }
+
+  void _openJournal() {
+    final rackCells = ref.read(gridGameControllerProvider).rackCells;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DiscoveryJournalView(
+        rackCells: rackCells,
+        discoveredWords: _discoveredWords,
+      ),
+    );
+  }
+
+  // A landmark is "reached" the instant a letter lands on its tile.
+  // One-time and always positive: a bonus letter draw plus a celebratory
+  // message, never a penalty. reachedLandmarks (persisted) guards against
+  // firing again on a later visit.
+  Future<void> _checkLandmarks() async {
+    final boardCells = ref.read(gridGameControllerProvider).boardCells;
+    for (final index in _landmarkIndices) {
+      if (_reachedLandmarks.contains(index)) continue;
+      if (boardCells[index] == null) continue;
+
+      _reachedLandmarks = {..._reachedLandmarks, index};
+      ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+      await _saveVillage();
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFFFFF9C4),
+          title: const Text('🌟 Landmark Discovered!'),
+          content: const Text(
+              "Your village has grown to reach a landmark. You've been granted a bonus letter draw!"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Wonderful!')),
+          ],
+        ),
+      );
+    }
+  }
+
+  // Re-derives which magic words are currently built (see BoardStructure's
+  // doc comment: this is a rendering computation over the live board, not
+  // a separately persisted structures list). Triggered after every board
+  // change via ref.listen in build(); guarded against overlapping runs the
+  // same way Theme Rush guards its own auto-check.
+  //
+  // "Discovered" (for the Discovery Journal) is a separate, permanent
+  // record: once a magic word has been built at least once, it stays
+  // marked discovered even if its letters are later moved away and the
+  // structure itself disappears.
+  Future<void> _refreshStructures() async {
+    if (_computingStructures) return;
+    _computingStructures = true;
+    try {
+      final controller = ref.read(gridGameControllerProvider.notifier);
+      final wordPositions = await controller.currentWordPositions();
+      if (!mounted) return;
+      final structures = computeStructures(wordPositions);
+      final newlyDiscovered = structures
+          .map((s) => s.def.word)
+          .where((w) => !_discoveredWords.contains(w))
+          .toSet();
+      setState(() {
+        _structures = structures;
+        if (newlyDiscovered.isNotEmpty) {
+          _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
+        }
+      });
+      if (newlyDiscovered.isNotEmpty) await _saveVillage();
+    } finally {
+      _computingStructures = false;
+    }
   }
 
   Future<void> _refreshScore() async {
@@ -82,40 +281,105 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     }
   }
 
+  void _drawFromWell() {
+    if (_wellUsedThisVisit) return;
+    ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+    setState(() => _wellUsedThisVisit = true);
+  }
+
+  // Pans/zooms the Words-view board to center a reached landmark. Switches
+  // to Words view first since only GridBoardView (not VillageBoardView) is
+  // wired to a TransformationController -- Village view has no meaningful
+  // "zoom in on one spot" reading anyway, it's the whole-estate overview.
+  void _jumpToLandmark(int boardIndex) {
+    setState(() => _viewMode = _ViewMode.words);
+    final viewportSize = _boardViewportSize;
+    if (viewportSize == null) return;
+    _transformController.value = computeCenterTransform(
+      viewportSize: viewportSize,
+      boardIndex: boardIndex,
+      boardWidth: InfiniteEstateScreen.boardSize,
+      scale: 1.5,
+    );
+  }
+
+  void _openBridgeJumpMenu() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFDCEDC8),
+        title: const Text('Jump to Landmark'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final entry in _landmarkOrder.asMap().entries)
+                if (_reachedLandmarks.contains(entry.value))
+                  ListTile(
+                    leading: Icon(Icons.star, color: Colors.amber.shade800),
+                    title: Text('Landmark ${entry.key + 1}'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _jumpToLandmark(entry.value);
+                    },
+                  ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  bool _cashingOut = false;
+
   Future<void> _endSession() async {
-    if (_sessionEnded) return;
+    if (_cashingOut) return;
+    // Only newly-grown score since the last cash-out is ever paid out, so
+    // reopening an unchanged village and ending again awards nothing.
+    final earned = (_score - _lastCashedOutScore).clamp(0, 1 << 30);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
-        title: const Text('End session?'),
-        content: Text('Final score: $_score'),
+        backgroundColor: const Color(0xFFDCEDC8),
+        title: const Text('Wrap up for now?'),
+        content: Text(earned > 0
+            ? 'Cash out $earned points of growth since your last visit? Your village stays exactly as built.'
+            : "You haven't grown the village since your last visit, so there's nothing new to cash out -- but your village is saved either way."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Playing')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('End Session')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Leave Village')),
         ],
       ),
     );
     if (confirmed != true) return;
-    _sessionEnded = true;
+    _cashingOut = true;
 
     final isNewHighScore = ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(_score);
-    final portfolioController = ref.read(portfolioProvider.notifier);
-    portfolioController.addCurrency(_score ~/ 20);
-    portfolioController.addXp(_score ~/ 10);
+    if (earned > 0) {
+      final portfolioController = ref.read(portfolioProvider.notifier);
+      portfolioController.addCurrency(earned ~/ 20);
+      portfolioController.addXp(earned ~/ 10);
+      _lastCashedOutScore = _score;
+      await _saveVillage();
+    }
 
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
-        title: const Text('Session Complete'),
+        backgroundColor: const Color(0xFFDCEDC8),
+        title: const Text('See You Next Time!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Final score: $_score'),
-            Text('+${_score ~/ 20} coins, +${_score ~/ 10} XP'),
+            Text('Village score: $_score'),
+            if (earned > 0) Text('+${earned ~/ 20} coins, +${earned ~/ 10} XP this visit'),
             if (isNewHighScore) ...[
               const SizedBox(height: 8),
               const Text('New high score!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
@@ -130,10 +394,30 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         ],
       ),
     );
+    _cashingOut = false;
   }
 
   @override
   Widget build(BuildContext context) {
+    // Recompute which magic words are currently built, and re-save, any
+    // time the board/rack/pool changes -- keeps Village view in sync and
+    // keeps the persisted village current without the player needing to
+    // press anything or remember to save before leaving.
+    ref.listen(gridGameControllerProvider, (previous, next) {
+      if (previous?.boardCells != next.boardCells) {
+        _refreshStructures();
+        if (!_restoring) _checkLandmarks();
+      }
+      if (!_restoring) _saveVillage();
+    });
+
+    if (_restoring) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Infinite Estate'), backgroundColor: const Color(0xFF33691E)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -145,7 +429,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         }
         _lastPopAttempt = now;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Swipe again to exit (use End Session to save your score)'), duration: Duration(seconds: 2)),
+          const SnackBar(content: Text('Swipe again to exit -- your village is saved automatically'), duration: Duration(seconds: 2)),
         );
       },
       child: Scaffold(
@@ -155,34 +439,116 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ElevatedButton(
+              ElevatedButton.icon(
                 onPressed: _refreshScore,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.green),
-                child: const Text('Check Score'),
+                icon: const Icon(Icons.calculate, size: 18),
+                label: const Text('Score'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.lightGreenAccent, foregroundColor: Colors.green.shade900),
               ),
               Container(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
                 decoration: BoxDecoration(
-                    color: Colors.orangeAccent,
+                    color: Colors.white,
                     border: Border.all(color: Colors.white),
                     borderRadius: BorderRadius.circular(8.0)),
-                child: Text('Score: $_score', style: const TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  children: [
+                    Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
+                    const SizedBox(width: 6),
+                    Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                  ],
+                ),
               ),
-              TextButton(
+              TextButton.icon(
                 onPressed: _endSession,
-                child: const Text('End Session', style: TextStyle(color: Colors.white)),
+                icon: const Icon(Icons.flag, size: 18, color: Colors.white),
+                label: const Text('End Session', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
-          backgroundColor: Colors.deepPurple,
+          backgroundColor: const Color(0xFF33691E),
           automaticallyImplyLeading: false,
+          actions: [
+            if (_hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.alt_route, color: Colors.white),
+                tooltip: 'Jump to Landmark',
+                onPressed: _openBridgeJumpMenu,
+              ),
+            IconButton(
+              icon: const Icon(Icons.menu_book, color: Colors.white),
+              tooltip: 'Discovery Journal',
+              onPressed: _openJournal,
+            ),
+          ],
         ),
-        body: const SafeArea(
+        floatingActionButton: _hasStructure('WELL')
+            ? FloatingActionButton.extended(
+                onPressed: _wellUsedThisVisit ? null : _drawFromWell,
+                backgroundColor: _wellUsedThisVisit ? Colors.grey : Colors.lightBlue,
+                icon: const Icon(Icons.water_drop),
+                label: Text(_wellUsedThisVisit ? 'Well used this visit' : 'Draw from Well'),
+              )
+            : null,
+        body: SafeArea(
           child: Column(
             children: [
-              Expanded(flex: 5, child: GridBoardView()),
-              Expanded(flex: 3, child: GridRackView()),
-              Expanded(flex: 1, child: ColoredBox(color: Colors.orangeAccent)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: SegmentedButton<_ViewMode>(
+                  segments: const [
+                    ButtonSegment(value: _ViewMode.words, label: Text('Words'), icon: Icon(Icons.abc)),
+                    ButtonSegment(value: _ViewMode.village, label: Text('Village'), icon: Icon(Icons.holiday_village)),
+                  ],
+                  selected: {_viewMode},
+                  onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
+                ),
+              ),
+              Expanded(
+                flex: 6,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Recorded (not setState'd -- this must never trigger a
+                    // rebuild mid-layout) purely so the Bridge jump ability
+                    // knows the current viewport size when it's used later.
+                    _boardViewportSize = constraints.biggest;
+                    return AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: _viewMode == _ViewMode.words
+                          ? GridBoardView(
+                              key: const ValueKey('words'),
+                              theme: _estateTheme,
+                              // A wide zoom range and generous pan boundary make a
+                              // bounded-but-large board feel open: zoomed all the
+                              // way out, the whole estate is a distant patchwork;
+                              // panning past the built edges still shows empty
+                              // space to grow into rather than stopping dead at
+                              // the boundary.
+                              minScale: 0.06,
+                              maxScale: 3.0,
+                              boundaryMargin: const EdgeInsets.all(600),
+                              landmarkIndices: _landmarkIndices,
+                              preferBalancedRefill: _hasStructure('FARM'),
+                              transformController: _transformController,
+                            )
+                          : VillageBoardView(
+                              key: const ValueKey('village'),
+                              structures: _structures,
+                              landmarkIndices: _landmarkIndices,
+                            ),
+                    );
+                  },
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: GridRackView(
+                  theme: _estateTheme,
+                  pinnedIndices: _pinnedRackIndices,
+                  onTogglePin: _togglePin,
+                ),
+              ),
+              const Expanded(flex: 1, child: ColoredBox(color: Color(0xFF6D4C41))),
             ],
           ),
         ),

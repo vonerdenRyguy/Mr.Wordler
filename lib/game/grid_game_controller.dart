@@ -36,9 +36,20 @@ class GridGameController extends StateNotifier<GridGameState> {
   List<String?> _cellsFor(TileZone zone) =>
       zone == TileZone.board ? state.boardCells : state.rackCells;
 
+  static const _vowels = {'A', 'E', 'I', 'O', 'U'};
+
   // Moves a tile from one slot to another (board<->board, rack<->rack, or
   // board<->rack). No-ops if `from` is empty or `to` is already occupied.
-  void moveTile(TileLocation from, TileLocation to) {
+  //
+  // `preferBalancedRefill` (used by Infinite Estate/Village's Farm
+  // structure ability, off by default/for every other mode) only affects
+  // the auto-refill-on-place behavior below: instead of a uniformly
+  // random draw, it prefers whichever of vowel/consonant the rack (after
+  // this move) has fewer of, falling back to a random draw if the pool
+  // has none of that type. Purely a nicer distribution, never a worse one
+  // -- an unlucky player never ends up worse off than the random draw
+  // would have left them.
+  void moveTile(TileLocation from, TileLocation to, {bool preferBalancedRefill = false}) {
     final fromCells = List<String?>.from(_cellsFor(from.zone));
     final letter = fromCells[from.index];
     if (letter == null) return;
@@ -64,8 +75,7 @@ class GridGameController extends StateNotifier<GridGameState> {
         to.zone == TileZone.board &&
         state.pool.isNotEmpty) {
       final newPool = List<String>.from(state.pool);
-      newPool.shuffle();
-      final drawn = newPool.removeLast();
+      final drawn = preferBalancedRefill ? _drawBalancedLetter(newPool, rack) : _drawRandomLetter(newPool);
       rack = List<String?>.from(rack);
       rack[from.index] = drawn;
       state = state.copyWith(
@@ -78,6 +88,27 @@ class GridGameController extends StateNotifier<GridGameState> {
     }
 
     state = state.copyWith(boardCells: board, rackCells: rack);
+  }
+
+  // Mutates `pool` (removing the drawn letter) and returns it.
+  String _drawRandomLetter(List<String> pool) {
+    pool.shuffle();
+    return pool.removeLast();
+  }
+
+  String _drawBalancedLetter(List<String> pool, List<String?> currentRack) {
+    final vowelCount = currentRack.where((c) => c != null && _vowels.contains(c)).length;
+    final consonantCount = currentRack.where((c) => c != null && !_vowels.contains(c)).length;
+    final wantVowel = vowelCount < consonantCount;
+
+    pool.shuffle();
+    final matchIndex = pool.indexWhere((letter) => _vowels.contains(letter) == wantVowel);
+    if (matchIndex != -1) {
+      return pool.removeAt(matchIndex);
+    }
+    // Pool has none of the preferred type right now -- fall back to a
+    // normal random draw rather than leaving the rack slot empty.
+    return pool.removeLast();
   }
 
   // Trades one rack tile back into the pool for 3 fresh ones (classic
@@ -115,11 +146,81 @@ class GridGameController extends StateNotifier<GridGameState> {
     return true;
   }
 
+  // Draws one extra letter from the pool directly into the first empty
+  // rack slot -- a pure bonus, no cost. A no-op (never a penalty) if the
+  // pool is empty or the rack has no open slot. Generic, not landmark-
+  // specific: any mode/event that wants to hand the player a free letter
+  // can use this.
+  void drawBonusLetter() {
+    if (state.pool.isEmpty) return;
+    final emptyIndex = state.rackCells.indexWhere((c) => c == null);
+    if (emptyIndex == -1) return;
+
+    final pool = List<String>.from(state.pool)..shuffle();
+    final drawn = pool.removeLast();
+    final rack = List<String?>.from(state.rackCells);
+    rack[emptyIndex] = drawn;
+
+    state = state.copyWith(
+      rackCells: rack,
+      pool: pool,
+      dealtLetters: [...state.dealtLetters, drawn],
+    );
+  }
+
+  // Replaces the current board/rack/pool wholesale, e.g. to resume a
+  // previously-saved session (Infinite Estate's persisted village).
+  // Ignored (no-op) if the saved shapes don't match this controller's
+  // config -- e.g. an old save from before a board-size change -- so a
+  // stale save can't corrupt a fresh session; the caller should treat a
+  // no-op as "nothing to restore" and fall back to a fresh board.
+  void restoreState({
+    required List<String?> boardCells,
+    required List<String?> rackCells,
+    required List<String> pool,
+    required List<String> dealtLetters,
+  }) {
+    if (boardCells.length != state.config.boardCellCount) return;
+    if (rackCells.length != state.config.rackSize) return;
+    state = state.copyWith(
+      boardCells: boardCells,
+      rackCells: rackCells,
+      pool: pool,
+      dealtLetters: dealtLetters,
+    );
+  }
+
   Future<WordCheckResult> checkWords() {
     return _validator.findValidWords(
       state.boardCells,
       state.config.boardWidth,
       state.config.boardHeight,
     );
+  }
+
+  // Every valid word currently on the board, freshly re-scanned, mapped to
+  // its tile positions. Generic (no notion of "magic words" -- that's a
+  // Village-specific concept layered on top by callers, e.g.
+  // lib/village/, so the shared engine stays mode-agnostic).
+  Future<Map<String, Set<int>>> currentWordPositions() async {
+    await _validator.findValidWords(
+      state.boardCells,
+      state.config.boardWidth,
+      state.config.boardHeight,
+    );
+    return _validator.validWordPositions;
+  }
+
+  // The valid dictionary word (if any) currently occupying board index
+  // `boardIndex`, freshly re-scanned. Used for tap-for-definition -- a
+  // long-press only shows a definition for a word that's actually validly
+  // formed right now, not stale from an earlier Check.
+  Future<String?> validWordAtBoardIndex(int boardIndex) async {
+    await _validator.findValidWords(
+      state.boardCells,
+      state.config.boardWidth,
+      state.config.boardHeight,
+    );
+    return _validator.validWordContaining(boardIndex);
   }
 }
