@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../game/grid_providers.dart';
 import 'magic_word.dart';
 
@@ -44,6 +45,7 @@ class VillageBoardView extends ConsumerWidget {
     this.maxScale = 3.0,
     this.boundaryMargin = const EdgeInsets.all(600),
     this.landmarkIndices = const {},
+    this.cellSize,
   });
 
   final List<BoardStructure> structures;
@@ -51,6 +53,45 @@ class VillageBoardView extends ConsumerWidget {
   final double maxScale;
   final EdgeInsets boundaryMargin;
   final Set<int> landmarkIndices;
+  // See GridBoardView.cellSize's doc: null keeps the original eager
+  // whole-board rendering (every other mode's board is small enough that
+  // this is fine); a value switches to lazy, viewport-culled rendering
+  // for a much larger board like Infinite Estate's.
+  final double? cellSize;
+
+  Widget _plotFor(int index, Map<int, MagicWordDef> structureByIndex, Set<int> anchorIndices) {
+    final def = structureByIndex[index];
+    final isUnclaimedLandmark = def == null && landmarkIndices.contains(index);
+    return Container(
+      decoration: BoxDecoration(
+        color: def?.color ?? (isUnclaimedLandmark ? Colors.amber.shade200 : _plainLandColor),
+        border: Border.all(
+          color: isUnclaimedLandmark ? Colors.amber.shade800 : _plotBorderColor,
+          width: isUnclaimedLandmark ? 1.2 : 0.4,
+        ),
+        boxShadow: isUnclaimedLandmark
+            ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 5, spreadRadius: 1)]
+            : null,
+      ),
+      child: (def != null && anchorIndices.contains(index))
+          ? LayoutBuilder(
+              builder: (context, constraints) => Icon(
+                def.icon,
+                color: Colors.white,
+                size: (constraints.maxWidth * 0.55).clamp(8.0, 24.0),
+              ),
+            )
+          : isUnclaimedLandmark
+              ? LayoutBuilder(
+                  builder: (context, constraints) => Icon(
+                    Icons.star,
+                    color: Colors.amber.shade900,
+                    size: (constraints.maxWidth * 0.5).clamp(8.0, 20.0),
+                  ),
+                )
+              : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,52 +109,56 @@ class VillageBoardView extends ConsumerWidget {
       if (sorted.isNotEmpty) anchorIndices.add(sorted[sorted.length ~/ 2]);
     }
 
-    return InteractiveViewer(
+    final size = cellSize;
+    if (size == null) {
+      return InteractiveViewer(
+        boundaryMargin: boundaryMargin,
+        minScale: minScale,
+        maxScale: maxScale,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: config.boardWidth / config.boardHeight,
+            child: GridView.count(
+              crossAxisCount: config.boardWidth,
+              physics: const NeverScrollableScrollPhysics(),
+              children: List.generate(
+                  config.boardCellCount, (index) => _plotFor(index, structureByIndex, anchorIndices)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return InteractiveViewer.builder(
       boundaryMargin: boundaryMargin,
       minScale: minScale,
       maxScale: maxScale,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: config.boardWidth / config.boardHeight,
-          child: GridView.count(
-            crossAxisCount: config.boardWidth,
-            physics: const NeverScrollableScrollPhysics(),
-            children: List.generate(config.boardCellCount, (index) {
-              final def = structureByIndex[index];
-              final isUnclaimedLandmark = def == null && landmarkIndices.contains(index);
-              return Container(
-                decoration: BoxDecoration(
-                  color: def?.color ?? (isUnclaimedLandmark ? Colors.amber.shade200 : _plainLandColor),
-                  border: Border.all(
-                    color: isUnclaimedLandmark ? Colors.amber.shade800 : _plotBorderColor,
-                    width: isUnclaimedLandmark ? 1.2 : 0.4,
+      builder: (context, viewport) {
+        final visible = axisAlignedBoundingBox(viewport);
+        final firstCol = (visible.left / size).floor().clamp(0, config.boardWidth - 1);
+        final lastCol = (visible.right / size).ceil().clamp(0, config.boardWidth);
+        final firstRow = (visible.top / size).floor().clamp(0, config.boardHeight - 1);
+        final lastRow = (visible.bottom / size).ceil().clamp(0, config.boardHeight);
+
+        return SizedBox(
+          width: config.boardWidth * size,
+          height: config.boardHeight * size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (int row = firstRow; row < lastRow; row++)
+                for (int col = firstCol; col < lastCol; col++)
+                  Positioned(
+                    left: col * size,
+                    top: row * size,
+                    width: size,
+                    height: size,
+                    child: _plotFor(row * config.boardWidth + col, structureByIndex, anchorIndices),
                   ),
-                  boxShadow: isUnclaimedLandmark
-                      ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 5, spreadRadius: 1)]
-                      : null,
-                ),
-                child: (def != null && anchorIndices.contains(index))
-                    ? LayoutBuilder(
-                        builder: (context, constraints) => Icon(
-                          def.icon,
-                          color: Colors.white,
-                          size: (constraints.maxWidth * 0.55).clamp(8.0, 24.0),
-                        ),
-                      )
-                    : isUnclaimedLandmark
-                        ? LayoutBuilder(
-                            builder: (context, constraints) => Icon(
-                              Icons.star,
-                              color: Colors.amber.shade900,
-                              size: (constraints.maxWidth * 0.5).clamp(8.0, 20.0),
-                            ),
-                          )
-                        : null,
-              );
-            }),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
