@@ -333,9 +333,52 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Check Score'), findsOneWidget);
+    expect(find.text('Score'), findsOneWidget);
     expect(find.text('End Session'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
+
+    // Structure abilities (Well/Bridge) only appear once their magic word
+    // is actually built -- a fresh board has none, so neither should show.
+    expect(find.text('Draw from Well'), findsNothing);
+    expect(find.byTooltip('Jump to Landmark'), findsNothing);
+
+    // Switching to Village view should render without error. A fresh
+    // board has no magic words built yet, so Words view's 21 rack tiles
+    // are still there (the rack is unaffected by the toggle) but the
+    // board itself shows no letters in Village view.
+    expect(find.text('Words'), findsOneWidget);
+    expect(find.text('Village'), findsOneWidget);
+    await tester.tap(find.text('Village'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    // The rack (unaffected by the toggle) still shows its 21 letters;
+    // the empty board itself contributes none in Village view.
+    expect(oneLetterTileFinder(), findsNWidgets(21));
+
+    // Switching back to Words view should restore the interactive board.
+    await tester.tap(find.text('Words'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+
+    // Long-pressing a rack tile should pin it (a UI-only marker).
+    expect(find.byIcon(Icons.push_pin), findsNothing);
+    await tester.longPress(oneLetterTileFinder().first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+
+    // The Discovery Journal should open and list the magic word catalog.
+    await tester.tap(find.byTooltip('Discovery Journal'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Discovery Journal'), findsOneWidget);
+    expect(find.text('Well'), findsOneWidget);
+    expect(find.text('Farm'), findsOneWidget);
+    expect(find.text('Bridge'), findsOneWidget);
   });
 
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
