@@ -477,41 +477,57 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         appBar: AppBar(
           toolbarHeight: 90,
           titleSpacing: 4.0,
-          // Three variable-width pieces (a labeled button, a score chip, a
-          // labeled button) plus up to two action icons all have to share
-          // one toolbar's width. Wrapping each in Flexible+FittedBox lets
-          // them shrink together on a narrow phone/large text-scale
-          // instead of overflowing the toolbar by a few pixels.
+          // Three variable-width pieces (the Words/Village toggle, a
+          // tappable score chip, a labeled button) plus up to two action
+          // icons all have to share one toolbar's width. Wrapping each in
+          // Flexible+FittedBox lets them shrink together on a narrow
+          // phone/large text-scale instead of overflowing the toolbar by
+          // a few pixels.
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Lives here (rather than its own row above the board) so
+              // that row's height doesn't eat into the board/rack split
+              // below and cut rack letters off.
               Flexible(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: ElevatedButton.icon(
-                    onPressed: _refreshScore,
-                    icon: const Icon(Icons.calculate, size: 18),
-                    label: const Text('Score'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.lightGreenAccent, foregroundColor: Colors.green.shade900),
+                  child: SegmentedButton<_ViewMode>(
+                    segments: const [
+                      ButtonSegment(value: _ViewMode.words, label: Text('Words'), icon: Icon(Icons.abc)),
+                      ButtonSegment(value: _ViewMode.village, label: Text('Village'), icon: Icon(Icons.holiday_village)),
+                    ],
+                    selected: {_viewMode},
+                    onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
                   ),
                 ),
               ),
               Flexible(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: Colors.white),
-                        borderRadius: BorderRadius.circular(8.0)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
-                        const SizedBox(width: 6),
-                        Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
-                      ],
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      // Tapping the score itself re-checks/recalculates it
+                      // -- replaces the separate "Score" button so the
+                      // toggle above can take its spot.
+                      onTap: _refreshScore,
+                      borderRadius: BorderRadius.circular(8.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                        decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: Colors.white),
+                            borderRadius: BorderRadius.circular(8.0)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
+                            const SizedBox(width: 6),
+                            Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -555,17 +571,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         body: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: SegmentedButton<_ViewMode>(
-                  segments: const [
-                    ButtonSegment(value: _ViewMode.words, label: Text('Words'), icon: Icon(Icons.abc)),
-                    ButtonSegment(value: _ViewMode.village, label: Text('Village'), icon: Icon(Icons.holiday_village)),
-                  ],
-                  selected: {_viewMode},
-                  onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
-                ),
-              ),
               Expanded(
                 flex: 6,
                 child: LayoutBuilder(
