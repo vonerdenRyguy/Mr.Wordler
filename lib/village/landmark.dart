@@ -7,13 +7,17 @@ import 'dart:math';
 // happens when one is reached.
 //
 // Spacing/count is a formula, not per-tile hardcoding, so it's easy to
-// tune: `_ringDistances` sets how far out each successive landmark sits
-// (increasing gaps => landmarks get rarer/further apart the more you've
-// already found, which is what makes exploring outward keep surfacing
-// new goals rather than front-loading them all close to home), and the
-// golden-angle step spreads them around the village instead of lining
-// them up in one direction.
-const List<double> _ringDistances = [4, 9, 15, 22, 28];
+// tune: `_ringFractions` sets how far out each successive landmark sits,
+// as a fraction of the board's own radius rather than an absolute cell
+// count -- so landmarks stay meaningfully spread across the playable
+// area whether the board is a modest 60x60 or a sprawling 500x500,
+// instead of all bunching up near the center on a bigger board.
+// Increasing fractions => landmarks get rarer/further apart the more
+// you've already found, which is what makes exploring outward keep
+// surfacing new goals rather than front-loading them all close to home.
+// The golden-angle step spreads them around the village instead of
+// lining them up in one direction.
+const List<double> _ringFractions = [0.15, 0.35, 0.55, 0.8, 1.0];
 const double _goldenAngle = 2.399963; // radians; spreads points evenly around a circle
 
 List<int> landmarkBoardIndices(int boardWidth, int boardHeight) {
@@ -23,8 +27,8 @@ List<int> landmarkBoardIndices(int boardWidth, int boardHeight) {
 
   final indices = <int>[];
   double angle = 0.6;
-  for (final rawDistance in _ringDistances) {
-    final distance = rawDistance.clamp(0, maxRadius);
+  for (final fraction in _ringFractions) {
+    final distance = (fraction * maxRadius).clamp(0, maxRadius);
     final row = (centerRow + distance * sin(angle)).round().clamp(0, boardHeight - 1);
     final col = (centerCol + distance * cos(angle)).round().clamp(0, boardWidth - 1);
     indices.add(row * boardWidth + col);

@@ -1,9 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vector_math/vector_math_64.dart' show Quad, Vector3;
 
 import '../dictionary/definition_service.dart';
 import 'grid_providers.dart';
 import 'tile_location.dart';
+
+// The (possibly rotated) Quad InteractiveViewer.builder reports isn't
+// axis-aligned in general, but our board never rotates, so the bounding
+// box of its four corners is exactly the visible rectangle in content
+// coordinates. Shared by GridBoardView and VillageBoardView's lazy paths.
+Rect axisAlignedBoundingBox(Quad quad) {
+  double xMin = quad.point0.x, xMax = quad.point0.x;
+  double yMin = quad.point0.y, yMax = quad.point0.y;
+  for (final Vector3 point in [quad.point1, quad.point2, quad.point3]) {
+    if (point.x < xMin) xMin = point.x;
+    if (point.x > xMax) xMax = point.x;
+    if (point.y < yMin) yMin = point.y;
+    if (point.y > yMax) yMax = point.y;
+  }
+  return Rect.fromLTRB(xMin, yMin, xMax, yMax);
+}
 
 // Long-press a board tile that's part of a currently valid word to see a
 // short definition. Fails silently (no dialog at all) if the word isn't
@@ -216,6 +233,7 @@ class GridBoardView extends ConsumerWidget {
     this.landmarkIndices = const {},
     this.preferBalancedRefill = false,
     this.transformController,
+    this.cellSize,
   });
 
   final GridTheme theme;
@@ -235,39 +253,93 @@ class GridBoardView extends ConsumerWidget {
   // anything about normal manual pan/zoom, it just also allows external
   // control.
   final TransformationController? transformController;
+  // Null (the default, every mode except Infinite Estate/Village) keeps
+  // the original behavior: the whole board is built eagerly and scaled
+  // via AspectRatio to exactly fill the viewport -- fine for a 10x10
+  // board, but building hundreds of thousands of widgets eagerly for a
+  // much larger board would be janky/slow. A non-null cellSize switches
+  // to InteractiveViewer.builder instead: each board cell is a fixed
+  // `cellSize` logical pixels, laid out at its real (col*cellSize,
+  // row*cellSize) position, and only cells that actually intersect the
+  // current viewport are built -- so the board can be arbitrarily large
+  // while only ever rendering a screenful of cells at a time.
+  final double? cellSize;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(gridGameControllerProvider.select((s) => s.config));
-    return InteractiveViewer(
+
+    final size = cellSize;
+    if (size == null) {
+      return InteractiveViewer(
+        transformationController: transformController,
+        boundaryMargin: boundaryMargin,
+        minScale: minScale,
+        maxScale: maxScale,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: config.boardWidth / config.boardHeight,
+            child: GridView.count(
+              crossAxisCount: config.boardWidth,
+              physics: const NeverScrollableScrollPhysics(),
+              children: List.generate(config.boardCellCount, (index) {
+                return Padding(
+                  padding: EdgeInsets.zero,
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: GridTileWidget(
+                      location: TileLocation(TileZone.board, index),
+                      isBoardStyle: true,
+                      isLandmark: landmarkIndices.contains(index),
+                      theme: theme,
+                      preferBalancedRefill: preferBalancedRefill,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return InteractiveViewer.builder(
       transformationController: transformController,
       boundaryMargin: boundaryMargin,
       minScale: minScale,
       maxScale: maxScale,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: config.boardWidth / config.boardHeight,
-          child: GridView.count(
-            crossAxisCount: config.boardWidth,
-            physics: const NeverScrollableScrollPhysics(),
-            children: List.generate(config.boardCellCount, (index) {
-              return Padding(
-                padding: EdgeInsets.zero,
-                child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: GridTileWidget(
-                    location: TileLocation(TileZone.board, index),
-                    isBoardStyle: true,
-                    isLandmark: landmarkIndices.contains(index),
-                    theme: theme,
-                    preferBalancedRefill: preferBalancedRefill,
+      builder: (context, viewport) {
+        final visible = axisAlignedBoundingBox(viewport);
+        final firstCol = (visible.left / size).floor().clamp(0, config.boardWidth - 1);
+        final lastCol = (visible.right / size).ceil().clamp(0, config.boardWidth);
+        final firstRow = (visible.top / size).floor().clamp(0, config.boardHeight - 1);
+        final lastRow = (visible.bottom / size).ceil().clamp(0, config.boardHeight);
+
+        return SizedBox(
+          width: config.boardWidth * size,
+          height: config.boardHeight * size,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (int row = firstRow; row < lastRow; row++)
+                for (int col = firstCol; col < lastCol; col++)
+                  Positioned(
+                    left: col * size,
+                    top: row * size,
+                    width: size,
+                    height: size,
+                    child: GridTileWidget(
+                      location: TileLocation(TileZone.board, row * config.boardWidth + col),
+                      isBoardStyle: true,
+                      isLandmark: landmarkIndices.contains(row * config.boardWidth + col),
+                      theme: theme,
+                      preferBalancedRefill: preferBalancedRefill,
+                    ),
                   ),
-                ),
-              );
-            }),
+            ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

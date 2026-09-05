@@ -20,6 +20,7 @@ dependencies:
   shared_preferences: ^2.3.1
   confetti: ^0.7.0
   http: ^1.2.2
+  vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_test:

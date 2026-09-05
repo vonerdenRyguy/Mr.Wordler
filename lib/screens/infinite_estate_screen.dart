@@ -17,12 +17,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 enum _ViewMode { words, village }
 
 // Infinite Estate / Village Builder: an endless-feeling session on a large
-// (60x60, pannable/zoomable) board -- not literally unbounded, but big
-// enough that a normal session never reaches an edge, with a wide zoom
-// range and generous pan boundary so the space reads as open rather than
-// a small fixed grid. The rack refills itself the instant a tile leaves
-// it for the board (GridConfig.refillRackOnPlace), so there's no separate
-// "trade in" affordance.
+// (500x500, pannable/zoomable) board -- not literally unbounded, but big
+// enough that a normal session never reaches an edge, with the same zoom
+// feel as every other mode's board and generous pan range so the space
+// reads as open rather than a small fixed grid. The rack refills itself
+// the instant a tile leaves it for the board (GridConfig.refillRackOnPlace),
+// so there's no separate "trade in" affordance.
+//
+// 500x500 = 250,000 cells -- far too many to build eagerly (see every
+// other mode's GridBoardView, which does exactly that and is fine at
+// 10x10). Instead the board is rendered lazily via
+// InteractiveViewer.builder: only cells that actually intersect the
+// current viewport are ever built (see GridBoardView.cellSize), so
+// panning/zooming stays smooth regardless of how much of the estate has
+// been explored.
 //
 // The village persists across sessions: the board is saved after every
 // change and restored on open, so structures a player builds stay built.
@@ -32,9 +40,12 @@ enum _ViewMode { words, village }
 class InfiniteEstateScreen extends StatelessWidget {
   const InfiniteEstateScreen({super.key});
 
-  // 60x60 = 3,600 cells: a large jump from a 10x10 mode board without
-  // eagerly building an amount of tile widgets that risks jank on a phone.
-  static const int boardSize = 60;
+  static const int boardSize = 500;
+  // Fixed on-screen size (at zoom scale 1.0) of one board cell, in logical
+  // pixels -- see GridBoardView.cellSize. Chosen to be comfortably
+  // tappable without the lazily-built board needing to know anything
+  // about the viewport's own dimensions.
+  static const double cellSize = 44.0;
   // Comfortably more than a long session will draw through; the letter
   // pool repeats its weighted distribution to cover any size (see
   // LetterGenerator.generateLetters), so this just needs to be "a lot".
@@ -125,6 +136,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // area has actually been laid out, hence nullable.
   final _transformController = TransformationController();
   Size? _boardViewportSize;
+  // The board is far too large to show all at once, so the very first
+  // frame instead centers the view on the village's origin (the board's
+  // center -- the same point landmark.dart spreads landmarks out from)
+  // rather than defaulting to InteractiveViewer's identity transform,
+  // which would leave a fresh player looking at the board's empty
+  // top-left corner. Set once; the player's own panning/zooming after
+  // that is never overridden.
+  bool _viewCentered = false;
 
   @override
   void initState() {
@@ -299,8 +318,29 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       viewportSize: viewportSize,
       boardIndex: boardIndex,
       boardWidth: InfiniteEstateScreen.boardSize,
+      cellSize: InfiniteEstateScreen.cellSize,
       scale: 1.5,
     );
+  }
+
+  // Runs once, the first time the board area's real size is known, to
+  // start the player looking at the village's origin instead of the
+  // board's empty top-left corner (InteractiveViewer's default).
+  void _centerViewIfNeeded(Size viewportSize) {
+    if (_viewCentered) return;
+    _viewCentered = true;
+    const centerIndex = (InfiniteEstateScreen.boardSize ~/ 2) * InfiniteEstateScreen.boardSize +
+        (InfiniteEstateScreen.boardSize ~/ 2);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _transformController.value = computeCenterTransform(
+        viewportSize: viewportSize,
+        boardIndex: centerIndex,
+        boardWidth: InfiniteEstateScreen.boardSize,
+        cellSize: InfiniteEstateScreen.cellSize,
+        scale: 1.0,
+      );
+    });
   }
 
   void _openBridgeJumpMenu() {
@@ -436,33 +476,55 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         resizeToAvoidBottomInset: false,
         appBar: AppBar(
           toolbarHeight: 90,
+          titleSpacing: 4.0,
+          // Three variable-width pieces (a labeled button, a score chip, a
+          // labeled button) plus up to two action icons all have to share
+          // one toolbar's width. Wrapping each in Flexible+FittedBox lets
+          // them shrink together on a narrow phone/large text-scale
+          // instead of overflowing the toolbar by a few pixels.
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ElevatedButton.icon(
-                onPressed: _refreshScore,
-                icon: const Icon(Icons.calculate, size: 18),
-                label: const Text('Score'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.lightGreenAccent, foregroundColor: Colors.green.shade900),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.white),
-                    borderRadius: BorderRadius.circular(8.0)),
-                child: Row(
-                  children: [
-                    Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
-                    const SizedBox(width: 6),
-                    Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
-                  ],
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: ElevatedButton.icon(
+                    onPressed: _refreshScore,
+                    icon: const Icon(Icons.calculate, size: 18),
+                    label: const Text('Score'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.lightGreenAccent, foregroundColor: Colors.green.shade900),
+                  ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: _endSession,
-                icon: const Icon(Icons.flag, size: 18, color: Colors.white),
-                label: const Text('End Session', style: TextStyle(color: Colors.white)),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8.0)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
+                        const SizedBox(width: 6),
+                        Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: TextButton.icon(
+                    onPressed: _endSession,
+                    icon: const Icon(Icons.flag, size: 18, color: Colors.white),
+                    label: const Text('End Session', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -512,29 +574,34 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                     // rebuild mid-layout) purely so the Bridge jump ability
                     // knows the current viewport size when it's used later.
                     _boardViewportSize = constraints.biggest;
+                    _centerViewIfNeeded(constraints.biggest);
                     return AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       child: _viewMode == _ViewMode.words
                           ? GridBoardView(
                               key: const ValueKey('words'),
                               theme: _estateTheme,
-                              // A wide zoom range and generous pan boundary make a
-                              // bounded-but-large board feel open: zoomed all the
-                              // way out, the whole estate is a distant patchwork;
-                              // panning past the built edges still shows empty
-                              // space to grow into rather than stopping dead at
-                              // the boundary.
-                              minScale: 0.06,
-                              maxScale: 3.0,
-                              boundaryMargin: const EdgeInsets.all(600),
+                              // Same zoom feel as every other mode's board;
+                              // the generous pan boundary past the lazily-
+                              // built board's own huge extent keeps panning
+                              // to an edge from ever feeling like hitting a
+                              // wall.
+                              minScale: 0.2,
+                              maxScale: 2.5,
+                              boundaryMargin: const EdgeInsets.all(400),
                               landmarkIndices: _landmarkIndices,
                               preferBalancedRefill: _hasStructure('FARM'),
                               transformController: _transformController,
+                              cellSize: InfiniteEstateScreen.cellSize,
                             )
                           : VillageBoardView(
                               key: const ValueKey('village'),
                               structures: _structures,
                               landmarkIndices: _landmarkIndices,
+                              minScale: 0.2,
+                              maxScale: 2.5,
+                              boundaryMargin: const EdgeInsets.all(400),
+                              cellSize: InfiniteEstateScreen.cellSize,
                             ),
                     );
                   },
