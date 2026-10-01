@@ -339,13 +339,13 @@ void main() {
     await tester.tap(find.byIcon(Icons.landscape));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('End Session'), findsOneWidget);
+    expect(find.text('End'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
 
     // Structure abilities (Well/Bridge) only appear once their magic word
     // is actually built -- a fresh board has none, so neither should show.
-    expect(find.text('Draw from Well'), findsNothing);
-    expect(find.byTooltip('Jump to Landmark'), findsNothing);
+    expect(find.text('Free letter'), findsNothing);
+    expect(find.text('Jump'), findsNothing);
 
     // Switching to Village view should render without error. A fresh
     // board has no magic words built yet, so Words view's 21 rack tiles
@@ -376,7 +376,7 @@ void main() {
     expect(find.byIcon(Icons.push_pin), findsOneWidget);
 
     // The Discovery Journal should open and list the magic word catalog.
-    await tester.tap(find.byTooltip('Discovery Journal'));
+    await tester.tap(find.text('Journal 0/8'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
@@ -391,9 +391,9 @@ void main() {
     // Regression test: the AppBar's Score/score-chip/End Session row
     // previously overflowed by a few pixels once the Discovery Journal
     // action icon ate into its available width -- reproduced with a
-    // narrower phone width and a larger text scale, both of which make
-    // that row wider relative to the toolbar than the default test size
-    // does.
+    // narrower phone width and a larger text scale. The score, Journal
+    // and abilities now live in their own wrapping row under the AppBar,
+    // but the same narrow/large-text setup still guards against overflow.
     tester.view.physicalSize = const Size(720, 1600);
     tester.view.devicePixelRatio = 1.0;
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;
@@ -413,7 +413,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.byIcon(Icons.landscape), findsOneWidget);
-    expect(find.text('End Session'), findsOneWidget);
+    expect(find.text('End'), findsOneWidget);
   });
 
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {

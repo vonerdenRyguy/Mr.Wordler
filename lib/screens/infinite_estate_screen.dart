@@ -2,12 +2,14 @@ import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
+import '../game/grid_game_state.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/landmark.dart';
+import '../village/magic_word.dart';
 import '../village/village_board_view.dart';
 import '../village/village_save.dart';
 
@@ -209,6 +211,46 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     });
   }
 
+  // Pins are keyed by rack slot, but the player pinned a *letter*. Keep
+  // them attached to it: a pinned tile moved to another rack slot carries
+  // its pin along, and one that leaves the rack (placed on the board)
+  // loses it -- otherwise the auto-refilled letter that lands in its old
+  // slot would show up pinned even though the player never pinned it.
+  // One unavoidable blind spot: if a pinned letter is placed and the
+  // refill happens to draw the identical letter into the same slot, the
+  // two are indistinguishable and the pin stays.
+  void _updatePinsAfterRackChange(GridGameState previous, GridGameState next) {
+    if (_pinnedRackIndices.isEmpty) return;
+    final before = previous.rackCells;
+    final after = next.rackCells;
+    final boardChanged = previous.boardCells != next.boardCells;
+    final updated = <int>{};
+    for (final i in _pinnedRackIndices) {
+      final letter = i < before.length ? before[i] : null;
+      if (letter == null) continue;
+      if (i < after.length && after[i] == letter) {
+        updated.add(i);
+        continue;
+      }
+      if (boardChanged) continue; // left the rack for the board
+      // Rack-to-rack move: the letter appeared in a slot that was empty.
+      for (int j = 0; j < after.length; j++) {
+        final wasEmpty = j >= before.length || before[j] == null;
+        if (j != i && wasEmpty && after[j] == letter) {
+          updated.add(j);
+          break;
+        }
+      }
+    }
+    if (updated.length != _pinnedRackIndices.length || !updated.containsAll(_pinnedRackIndices)) {
+      setState(() {
+        _pinnedRackIndices
+          ..clear()
+          ..addAll(updated);
+      });
+    }
+  }
+
   void _openJournal() {
     final rackCells = ref.read(gridGameControllerProvider).rackCells;
     showModalBottomSheet(
@@ -233,7 +275,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       if (boardCells[index] == null) continue;
 
       _reachedLandmarks = {..._reachedLandmarks, index};
-      ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+      final gotLetter = ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
       await _saveVillage();
       if (!mounted) return;
       showDialog(
@@ -241,8 +283,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFFFFF9C4),
           title: const Text('🌟 Landmark Discovered!'),
-          content: const Text(
-              "Your village has grown to reach a landmark. You've been granted a bonus letter draw!"),
+          content: Text(gotLetter
+              ? 'Your village has grown to reach a landmark. A bonus letter has been added to the end of your rack!'
+              : 'Your village has grown to reach a landmark. Wonderful exploring!'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Wonderful!')),
           ],
@@ -302,8 +345,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   void _drawFromWell() {
     if (_wellUsedThisVisit) return;
-    ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
-    setState(() => _wellUsedThisVisit = true);
+    // Only spend the once-per-visit draw if a letter actually arrived
+    // (it can't when the pool is empty).
+    final gotLetter = ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
+    if (gotLetter) setState(() => _wellUsedThisVisit = true);
   }
 
   // Pans/zooms the Words-view board to center a reached landmark. Switches
@@ -448,6 +493,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         _refreshStructures();
         if (!_restoring) _checkLandmarks();
       }
+      if (previous != null && previous.rackCells != next.rackCells) {
+        _updatePinsAfterRackChange(previous, next);
+      }
       if (!_restoring) _saveVillage();
     });
 
@@ -474,105 +522,70 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       },
       child: Scaffold(
         resizeToAvoidBottomInset: false,
+        backgroundColor: const Color(0xFFF1F8E9),
         appBar: AppBar(
-          toolbarHeight: 90,
-          titleSpacing: 4.0,
-          // Three variable-width pieces (the Words/Village toggle, a
-          // tappable score chip, a labeled button) plus up to two action
-          // icons all have to share one toolbar's width. Wrapping each in
-          // Flexible+FittedBox lets them shrink together on a narrow
-          // phone/large text-scale instead of overflowing the toolbar by
-          // a few pixels.
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Lives here (rather than its own row above the board) so
-              // that row's height doesn't eat into the board/rack split
-              // below and cut rack letters off.
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: SegmentedButton<_ViewMode>(
-                    segments: const [
-                      ButtonSegment(value: _ViewMode.words, label: Text('Words'), icon: Icon(Icons.abc)),
-                      ButtonSegment(value: _ViewMode.village, label: Text('Village'), icon: Icon(Icons.holiday_village)),
-                    ],
-                    selected: {_viewMode},
-                    onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
-                  ),
-                ),
-              ),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      // Tapping the score itself re-checks/recalculates it
-                      // -- replaces the separate "Score" button so the
-                      // toggle above can take its spot.
-                      onTap: _refreshScore,
-                      borderRadius: BorderRadius.circular(8.0),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                        decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(color: Colors.white),
-                            borderRadius: BorderRadius.circular(8.0)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.landscape, color: Colors.green.shade800, size: 18),
-                            const SizedBox(width: 6),
-                            Text('$_score', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade900)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: TextButton.icon(
-                    onPressed: _endSession,
-                    icon: const Icon(Icons.flag, size: 18, color: Colors.white),
-                    label: const Text('End Session', style: TextStyle(color: Colors.white)),
-                  ),
-                ),
-              ),
-            ],
-          ),
           backgroundColor: const Color(0xFF33691E),
-          automaticallyImplyLeading: false,
-          actions: [
-            if (_hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.alt_route, color: Colors.white),
-                tooltip: 'Jump to Landmark',
-                onPressed: _openBridgeJumpMenu,
+          foregroundColor: Colors.white,
+          // An explicit way out (the double-swipe guard below only covers
+          // the system back gesture). Leaving is always safe: the village
+          // autosaves after every change.
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Leave village (it saves automatically)',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          titleSpacing: 0,
+          // Only the view toggle lives in the title now; score and the
+          // structure abilities moved to their own row below, so nothing
+          // has to be shrunk to fit and text stays full size.
+          title: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SegmentedButton<_ViewMode>(
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                backgroundColor: const Color(0xFF558B2F),
+                foregroundColor: Colors.white,
+                selectedBackgroundColor: Colors.white,
+                selectedForegroundColor: const Color(0xFF33691E),
+                side: const BorderSide(color: Colors.white),
+                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-            IconButton(
-              icon: const Icon(Icons.menu_book, color: Colors.white),
-              tooltip: 'Discovery Journal',
-              onPressed: _openJournal,
+              segments: const [
+                ButtonSegment(value: _ViewMode.words, label: Text('Words')),
+                ButtonSegment(value: _ViewMode.village, label: Text('Village')),
+              ],
+              selected: {_viewMode},
+              onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: _endSession,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              child: const Text('End'),
+            ),
+            const SizedBox(width: 4),
           ],
         ),
-        floatingActionButton: _hasStructure('WELL')
-            ? FloatingActionButton.extended(
-                onPressed: _wellUsedThisVisit ? null : _drawFromWell,
-                backgroundColor: _wellUsedThisVisit ? Colors.grey : Colors.lightBlue,
-                icon: const Icon(Icons.water_drop),
-                label: Text(_wellUsedThisVisit ? 'Well used this visit' : 'Draw from Well'),
-              )
-            : null,
         body: SafeArea(
           child: Column(
             children: [
+              _VillageActionBar(
+                score: _score,
+                onScoreTap: _refreshScore,
+                discoveredCount: _discoveredWords.length,
+                totalMagicWords: kMagicWords.length,
+                onJournal: _openJournal,
+                showWell: _hasStructure('WELL'),
+                wellUsed: _wellUsedThisVisit,
+                onWell: _drawFromWell,
+                showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
+                onBridge: _openBridgeJumpMenu,
+              ),
               Expanded(
-                flex: 6,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     // Recorded (not setState'd -- this must never trigger a
@@ -612,18 +625,105 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                   },
                 ),
               ),
-              Expanded(
-                flex: 3,
-                child: GridRackView(
-                  theme: _estateTheme,
-                  pinnedIndices: _pinnedRackIndices,
-                  onTogglePin: _togglePin,
-                ),
+              // Sized to its content (square tiles, every row visible)
+              // instead of a fixed share of the screen, which used to cut
+              // off the bottom row of the 21-letter rack. Grows by a row if
+              // bonus letters push it past 21.
+              GridRackView(
+                theme: _estateTheme,
+                childAspectRatio: 1.0,
+                pinnedIndices: _pinnedRackIndices,
+                onTogglePin: _togglePin,
               ),
-              const Expanded(flex: 1, child: ColoredBox(color: Color(0xFF6D4C41))),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// The row under the AppBar: village score plus every structure ability
+// and the Journal, as full-size labeled buttons. A Wrap (not a Row) so a
+// narrow phone or a large system text size flows onto a second line
+// instead of overflowing or shrinking the text.
+class _VillageActionBar extends StatelessWidget {
+  const _VillageActionBar({
+    required this.score,
+    required this.onScoreTap,
+    required this.discoveredCount,
+    required this.totalMagicWords,
+    required this.onJournal,
+    required this.showWell,
+    required this.wellUsed,
+    required this.onWell,
+    required this.showBridge,
+    required this.onBridge,
+  });
+
+  final int score;
+  final VoidCallback onScoreTap;
+  final int discoveredCount;
+  final int totalMagicWords;
+  final VoidCallback onJournal;
+  final bool showWell;
+  final bool wellUsed;
+  final VoidCallback onWell;
+  final bool showBridge;
+  final VoidCallback onBridge;
+
+  static const _buttonTextStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.bold);
+
+  @override
+  Widget build(BuildContext context) {
+    ButtonStyle styleWith(Color background) => OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 44),
+          foregroundColor: const Color(0xFF1B5E20),
+          backgroundColor: background,
+          side: const BorderSide(color: Color(0xFF81C784)),
+          textStyle: _buttonTextStyle,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        );
+    final buttonStyle = styleWith(Colors.white);
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFDCEDC8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Tooltip(
+            message: 'Village score (tap to recount)',
+            child: OutlinedButton.icon(
+              style: buttonStyle,
+              onPressed: onScoreTap,
+              icon: const Icon(Icons.landscape, size: 20),
+              label: Text('$score'),
+            ),
+          ),
+          OutlinedButton.icon(
+            style: buttonStyle,
+            onPressed: onJournal,
+            icon: const Icon(Icons.menu_book, size: 20),
+            label: Text('Journal $discoveredCount/$totalMagicWords'),
+          ),
+          if (showWell)
+            OutlinedButton.icon(
+              style: styleWith(wellUsed ? Colors.grey.shade200 : const Color(0xFFE1F5FE)),
+              onPressed: wellUsed ? null : onWell,
+              icon: const Icon(Icons.water_drop, size: 20),
+              label: Text(wellUsed ? 'Well used' : 'Free letter'),
+            ),
+          if (showBridge)
+            OutlinedButton.icon(
+              style: buttonStyle,
+              onPressed: onBridge,
+              icon: const Icon(Icons.alt_route, size: 20),
+              label: const Text('Jump'),
+            ),
+        ],
       ),
     );
   }
