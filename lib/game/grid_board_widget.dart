@@ -352,9 +352,15 @@ class GridRackView extends ConsumerWidget {
     this.theme = GridTheme.classic,
     this.pinnedIndices = const {},
     this.onTogglePin,
+    this.childAspectRatio = 0.7,
   });
 
   final int crossAxisCount;
+  // Width/height of each rack cell. Every 10x10 mode keeps the original
+  // 0.7 (tall cells inside a fixed-flex rack area); Infinite Estate passes
+  // 1.0 and lets the rack size itself to its content so all of its rows
+  // always fit instead of being cut off.
+  final double childAspectRatio;
   final GridTheme theme;
   // Rack pinning (Infinite Estate/Village only -- see GridTileWidget.isPinned).
   final Set<int> pinnedIndices;
@@ -362,14 +368,16 @@ class GridRackView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rackSize = ref.watch(gridGameControllerProvider.select((s) => s.config.rackSize));
+    // rackCells.length rather than config.rackSize: the rack can hold
+    // extra bonus slots beyond its base size (see drawBonusLetter).
+    final rackSize = ref.watch(gridGameControllerProvider.select((s) => s.rackCells.length));
     return Container(
       decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 2.0)),
       child: Center(
         child: GridView.count(
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: crossAxisCount,
-          childAspectRatio: 0.7,
+          childAspectRatio: childAspectRatio,
           shrinkWrap: true,
           children: List.generate(rackSize, (index) {
             return Padding(

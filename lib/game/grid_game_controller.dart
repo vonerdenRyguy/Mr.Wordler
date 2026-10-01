@@ -69,10 +69,14 @@ class GridGameController extends StateNotifier<GridGameState> {
     if (to.zone == TileZone.rack) rack = toCells;
 
     // Infinite Estate: refilling a rack slot the instant its tile leaves
-    // for the board keeps the rack at a constant size forever.
+    // for the board keeps the rack at a constant size forever. Bonus slots
+    // (index >= rackSize, see drawBonusLetter) are the exception: a bonus
+    // letter is one extra letter, not a permanently bigger rack, so its
+    // slot is never refilled -- it just goes away once it's empty.
     if (state.config.refillRackOnPlace &&
         from.zone == TileZone.rack &&
         to.zone == TileZone.board &&
+        from.index < state.config.rackSize &&
         state.pool.isNotEmpty) {
       final newPool = List<String>.from(state.pool);
       final drawn = preferBalancedRefill ? _drawBalancedLetter(newPool, rack) : _drawRandomLetter(newPool);
@@ -87,7 +91,21 @@ class GridGameController extends StateNotifier<GridGameState> {
       return;
     }
 
-    state = state.copyWith(boardCells: board, rackCells: rack);
+    state = state.copyWith(boardCells: board, rackCells: _trimEmptyBonusSlots(rack));
+  }
+
+  // Drops empty bonus slots (index >= rackSize) off the end of the rack,
+  // so a used-up bonus letter's slot disappears instead of lingering as a
+  // permanently empty gap. Only trailing slots are removed, so no other
+  // tile's index ever shifts.
+  List<String?> _trimEmptyBonusSlots(List<String?> rack) {
+    final base = state.config.rackSize;
+    if (rack.length <= base || rack.last != null) return rack;
+    final trimmed = List<String?>.from(rack);
+    while (trimmed.length > base && trimmed.last == null) {
+      trimmed.removeLast();
+    }
+    return trimmed;
   }
 
   // Mutates `pool` (removing the drawn letter) and returns it.
@@ -146,26 +164,34 @@ class GridGameController extends StateNotifier<GridGameState> {
     return true;
   }
 
-  // Draws one extra letter from the pool directly into the first empty
-  // rack slot -- a pure bonus, no cost. A no-op (never a penalty) if the
-  // pool is empty or the rack has no open slot. Generic, not landmark-
-  // specific: any mode/event that wants to hand the player a free letter
-  // can use this.
-  void drawBonusLetter() {
-    if (state.pool.isEmpty) return;
-    final emptyIndex = state.rackCells.indexWhere((c) => c == null);
-    if (emptyIndex == -1) return;
+  // Draws one extra letter from the pool -- a pure bonus, no cost. Goes
+  // into the first empty rack slot if there is one; otherwise (always the
+  // case in Infinite Estate, whose rack refills itself and so is never
+  // short) a new bonus slot is added to the end of the rack, so the reward
+  // actually arrives instead of silently doing nothing. Returns whether a
+  // letter was drawn: false only if the pool is empty, so callers can
+  // avoid using up a one-time reward that gave the player nothing.
+  // Generic, not landmark-specific: any mode/event that wants to hand the
+  // player a free letter can use this.
+  bool drawBonusLetter() {
+    if (state.pool.isEmpty) return false;
 
     final pool = List<String>.from(state.pool)..shuffle();
     final drawn = pool.removeLast();
     final rack = List<String?>.from(state.rackCells);
-    rack[emptyIndex] = drawn;
+    final emptyIndex = rack.indexWhere((c) => c == null);
+    if (emptyIndex == -1) {
+      rack.add(drawn);
+    } else {
+      rack[emptyIndex] = drawn;
+    }
 
     state = state.copyWith(
       rackCells: rack,
       pool: pool,
       dealtLetters: [...state.dealtLetters, drawn],
     );
+    return true;
   }
 
   // Replaces the current board/rack/pool wholesale, e.g. to resume a
@@ -181,7 +207,9 @@ class GridGameController extends StateNotifier<GridGameState> {
     required List<String> dealtLetters,
   }) {
     if (boardCells.length != state.config.boardCellCount) return;
-    if (rackCells.length != state.config.rackSize) return;
+    // A saved rack may be longer than rackSize if it held unplaced bonus
+    // letters (see drawBonusLetter), but never shorter.
+    if (rackCells.length < state.config.rackSize) return;
     state = state.copyWith(
       boardCells: boardCells,
       rackCells: rackCells,
