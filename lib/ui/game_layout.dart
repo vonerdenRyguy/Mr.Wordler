@@ -55,7 +55,8 @@ class GamePill extends StatelessWidget {
               Expanded(
                 child: Align(
                   alignment: showLabel ? Alignment.centerRight : Alignment.center,
-                  child: FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: WText.number.copyWith(color: text))),
+                  child:
+                      FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: WText.number.copyWith(color: text))),
                 ),
               ),
             ],
@@ -103,41 +104,50 @@ class GameLayout extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ChunkyIconButton(icon: Icons.close, tooltip: 'Leave round', onPressed: onLeave),
-                    const SizedBox(width: WSize.gap2),
-                    Expanded(child: pill),
-                    // Everything right of the pill shrinks a little on a
-                    // very small phone with big text, instead of pushing
-                    // the bar off screen; on a normal phone it's full size.
-                    if (secondPill != null || showLettersLeft || giveUp != null)
-                      Flexible(
-                        flex: 2,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (secondPill != null) ...[const SizedBox(width: WSize.gap2), secondPill!],
-                              if (showLettersLeft) ...[
-                                const SizedBox(width: WSize.gap2),
-                                _LettersLeftChip(count: lettersLeft),
+                LayoutBuilder(builder: (context, constraints) {
+                  final barWidth = constraints.maxWidth;
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ChunkyIconButton(icon: Icons.close, tooltip: 'Leave round', onPressed: onLeave),
+                      const SizedBox(width: WSize.gap2),
+                      Expanded(child: pill),
+                      // Everything right of the pill shrinks a little on a
+                      // very small phone with big text, instead of pushing
+                      // the bar off screen; on a normal phone it's full size.
+                      if (secondPill != null || showLettersLeft || giveUp != null)
+                        // Not a flex child: a Flexible here would reserve its
+                        // whole share even when the chips need less, starving
+                        // the pill. Capped instead, so the pill gets the rest.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: barWidth * 0.6),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (secondPill != null) ...[const SizedBox(width: WSize.gap2), secondPill!],
+                                if (showLettersLeft) ...[
+                                  const SizedBox(width: WSize.gap2),
+                                  _LettersLeftChip(count: lettersLeft),
+                                ],
+                                if (giveUp != null) ...[
+                                  const SizedBox(width: WSize.gap2),
+                                  ChunkyButton(
+                                      label: 'Give up',
+                                      kind: ChunkyKind.danger,
+                                      size: ChunkySize.small,
+                                      onPressed: giveUp),
+                                ],
                               ],
-                              if (giveUp != null) ...[
-                                const SizedBox(width: WSize.gap2),
-                                ChunkyButton(
-                                    label: 'Give up', kind: ChunkyKind.danger, size: ChunkySize.small, onPressed: giveUp),
-                              ],
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                    ],
+                  );
+                }),
                 const SizedBox(height: WSize.gap2),
                 const Expanded(child: Center(child: _WoodFramedBoard())),
                 const SizedBox(height: WSize.gap3),
@@ -151,7 +161,8 @@ class GameLayout extends ConsumerWidget {
                       const SizedBox(width: WSize.gap3),
                       Expanded(
                         flex: 6,
-                        child: ChunkyButton(label: 'Check words', size: ChunkySize.big, expand: true, onPressed: onCheck),
+                        child:
+                            ChunkyButton(label: 'Check words', size: ChunkySize.big, expand: true, onPressed: onCheck),
                       ),
                     ],
                   ),
@@ -283,7 +294,8 @@ class SwapDropTarget extends ConsumerWidget {
           child: Container(
             margin: const EdgeInsets.only(bottom: WSize.lip),
             child: CustomPaint(
-              painter: _DashedBorderPainter(solid: hovering),
+              // Drawn over the fill, or the fill hides it.
+              foregroundPainter: _DashedBorderPainter(solid: hovering),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 56 - WSize.lip),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
