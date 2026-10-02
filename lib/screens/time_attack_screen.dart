@@ -1,10 +1,13 @@
 import 'package:namer_app/components/timer.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
-import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
-import '../game/tile_location.dart';
 import '../portfolio/portfolio_controller.dart';
+import '../ui/chunky_button.dart';
+import '../ui/game_layout.dart';
+import '../ui/tokens.dart';
+import '../ui/wordler_dialog.dart';
+import 'game_screen.dart' show showCheckResultDialog;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,7 +46,6 @@ class _TimeAttackBody extends ConsumerStatefulWidget {
 
 class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
   late CountdownManager _countdown;
-  DateTime? _lastPopAttempt;
 
   // Guards against both the countdown's onExpired firing and a winning
   // Check press racing each other into showing two dialogs.
@@ -71,29 +73,21 @@ class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
     if (_roundEnded || !mounted) return;
     _roundEnded = true;
     TimeAttackScreen.lastResultThisSession = "Time's up";
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
-        title: const Text("Time's Up!"),
-        content: const Text("You didn't empty the pool in time."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-            child: const Text("Exit"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // close dialog
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const TimeAttackScreen()),
-              );
-            },
-            child: const Text("Try Again"),
-          ),
-        ],
-      ),
+    showWordlerDialog<void>(
+      context,
+      title: "Time's Up!",
+      bodyText: "You didn't empty the pool in time.",
+      barrierDismissible: false,
+      actions: [
+        WordlerDialogAction('Try Again', () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const TimeAttackScreen()),
+          );
+        }),
+        WordlerDialogAction('Exit', () => Navigator.of(context).popUntil((route) => route.isFirst),
+            kind: ChunkyKind.secondary),
+      ],
     );
   }
 
@@ -112,143 +106,63 @@ class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
       // Small amount of currency, more for a faster clear -- Time Attack
       // is about quick replayable sessions, not primary progression, so
       // it grants currency rather than a property tile.
-      final remainingParts = _countdown.remainingTime.split(':');
-      final remainingSeconds =
-          (int.tryParse(remainingParts[0]) ?? 0) * 60 + (int.tryParse(remainingParts[1]) ?? 0);
+      final remainingSeconds = _remainingSeconds;
       final coins = 10 + (remainingSeconds ~/ 15);
       ref.read(portfolioProvider.notifier)
         ..addCurrency(coins)
         ..addXp(20);
 
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.orangeAccent,
-          title: const Text("You Win!"),
-          content: Text("Time remaining: ${_countdown.remainingTime}\n+$coins coins, +20 XP"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-              child: const Text("Exit"),
-            ),
-          ],
-        ),
-      );
-    } else if (!result.areConnected && result.areValid) {
-      showDialog(
-        context: context,
-        builder: (context) => const AlertDialog(
-          backgroundColor: Colors.orangeAccent,
-          title: Text('All valid words must be connected'),
-        ),
+      showWordlerDialog<void>(
+        context,
+        title: 'You Win!',
+        bodyText: 'Time remaining: ${_countdown.remainingTime}\n+$coins coins, +20 XP',
+        barrierDismissible: false,
+        actions: [
+          WordlerDialogAction('Exit', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+        ],
       );
     } else {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.orangeAccent,
-          title: Text(result.areValid ? 'Valid Words!' : 'Invalid Words:'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: result.words
-                .map((word) => Text(word,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: result.areValid ? Colors.green : Colors.red,
-                    )))
-                .toList(),
-          ),
-        ),
-      );
+      showCheckResultDialog(context, result);
     }
+  }
+
+  int get _remainingSeconds {
+    final parts = _countdown.remainingTime.split(':');
+    return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+  }
+
+  void _confirmLeave() {
+    if (_roundEnded) {
+      Navigator.of(context).pop();
+      return;
+    }
+    confirmLeaveRound(
+      context,
+      body: "The clock stops and this round won't count.",
+      onLeave: () {
+        _roundEnded = true;
+        _countdown.stop();
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    // The back gesture asks first, the same as the Leave button.
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        final now = DateTime.now();
-        if (_lastPopAttempt != null &&
-            now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          _countdown.stop();
-          Navigator.of(context).pop();
-          return;
-        }
-        _lastPopAttempt = now;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Swipe again to exit'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (!didPop) _confirmLeave();
       },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          toolbarHeight: 90,
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              DragTarget<TileLocation>(
-                builder: (context, candidateData, rejectData) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.orangeAccent,
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: Image.asset('lib_assests/trade.png', height: kToolbarHeight - 5),
-                  );
-                },
-                onWillAcceptWithDetails: (details) {
-                  if (details.data.zone != TileZone.rack) return false;
-                  final rack = ref.read(gridGameControllerProvider).rackCells;
-                  final emptyCount = rack
-                      .asMap()
-                      .entries
-                      .where((e) => e.value == null || e.key == details.data.index)
-                      .length;
-                  return emptyCount >= 3;
-                },
-                onAcceptWithDetails: (details) {
-                  ref.read(gridGameControllerProvider.notifier).tradeIn(details.data.index);
-                },
-              ),
-              ElevatedButton(
-                onPressed: _onCheckPressed,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.greenAccent,
-                  foregroundColor: Colors.green,
-                ),
-                child: const Text('Check'),
-              ),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  border: Border.all(color: Colors.white),
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: Text(
-                  _countdown.remainingTime,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.deepPurple,
-          automaticallyImplyLeading: false,
+      child: GameLayout(
+        onLeave: _confirmLeave,
+        pill: GamePill(
+          label: 'Time left',
+          value: _countdown.remainingTime,
+          color: WModeColors.timeAttack,
+          alert: _remainingSeconds <= 30,
         ),
-        body: const SafeArea(
-          child: Column(
-            children: [
-              Expanded(flex: 5, child: GridBoardView()),
-              Expanded(flex: 3, child: GridRackView()),
-              Expanded(flex: 1, child: ColoredBox(color: Colors.orangeAccent)),
-            ],
-          ),
-        ),
+        onCheck: _onCheckPressed,
       ),
     );
   }

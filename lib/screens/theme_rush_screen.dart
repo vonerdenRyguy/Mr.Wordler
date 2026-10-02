@@ -2,7 +2,6 @@ import 'dart:math';
 
 import 'package:namer_app/components/timer.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
-import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
 import '../game/grid_providers.dart';
@@ -10,7 +9,9 @@ import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../theme_rush/theme_category.dart';
 import '../ui/mode_start_view.dart';
+import '../ui/game_layout.dart';
 import '../ui/tokens.dart';
+import '../ui/wordler_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,7 +64,6 @@ class _ThemeRushBodyState extends ConsumerState<_ThemeRushBody> {
   bool _roundEnded = false;
   bool _checking = false;
   late StopwatchManager _stopwatchManager;
-  DateTime? _lastPopAttempt;
 
   @override
   void initState() {
@@ -109,29 +109,24 @@ class _ThemeRushBodyState extends ConsumerState<_ThemeRushBody> {
       portfolioController.addXp(isNewBest ? 30 : 20);
 
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.orangeAccent,
-          title: const Text('Theme Word Found!'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Time: ${_stopwatchManager.elapsedTime}'),
-              if (isNewBest) ...[
-                const SizedBox(height: 8),
-                const Text('New personal best!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-              ],
+      showWordlerDialog<void>(
+        context,
+        title: 'Theme Word Found!',
+        barrierDismissible: false,
+        body: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Time: ${_stopwatchManager.elapsedTime}'),
+            if (isNewBest) ...[
+              const SizedBox(height: 8),
+              Text('New personal best!', style: WText.bodyBold.copyWith(color: WColors.grass)),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-              child: const Text('Done'),
-            ),
           ],
         ),
+        actions: [
+          WordlerDialogAction('Done', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+        ],
       );
     } finally {
       _checking = false;
@@ -165,59 +160,38 @@ class _ThemeRushBodyState extends ConsumerState<_ThemeRushBody> {
       );
     }
 
+    // The back gesture asks first, the same as the Leave button.
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        final now = DateTime.now();
-        if (_lastPopAttempt != null && now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          _stopwatchManager.stop();
-          Navigator.of(context).pop();
-          return;
-        }
-        _lastPopAttempt = now;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Swipe again to exit'), duration: Duration(seconds: 2)),
-        );
+        if (!didPop) _confirmLeave();
       },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          toolbarHeight: 90,
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Theme', style: TextStyle(fontSize: 10, color: Colors.white70)),
-                  Text(widget.theme.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                    color: Colors.orangeAccent,
-                    border: Border.all(color: Colors.white),
-                    borderRadius: BorderRadius.circular(8.0)),
-                child: Text(_stopwatchManager.elapsedTime, style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.deepPurple,
-          automaticallyImplyLeading: false,
+      child: GameLayout(
+        onLeave: _confirmLeave,
+        pill: GamePill(label: 'Theme', value: widget.theme.name, color: WModeColors.themeRush),
+        secondPill: SizedBox(
+          width: 100,
+          height: WSize.tapTarget,
+          child: GamePill(label: '', value: _stopwatchManager.elapsedTime, color: WColors.card),
         ),
-        body: const SafeArea(
-          child: Column(
-            children: [
-              Expanded(flex: 5, child: GridBoardView()),
-              Expanded(flex: 3, child: GridRackView()),
-              Expanded(flex: 1, child: ColoredBox(color: Colors.orangeAccent)),
-            ],
-          ),
-        ),
+        showLettersLeft: false,
+        showActions: false,
       ),
+    );
+  }
+
+  void _confirmLeave() {
+    if (_roundEnded) {
+      Navigator.of(context).pop();
+      return;
+    }
+    confirmLeaveRound(
+      context,
+      body: "This round won't count.",
+      onLeave: () {
+        _roundEnded = true;
+        _stopwatchManager.stop();
+      },
     );
   }
 }

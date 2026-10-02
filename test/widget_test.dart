@@ -116,7 +116,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
 
-    expect(find.text('Check'), findsOneWidget);
+    expect(find.text('Check words'), findsOneWidget);
     // 21 letters should have been dealt into the rack -- confirms the
     // Riverpod-backed GridGameController actually initialized and dealt
     // tiles rather than throwing during setup.
@@ -139,7 +139,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
 
-    expect(find.text('Check'), findsOneWidget);
+    expect(find.text('Check words'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
@@ -232,18 +232,18 @@ void main() {
     await tester.tap(find.text('open daily'));
     // Reaching the ready state starts a perpetual stopwatch, so wait for
     // it with bounded pumps instead of pumpAndSettle (see pumpUntilFound).
-    await pumpUntilFound(tester, find.text('Check'));
+    await pumpUntilFound(tester, find.text('Check words'));
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Check'), findsOneWidget);
-    expect(find.text('Give Up'), findsOneWidget);
+    expect(find.text('Check words'), findsOneWidget);
+    expect(find.text('Give up'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(21));
 
-    await tester.tap(find.text('Give Up'));
+    await tester.tap(find.text('Give up'));
     await pumpUntilFound(tester, find.text('Keep Playing'));
     // Confirm the "you'll lose today's attempt" dialog.
-    await tester.tap(find.text('Give Up').last);
+    await tester.tap(find.text('Give Up'));
     // This pop leaves the screen with the perpetual stopwatch, so
     // pumpAndSettle is safe again from here on.
     await tester.pumpAndSettle();
