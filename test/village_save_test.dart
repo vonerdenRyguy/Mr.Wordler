@@ -1,4 +1,9 @@
+import 'dart:convert';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/game/grid_config.dart';
+import 'package:namer_app/game/grid_providers.dart';
 import 'package:namer_app/village/village_save.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -59,5 +64,41 @@ void main() {
     SharedPreferences.setMockInitialValues({'infiniteEstateVillageSave': 'not valid json'});
     final controller = VillageSaveController();
     expect(await controller.load(), isNull);
+  });
+
+  // Later specs change no saved data: a save in the current (spec-01,
+  // version 2) shape must keep loading and restoring exactly.
+  test('a version-2 save loads and restores with the same board, rack and pool', () async {
+    SharedPreferences.setMockInitialValues({
+      'infiniteEstateVillageSave': jsonEncode({
+        'boardCells': ['W', 'E', 'L', 'L', null, null],
+        'rackCells': ['A', 'B', 'C'],
+        'pool': ['D', 'E'],
+        'dealtLetters': ['W', 'E', 'L', 'L', 'A', 'B', 'C'],
+        'lastCashedOutScore': 7,
+        'reachedLandmarks': [4],
+        'discoveredWords': ['WELL'],
+        'saveVersion': 2,
+      }),
+    });
+    final loaded = (await VillageSaveController().load())!;
+    expect(loaded.saveVersion, 2);
+
+    final container = ProviderContainer(overrides: [
+      gridConfigProvider.overrideWithValue(const GridConfig(boardWidth: 6, boardHeight: 1, rackSize: 3)),
+    ]);
+    addTearDown(container.dispose);
+    container.read(gridGameControllerProvider.notifier).restoreState(
+          boardCells: loaded.boardCells,
+          rackCells: loaded.rackCells,
+          pool: loaded.pool,
+          dealtLetters: loaded.dealtLetters,
+        );
+    final state = container.read(gridGameControllerProvider);
+    expect(state.boardCells, ['W', 'E', 'L', 'L', null, null]);
+    expect(state.rackCells, ['A', 'B', 'C']);
+    expect(state.pool, ['D', 'E']);
+    expect(loaded.reachedLandmarks, {4});
+    expect(loaded.discoveredWords, {'WELL'});
   });
 }

@@ -35,3 +35,8 @@ flutter:
     - lib_assests/trade.png
     - lib_assests/words.txt
     - lib_assests/letterBackground.png
+
+  fonts:
+    - family: LilitaOne
+      fonts:
+        - asset: assets/fonts/LilitaOne-Regular.ttf

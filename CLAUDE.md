@@ -34,8 +34,18 @@ Flutter-generated output (already gitignored), not source.
     migrated once on load by `lib/village/village_save_migration.dart`
     (first 10 rack letters kept, the rest go back to the pool). The 10x10
     modes are unchanged.
-  - Next: spec-02 (tile visuals + word-landing feedback), then spec-03
-    (one look for the whole app).
+    Merged to master 2026-10-02 (`4a92d1c`) after on-device check.
+  - `spec-02-tile-visuals`: every board/rack tile is a `LetterTile`
+    (`lib/game/letter_tile.dart`): cream wooden face, ink outline, bottom
+    lip, bundled **Lilita One** font (`assets/fonts/`). Word-landing
+    feedback in the shared engine: `lib/game/word_landing.dart`
+    (`tileLandingProvider` watches the grid state; exactly one new board
+    letter = a landing; valid words via the overridable
+    `wordCheckProvider`) + `word_runs.dart` + `word_landing_banner.dart`
+    (banner over the board, outside its zoom). Settle bump, pop + gold
+    glow on new words, one light haptic, nothing for invalid words;
+    respects system "remove animations". No saved data changes.
+  - Next: spec-03 (one look for the whole app).
 - On-device runs: phone is a Samsung SM S926U (`flutter run -d
   R5CX213D2EJ`). If `flutter devices` says "not authorized", the user
   needs to accept the USB-debugging prompt on the phone.
@@ -85,6 +95,10 @@ lib/
     grid_config.dart         Per-mode config (board/rack size, seed, refill behavior)
     grid_game_controller.dart  Core move/draw/trade/swap logic (StateNotifier)
     balanced_draw.dart        Infinite Estate's balanced refill rules
+    letter_tile.dart          LetterTile: the one tile look, + TileFx animation
+    word_runs.dart            Across/down runs through a board cell
+    word_landing.dart         tileLandingProvider, wordCheckProvider, fxFor
+    word_landing_banner.dart  The big "CAT" banner over the board
     grid_game_state.dart      Immutable state (board/rack/pool cells)
     grid_board_widget.dart    GridBoardView/GridRackView/GridTileWidget + GridTheme
     grid_providers.dart       gridConfigProvider / gridGameControllerProvider
@@ -121,7 +135,7 @@ test/                Mirrors lib/ for the pieces with real logic (grid engine,
 - `flutter analyze` — should always be clean except the one pre-existing
   `bananagramsTiles.dart` filename-casing lint (long-standing, not worth
   a rename mid-feature).
-- `flutter test` — 60 tests across `test/*.dart` as of this writing, all
+- `flutter test` — 77 tests across `test/*.dart` as of this writing, all
   passing on `master`.
 - No real device/emulator is reliably available in this environment by
   default — when one is connected (`flutter devices`), prefer running on
