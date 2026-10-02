@@ -124,7 +124,9 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
           final glow = inWord && running ? (reduceMotion ? 1.0 : 1.0 - t) : 0.0;
 
           final tile = _buildTile(side, glow);
-          return scale == 1.0 ? tile : Transform.scale(scale: scale, child: tile);
+          // Centered, so a tall slot (the 10x10 modes' rack) shows its
+          // color evenly around the tile instead of all below it.
+          return Center(child: scale == 1.0 ? tile : Transform.scale(scale: scale, child: tile));
         },
       );
     });
