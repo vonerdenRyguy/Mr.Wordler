@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/daily/daily_challenge_controller.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
+import 'package:namer_app/ui/game_layout.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,6 +43,10 @@ void main() {
 
   testWidgets('Leave asks first; Keep playing stays, Leave goes Home', (tester) async {
     await startTimeAttack(tester);
+
+    // The timer pill fills the bar rather than a fixed third of it.
+    final barWidth = tester.getSize(find.byType(Scaffold)).width;
+    expect(tester.getSize(find.byType(GamePill)).width, greaterThan(barWidth * 0.45));
 
     await tester.tap(find.byTooltip('Leave round'));
     await pumpFor(tester);
