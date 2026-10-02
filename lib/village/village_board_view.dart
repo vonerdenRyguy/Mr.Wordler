@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../game/grid_providers.dart';
+import '../ui/tokens.dart';
 import 'magic_word.dart';
 
 // One structure currently built on the board: a magic word's footprint
@@ -36,8 +37,8 @@ List<BoardStructure> computeStructures(Map<String, Set<int>> wordPositions) {
   return structures;
 }
 
-const _plainLandColor = Color(0xFFC8E6C9);
-const _plotBorderColor = Color(0xFF33691E);
+const _plainLandColor = WColors.grassFieldCell;
+const _plotBorderColor = WColors.grassField;
 
 // Renders the same grid positions as GridBoardView, but as the village
 // map: a magic word's footprint shows its structure's color/icon: every
@@ -71,20 +72,20 @@ class VillageBoardView extends ConsumerWidget {
     final isUnclaimedLandmark = def == null && landmarkIndices.contains(index);
     return Container(
       decoration: BoxDecoration(
-        color: def?.color ?? (isUnclaimedLandmark ? Colors.amber.shade200 : _plainLandColor),
+        color: def?.color ?? (isUnclaimedLandmark ? WColors.sun : _plainLandColor),
         border: Border.all(
-          color: isUnclaimedLandmark ? Colors.amber.shade800 : _plotBorderColor,
+          color: isUnclaimedLandmark ? WColors.ink : _plotBorderColor,
           width: isUnclaimedLandmark ? 1.2 : 0.4,
         ),
         boxShadow: isUnclaimedLandmark
-            ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 5, spreadRadius: 1)]
+            ? [BoxShadow(color: WColors.sun.withOpacity(0.7), blurRadius: 5, spreadRadius: 1)]
             : null,
       ),
       child: (def != null && anchorIndices.contains(index))
           ? LayoutBuilder(
               builder: (context, constraints) => Icon(
                 def.icon,
-                color: Colors.white,
+                color: WColors.ink,
                 size: (constraints.maxWidth * 0.55).clamp(8.0, 24.0),
               ),
             )
@@ -92,7 +93,7 @@ class VillageBoardView extends ConsumerWidget {
               ? LayoutBuilder(
                   builder: (context, constraints) => Icon(
                     Icons.star,
-                    color: Colors.amber.shade900,
+                    color: WColors.ink,
                     size: (constraints.maxWidth * 0.5).clamp(8.0, 20.0),
                   ),
                 )

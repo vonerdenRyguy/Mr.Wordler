@@ -143,7 +143,7 @@ void main() {
     expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
-  testWidgets('Portfolio screen shows neighborhoods and test controls work', (WidgetTester tester) async {
+  testWidgets('Portfolio screen shows neighborhoods and no test controls', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -179,14 +179,9 @@ void main() {
     // A fresh portfolio starts at 0 coins.
     expect(find.text('0'), findsOneWidget);
 
-    await tester.tap(find.text('+10 coins'));
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-    // The currency display should now read 10 instead of 0.
-    expect(find.text('10'), findsOneWidget);
-    expect(find.text('0'), findsNothing);
+    // The temporary dev-only test controls are gone.
+    expect(find.textContaining('Test controls'), findsNothing);
+    expect(find.text('+10 coins'), findsNothing);
   });
 
   testWidgets('Daily Challenge deals a rack, and giving up locks today out',
