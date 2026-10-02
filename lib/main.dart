@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 // ChangeNotifierProvider is defined by both riverpod and provider; this
 // app uses provider's version for ThemeNotifier, so hide riverpod's.
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:namer_app/screens/menu_screen.dart';
+import 'package:namer_app/ui/tokens.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(wordlerOverlayStyle);
   final themeNotifier = ThemeNotifier();
   await themeNotifier.loadFromPrefs();
   runApp(
@@ -23,6 +26,8 @@ void main() async {
   );
 }
 
+final wordlerTheme = buildWordlerTheme();
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -30,15 +35,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
     return MaterialApp(
-      title: 'Bananagrams',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        primarySwatch: Colors.blue,
-        brightness: Brightness.dark,
-      ),
+      title: 'Mr. Wordler',
+      // One light theme built from the design tokens (lib/ui/tokens.dart).
+      // A proper dark palette is a later spec, so dark mode points at the
+      // same theme for now; ThemeNotifier's saved value is kept as is.
+      theme: wordlerTheme,
+      darkTheme: wordlerTheme,
       themeMode: themeNotifier.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       builder: (context, child) {
         // Clamp the OS font-scale setting so a phone with "large text"

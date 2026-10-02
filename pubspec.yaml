@@ -35,8 +35,14 @@ flutter:
     - lib_assests/trade.png
     - lib_assests/words.txt
     - lib_assests/letterBackground.png
+    - assets/images/village_preview.png
 
   fonts:
     - family: LilitaOne
       fonts:
         - asset: assets/fonts/LilitaOne-Regular.ttf
+    - family: Atkinson
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: assets/fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
