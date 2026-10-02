@@ -4,7 +4,10 @@ import 'package:vector_math/vector_math_64.dart' show Quad, Vector3;
 
 import '../dictionary/definition_service.dart';
 import 'grid_providers.dart';
+import 'letter_tile.dart';
 import 'tile_location.dart';
+import 'word_landing.dart';
+import 'word_landing_banner.dart';
 
 // The (possibly rotated) Quad InteractiveViewer.builder reports isn't
 // axis-aligned in general, but our board never rotates, so the bounding
@@ -65,11 +68,9 @@ class GridTheme {
   static const classic = GridTheme();
 }
 
-// One board cell or rack slot: a drag source/target rendering the letter
-// (if any) at `location`. Font size is derived from the tile's own
-// rendered size (via LayoutBuilder) rather than a fixed pixel value, so
-// text stays legible whether this is a 10x10 board on a phone or a 25x25
-// board on a tablet.
+// One board cell or rack slot: a drag source/target holding the letter
+// (if any) at `location`, drawn as a LetterTile that sizes itself to the
+// slot, so it stays legible on a 10x10 phone board or a big tablet one.
 class GridTileWidget extends ConsumerWidget {
   const GridTileWidget({
     super.key,
@@ -103,111 +104,102 @@ class GridTileWidget extends ConsumerWidget {
       (s) => (location.zone == TileZone.board ? s.boardCells : s.rackCells)[location.index],
     ));
     final controller = ref.read(gridGameControllerProvider.notifier);
+    final isBoard = location.zone == TileZone.board;
+    // Only the tiles a landing actually involves rebuild (see fxFor).
+    final fx = isBoard ? ref.watch(tileLandingProvider.select((l) => fxFor(l, location.index))) : null;
     final showLandmarkGlow = isLandmark && letter == null;
-    final showPin = location.zone == TileZone.rack && isPinned && letter != null;
+    final showPin = !isBoard && isPinned && letter != null;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double fontSize = (constraints.maxWidth * 0.5).clamp(10.0, 28.0);
-        return DragTarget<TileLocation>(
-          builder: (context, candidateData, rejectedData) {
-            return Container(
-              padding: EdgeInsets.zero,
-              decoration: BoxDecoration(
-                color: candidateData.isNotEmpty
-                    ? Colors.blue[100]
-                    : (showLandmarkGlow
-                        ? Colors.amber.shade200
-                        : (isBoardStyle ? theme.boardColor : theme.rackColor)),
-                border: Border.all(
-                  color: showLandmarkGlow
-                      ? Colors.amber.shade800
-                      : (showPin ? Colors.amber.shade400 : (isBoardStyle ? theme.boardBorderColor : Colors.grey)),
-                  width: showLandmarkGlow ? 2.5 : (showPin ? 2.5 : 1.5),
-                ),
-                borderRadius: isBoardStyle ? BorderRadius.circular(0.0) : BorderRadius.circular(8.0),
-                boxShadow: showLandmarkGlow
-                    ? [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)]
-                    : null,
-              ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: showLandmarkGlow
-                        ? LayoutBuilder(
-                            builder: (context, c) => Icon(Icons.star,
-                                color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
-                          )
-                        : letter != null
-                        ? Draggable<TileLocation>(
-                            data: location,
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: Container(
-                                padding: const EdgeInsets.all(10.0),
-                                decoration: const BoxDecoration(
-                                  color: Colors.deepPurple,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Text(
-                                  letter,
-                                  style: TextStyle(
-                                    fontFamily: "Open Sans",
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: fontSize,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            childWhenDragging: Container(
-                              padding: const EdgeInsets.all(3.0),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                border: Border.all(color: Colors.grey),
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
-                            ),
-                            child: GestureDetector(
-                              // Board tiles can be part of a placed word
-                              // (long-press for a definition); rack tiles
-                              // can be pinned instead, if enabled.
-                              onLongPress: location.zone == TileZone.board
-                                  ? () => _showDefinitionIfAny(context, ref, location.index)
-                                  : (onTogglePin != null ? () => onTogglePin!(location.index) : null),
-                              child: Center(
-                                child: Text(
-                                  letter,
-                                  style: TextStyle(
-                                    fontFamily: "Open Sans",
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: fontSize,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  if (showPin)
-                    Positioned(
-                      top: 1,
-                      right: 1,
-                      child: Icon(Icons.push_pin, size: (fontSize * 0.5).clamp(8.0, 14.0), color: Colors.amber.shade900),
-                    ),
-                ],
-              ),
-            );
-          },
-          onWillAcceptWithDetails: (details) {
-            final currentLetter = (location.zone == TileZone.board
-                ? ref.read(gridGameControllerProvider).boardCells
-                : ref.read(gridGameControllerProvider).rackCells)[location.index];
-            return currentLetter == null;
-          },
-          onAcceptWithDetails: (details) {
-            controller.moveTile(details.data, location);
-          },
+    // The cell is just the slot; the letter is drawn by LetterTile inside.
+    BoxDecoration slotDecoration({required bool dropping}) {
+      final radius = isBoardStyle ? BorderRadius.zero : BorderRadius.circular(8.0);
+      if (dropping) {
+        return BoxDecoration(
+          color: Colors.blue.shade50,
+          border: Border.all(color: Colors.blue.shade700, width: 3),
+          borderRadius: radius,
         );
+      }
+      if (showLandmarkGlow) {
+        return BoxDecoration(
+          color: Colors.amber.shade200,
+          border: Border.all(color: Colors.amber.shade800, width: 2.5),
+          boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
+        );
+      }
+      if (isBoardStyle) {
+        return BoxDecoration(
+          color: theme.boardColor,
+          border: Border.all(color: theme.boardBorderColor.withOpacity(0.25), width: 0.5),
+        );
+      }
+      return BoxDecoration(
+        color: theme.rackColor,
+        border: Border.all(color: Colors.black.withOpacity(0.2), width: 1),
+        borderRadius: radius,
+      );
+    }
+
+    Widget placed(Widget tile) => isBoardStyle ? Padding(padding: const EdgeInsets.all(2), child: tile) : tile;
+
+    return DragTarget<TileLocation>(
+      builder: (context, candidateData, rejectedData) {
+        final Widget content;
+        if (showLandmarkGlow) {
+          content = Center(
+            child: LayoutBuilder(
+              builder: (context, c) =>
+                  Icon(Icons.star, color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
+            ),
+          );
+        } else if (letter != null) {
+          content = Draggable<TileLocation>(
+            data: location,
+            // A fixed, big tile under the finger, so it stays readable
+            // even when the board is zoomed far out.
+            dragAnchorStrategy: (draggable, context, position) => const Offset(28, 28),
+            feedback: Material(
+              color: Colors.transparent,
+              child: Transform.scale(
+                scale: 1.1,
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [BoxShadow(blurRadius: 12, offset: const Offset(0, 6), color: Colors.black.withOpacity(0.3))],
+                  ),
+                  child: LetterTile(letter: letter),
+                ),
+              ),
+            ),
+            // A faint face shows where the tile came from.
+            childWhenDragging: placed(LetterTile.ghost()),
+            child: GestureDetector(
+              // Board tiles can be part of a placed word (long-press for a
+              // definition); rack tiles can be pinned instead, if enabled.
+              onLongPress: isBoard
+                  ? () => _showDefinitionIfAny(context, ref, location.index)
+                  : (onTogglePin != null ? () => onTogglePin!(location.index) : null),
+              child: placed(LetterTile(letter: letter, isBoard: isBoard, isPinned: showPin, fx: fx)),
+            ),
+          );
+        } else {
+          content = const SizedBox.expand();
+        }
+        return Container(
+          decoration: slotDecoration(dropping: candidateData.isNotEmpty),
+          child: content,
+        );
+      },
+      onWillAcceptWithDetails: (details) {
+        final currentLetter = (isBoard
+            ? ref.read(gridGameControllerProvider).boardCells
+            : ref.read(gridGameControllerProvider).rackCells)[location.index];
+        return currentLetter == null;
+      },
+      onAcceptWithDetails: (details) {
+        controller.moveTile(details.data, location);
       },
     );
   }
@@ -262,9 +254,19 @@ class GridBoardView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(gridGameControllerProvider.select((s) => s.config));
 
+    // The word banner sits over the board but outside its zoom, so it's
+    // always full size, on both the eager and the lazy path.
+    Widget withBanner(Widget board) => Stack(
+          fit: StackFit.passthrough,
+          children: [
+            board,
+            const Positioned(top: 8, left: 0, right: 0, child: Center(child: WordLandingBanner())),
+          ],
+        );
+
     final size = cellSize;
     if (size == null) {
-      return InteractiveViewer(
+      return withBanner(InteractiveViewer(
         transformationController: transformController,
         boundaryMargin: boundaryMargin,
         minScale: minScale,
@@ -292,10 +294,10 @@ class GridBoardView extends ConsumerWidget {
             ),
           ),
         ),
-      );
+      ));
     }
 
-    return InteractiveViewer.builder(
+    return withBanner(InteractiveViewer.builder(
       transformationController: transformController,
       boundaryMargin: boundaryMargin,
       minScale: minScale,
@@ -331,7 +333,7 @@ class GridBoardView extends ConsumerWidget {
           ),
         );
       },
-    );
+    ));
   }
 }
 
