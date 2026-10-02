@@ -18,6 +18,13 @@ class BoardStructure {
   const BoardStructure({required this.def, required this.positions});
 }
 
+/// Board index -> its building's color, for the stripe on Words view
+/// tiles that belong to a built magic word.
+Map<int, Color> buildingStripes(List<BoardStructure> structures) => {
+      for (final structure in structures)
+        for (final position in structure.positions) position: structure.def.color,
+    };
+
 List<BoardStructure> computeStructures(Map<String, Set<int>> wordPositions) {
   final structures = <BoardStructure>[];
   for (final entry in wordPositions.entries) {

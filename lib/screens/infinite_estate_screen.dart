@@ -14,7 +14,14 @@ import '../village/village_board_view.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 
+import '../ui/chunky_button.dart';
+import '../ui/pill_chip.dart';
+import '../ui/tokens.dart';
+import '../ui/wordler_dialog.dart';
+import '../ui/wordler_scaffold.dart';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 enum _ViewMode { words, village }
@@ -79,12 +86,12 @@ class InfiniteEstateScreen extends StatelessWidget {
   }
 }
 
-// Earthy green/brown palette so Infinite Estate reads as "open land" at a
-// glance instead of reusing every other mode's orange/purple board.
+// A grass field with no grid lines, so Infinite Estate reads as "open
+// land" at a glance.
 const _estateTheme = GridTheme(
-  boardColor: Color(0xFFA5D6A7), // soft green plot
-  boardBorderColor: Color(0xFF33691E),
-  rackColor: Color(0xFF6D4C41), // warm soil brown
+  boardColor: WColors.grassFieldCell,
+  boardBorderColor: WColors.grassFieldCell, // no grid lines on the field
+  rackColor: WColors.soilDeep,
 );
 
 // Weights a set of currently-valid board words by length x letter rarity.
@@ -113,7 +120,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // rewards growth past this, so re-visiting an unchanged village and
   // ending again doesn't re-pay the same structures.
   int _lastCashedOutScore = 0;
-  DateTime? _lastPopAttempt;
   _ViewMode _viewMode = _ViewMode.words;
   List<BoardStructure> _structures = [];
   bool _computingStructures = false;
@@ -299,18 +305,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       final gotLetter = ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
       await _saveVillage();
       if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFFFFF9C4),
-          title: const Text('🌟 Landmark Discovered!'),
-          content: Text(gotLetter
-              ? 'Your village has grown to reach a landmark. A bonus letter has been added to the end of your rack!'
-              : 'Your village has grown to reach a landmark. Wonderful exploring!'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Wonderful!')),
-          ],
-        ),
+      showWordlerDialog<void>(
+        context,
+        title: 'Landmark discovered!',
+        icon: const Icon(Icons.star, color: WColors.sun, size: 32),
+        bodyText: gotLetter
+            ? 'Your village has grown to reach a landmark. A bonus letter has been added to the end of your rack!'
+            : 'Your village has grown to reach a landmark. Wonderful exploring!',
+        actions: [WordlerDialogAction('Wonderful!', () {})],
       );
     }
   }
@@ -438,29 +440,31 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   void _openBridgeJumpMenu() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFDCEDC8),
-        title: const Text('Jump to Landmark'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              for (final entry in _landmarkOrder.asMap().entries)
-                if (_reachedLandmarks.contains(entry.value))
-                  ListTile(
-                    leading: Icon(Icons.star, color: Colors.amber.shade800),
-                    title: Text('Landmark ${entry.key + 1}'),
-                    onTap: () {
-                      Navigator.pop(context);
+      builder: (dialogContext) => WordlerDialog(
+        title: 'Jump to Landmark',
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final entry in _landmarkOrder.asMap().entries)
+              if (_reachedLandmarks.contains(entry.value))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: WSize.gap2),
+                  child: ChunkyButton(
+                    label: 'Landmark ${entry.key + 1}',
+                    icon: Icons.star,
+                    kind: ChunkyKind.mode,
+                    modeColor: WColors.sun,
+                    expand: true,
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
                       _jumpToLandmark(entry.value);
                     },
                   ),
-            ],
-          ),
+                ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          WordlerDialogAction('Close', () => Navigator.pop(dialogContext), kind: ChunkyKind.secondary),
         ],
       ),
     );
@@ -474,21 +478,19 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     // reopening an unchanged village and ending again awards nothing.
     final earned = (_score - _lastCashedOutScore).clamp(0, 1 << 30);
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFDCEDC8),
-        title: const Text('Wrap up for now?'),
-        content: Text(earned > 0
-            ? 'Cash out $earned points of growth since your last visit? Your village stays exactly as built.'
-            : "You haven't grown the village since your last visit, so there's nothing new to cash out -- but your village is saved either way."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Playing')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Leave Village')),
-        ],
-      ),
+    var confirmed = false;
+    await showWordlerDialog<void>(
+      context,
+      title: 'Wrap up for now?',
+      bodyText: earned > 0
+          ? 'Cash out $earned points of growth since your last visit? Your village stays exactly as built.'
+          : "You haven't grown the village since your last visit, so there's nothing new to cash out -- but your village is saved either way.",
+      actions: [
+        WordlerDialogAction('Keep Playing', () {}),
+        WordlerDialogAction('Leave Village', () => confirmed = true, kind: ChunkyKind.secondary),
+      ],
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     _cashingOut = true;
 
     final isNewHighScore = ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(_score);
@@ -501,30 +503,25 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     }
 
     if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFFDCEDC8),
-        title: const Text('See You Next Time!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Village score: $_score'),
-            if (earned > 0) Text('+${earned ~/ 20} coins, +${earned ~/ 10} XP this visit'),
-            if (isNewHighScore) ...[
-              const SizedBox(height: 8),
-              const Text('New high score!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-            ],
+    showWordlerDialog<void>(
+      context,
+      title: 'See You Next Time!',
+      barrierDismissible: false,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Village score: $_score'),
+          if (earned > 0) Text('+${earned ~/ 20} coins, +${earned ~/ 10} XP this visit'),
+          if (isNewHighScore) ...[
+            const SizedBox(height: 8),
+            Text('New high score!', style: WText.bodyBold.copyWith(color: WColors.grass)),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-            child: const Text('Done'),
-          ),
         ],
       ),
+      actions: [
+        WordlerDialogAction('Done', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+      ],
     );
     _cashingOut = false;
   }
@@ -547,145 +544,153 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     });
 
     if (_restoring) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Infinite Estate'), backgroundColor: const Color(0xFF33691E)),
-        body: const Center(child: CircularProgressIndicator()),
+      return const WordlerScaffold(
+        title: 'Infinite Estate',
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        final now = DateTime.now();
-        if (_lastPopAttempt != null && now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          Navigator.of(context).pop();
-          return;
-        }
-        _lastPopAttempt = now;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Swipe again to exit -- your village is saved automatically'), duration: Duration(seconds: 2)),
-        );
-      },
+    final stripes = buildingStripes(_structures);
+
+    // Leaving never needs a confirm: the village saves after every change.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: wordlerOverlayStyle,
       child: Scaffold(
         resizeToAvoidBottomInset: false,
-        backgroundColor: const Color(0xFFF1F8E9),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF33691E),
-          foregroundColor: Colors.white,
-          // An explicit way out (the double-swipe guard below only covers
-          // the system back gesture). Leaving is always safe: the village
-          // autosaves after every change.
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            tooltip: 'Leave village (it saves automatically)',
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          titleSpacing: 0,
-          // Only the view toggle lives in the title now; score and the
-          // structure abilities moved to their own row below, so nothing
-          // has to be shrunk to fit and text stays full size.
-          title: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SegmentedButton<_ViewMode>(
-              showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(
-                backgroundColor: const Color(0xFF558B2F),
-                foregroundColor: Colors.white,
-                selectedBackgroundColor: Colors.white,
-                selectedForegroundColor: const Color(0xFF33691E),
-                side: const BorderSide(color: Colors.white),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              segments: const [
-                ButtonSegment(value: _ViewMode.words, label: Text('Words')),
-                ButtonSegment(value: _ViewMode.village, label: Text('Village')),
-              ],
-              selected: {_viewMode},
-              onSelectionChanged: (selection) => setState(() => _viewMode = selection.first),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: _endSession,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              child: const Text('End'),
-            ),
-            const SizedBox(width: 4),
-          ],
-        ),
+        backgroundColor: WColors.paper,
         body: SafeArea(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _VillageActionBar(
-                score: _score,
-                onScoreTap: _refreshScore,
-                discoveredCount: _discoveredWords.length,
-                totalMagicWords: kMagicWords.length,
-                onJournal: _openJournal,
-                showWell: _hasStructure('WELL'),
-                wellUsed: _wellUsedThisVisit,
-                onWell: _drawFromWell,
-                showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
-                onBridge: _openBridgeJumpMenu,
-              ),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Recorded (not setState'd -- this must never trigger a
-                    // rebuild mid-layout) purely so the Bridge jump ability
-                    // knows the current viewport size when it's used later.
-                    _boardViewportSize = constraints.biggest;
-                    _centerViewIfNeeded(constraints.biggest);
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: _viewMode == _ViewMode.words
-                          ? GridBoardView(
-                              key: const ValueKey('words'),
-                              theme: _estateTheme,
-                              // Same zoom feel as every other mode's board;
-                              // the generous pan boundary past the lazily-
-                              // built board's own huge extent keeps panning
-                              // to an edge from ever feeling like hitting a
-                              // wall.
-                              minScale: 0.2,
-                              maxScale: 2.5,
-                              boundaryMargin: const EdgeInsets.all(400),
-                              landmarkIndices: _landmarkIndices,
-                              transformController: _transformController,
-                              cellSize: InfiniteEstateScreen.cellSize,
-                            )
-                          : VillageBoardView(
-                              key: const ValueKey('village'),
-                              structures: _structures,
-                              landmarkIndices: _landmarkIndices,
-                              minScale: 0.2,
-                              maxScale: 2.5,
-                              boundaryMargin: const EdgeInsets.all(400),
-                              cellSize: InfiniteEstateScreen.cellSize,
-                            ),
-                    );
-                  },
+              Padding(
+                padding: const EdgeInsets.fromLTRB(WSize.gamePadding, WSize.gamePadding, WSize.gamePadding, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ChunkyIconButton(
+                      icon: Icons.arrow_back,
+                      tooltip: 'Leave village (it saves automatically)',
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: WSize.gap2),
+                    Expanded(
+                      child: _ViewToggle(
+                        mode: _viewMode,
+                        onChanged: (mode) => setState(() => _viewMode = mode),
+                      ),
+                    ),
+                    const SizedBox(width: WSize.gap2),
+                    ChunkyButton(label: 'End', kind: ChunkyKind.danger, size: ChunkySize.small, onPressed: _endSession),
+                  ],
                 ),
               ),
-              // Sized to its content (square tiles, every row visible), so
-              // any spare height goes to the board. A bonus letter adds a
-              // third row.
-              GridRackView(
-                theme: _estateTheme,
-                crossAxisCount: 5,
-                childAspectRatio: 1.0,
-                pinnedIndices: _pinnedRackIndices,
-                onTogglePin: _togglePin,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: WSize.gamePadding, vertical: WSize.gap2),
+                child: _VillageActionBar(
+                  score: _score,
+                  onScoreTap: _refreshScore,
+                  discoveredCount: _discoveredWords.length,
+                  totalMagicWords: kMagicWords.length,
+                  onJournal: _openJournal,
+                  showWell: _hasStructure('WELL'),
+                  wellUsed: _wellUsedThisVisit,
+                  onWell: _drawFromWell,
+                  showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
+                  onBridge: _openBridgeJumpMenu,
+                ),
               ),
-              _SwapButton(
-                allPinned: _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                free: _farmSwapAvailable,
-                canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
-                onSwap: _swapRack,
+              Expanded(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: WColors.grassField,
+                    border: Border.symmetric(horizontal: BorderSide(color: WColors.ink, width: WSize.outline)),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Recorded (not setState'd -- this must never trigger a
+                      // rebuild mid-layout) purely so the Bridge jump ability
+                      // knows the current viewport size when it's used later.
+                      _boardViewportSize = constraints.biggest;
+                      _centerViewIfNeeded(constraints.biggest);
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: _viewMode == _ViewMode.words
+                                  ? GridBoardView(
+                                      key: const ValueKey('words'),
+                                      theme: _estateTheme,
+                                      // Same zoom feel as every other mode's board;
+                                      // the generous pan boundary past the lazily-
+                                      // built board's own huge extent keeps panning
+                                      // to an edge from ever feeling like hitting a
+                                      // wall.
+                                      minScale: 0.2,
+                                      maxScale: 2.5,
+                                      boundaryMargin: const EdgeInsets.all(400),
+                                      landmarkIndices: _landmarkIndices,
+                                      transformController: _transformController,
+                                      cellSize: InfiniteEstateScreen.cellSize,
+                                      stripes: stripes,
+                                    )
+                                  : VillageBoardView(
+                                      key: const ValueKey('village'),
+                                      structures: _structures,
+                                      landmarkIndices: _landmarkIndices,
+                                      minScale: 0.2,
+                                      maxScale: 2.5,
+                                      boundaryMargin: const EdgeInsets.all(400),
+                                      cellSize: InfiniteEstateScreen.cellSize,
+                                    ),
+                            ),
+                          ),
+                          // Explains the stripes until the player has a few
+                          // buildings. Worked out from the live structures,
+                          // not saved.
+                          if (_viewMode == _ViewMode.words && _structures.length < 3)
+                            const Positioned(left: 8, bottom: 8, child: IgnorePointer(child: _StripeHint())),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(WSize.gamePadding, WSize.gap3, WSize.gamePadding, WSize.gamePadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Sized to its content (square tiles, every row
+                    // visible), so any spare height goes to the board. A
+                    // bonus letter adds a third row.
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: WColors.soil,
+                        border: Border.all(color: WColors.ink, width: WSize.outline),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: GridRackView(
+                        theme: _estateTheme,
+                        crossAxisCount: 5,
+                        childAspectRatio: 1.0,
+                        bordered: false,
+                        cellPadding: 3,
+                        pinnedIndices: _pinnedRackIndices,
+                        onTogglePin: _togglePin,
+                      ),
+                    ),
+                    const SizedBox(height: WSize.gap3),
+                    _SwapButton(
+                      allPinned: _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                      free: _farmSwapAvailable,
+                      canAfford:
+                          ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
+                      onSwap: _swapRack,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -695,10 +700,106 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   }
 }
 
-// The row under the AppBar: village score plus every structure ability
-// and the Journal, as full-size labeled buttons. A Wrap (not a Row) so a
-// narrow phone or a large system text size flows onto a second line
-// instead of overflowing or shrinking the text.
+/// Words / Village: a soil track; the selected side is sun-filled with a
+/// check mark, so which view you're in is never in doubt.
+class _ViewToggle extends StatelessWidget {
+  const _ViewToggle({required this.mode, required this.onChanged});
+
+  final _ViewMode mode;
+  final ValueChanged<_ViewMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget side(_ViewMode value, String label) {
+      final selected = mode == value;
+      return Expanded(
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: '$label view',
+          excludeSemantics: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(value),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? WColors.sun : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: selected ? Border.all(color: WColors.ink, width: WSize.outlineSmall) : null,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selected) ...[
+                      const Icon(Icons.check, size: 18, color: WColors.ink),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(label, style: WText.button.copyWith(color: selected ? WColors.ink : WColors.tile)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: WSize.tapTarget - WSize.lip,
+      margin: const EdgeInsets.only(bottom: WSize.lip),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: WColors.soil,
+        border: Border.all(color: WColors.ink, width: WSize.outline),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: wLip(WSize.lip),
+      ),
+      child: Row(
+        children: [
+          side(_ViewMode.words, 'Words'),
+          side(_ViewMode.village, 'Village'),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeHint extends StatelessWidget {
+  const _StripeHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: WColors.card,
+        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 18,
+            height: 6,
+            decoration: BoxDecoration(color: WColors.leaf, borderRadius: BorderRadius.circular(3)),
+          ),
+          const SizedBox(width: 6),
+          Text('Colored stripe = a building', style: WText.label.copyWith(color: WColors.ink)),
+        ],
+      ),
+    );
+  }
+}
+
+// The row under the top bar: village score plus every structure ability
+// and the Journal, as pill chips. A Wrap (not a Row) so a narrow phone or
+// a large system text size flows onto a second line instead of
+// overflowing or shrinking the text.
 class _VillageActionBar extends StatelessWidget {
   const _VillageActionBar({
     required this.score,
@@ -724,65 +825,48 @@ class _VillageActionBar extends StatelessWidget {
   final bool showBridge;
   final VoidCallback onBridge;
 
-  static const _buttonTextStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.bold);
-
   @override
   Widget build(BuildContext context) {
-    ButtonStyle styleWith(Color background) => OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 44),
-          foregroundColor: const Color(0xFF1B5E20),
-          backgroundColor: background,
-          side: const BorderSide(color: Color(0xFF81C784)),
-          textStyle: _buttonTextStyle,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-        );
-    final buttonStyle = styleWith(Colors.white);
-    return Container(
-      width: double.infinity,
-      color: const Color(0xFFDCEDC8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Tooltip(
-            message: 'Village score (tap to recount)',
-            child: OutlinedButton.icon(
-              style: buttonStyle,
-              onPressed: onScoreTap,
-              icon: const Icon(Icons.landscape, size: 20),
-              label: Text('$score'),
-            ),
+    return Wrap(
+      spacing: WSize.gap2,
+      runSpacing: WSize.gap1,
+      children: [
+        PillChip(
+          icon: Icons.landscape,
+          value: '$score',
+          label: 'pts',
+          badgeColor: WColors.leaf,
+          tooltip: 'Village score (tap to recount)',
+          onTap: onScoreTap,
+        ),
+        PillChip(
+          icon: Icons.menu_book,
+          value: 'Journal $discoveredCount/$totalMagicWords',
+          badgeColor: WColors.sun,
+          onTap: onJournal,
+        ),
+        if (showWell)
+          PillChip(
+            icon: Icons.water_drop,
+            value: wellUsed ? 'Well used' : 'Free letter',
+            badgeColor: WColors.sky,
+            color: WColors.skyTint,
+            enabled: !wellUsed,
+            onTap: onWell,
           ),
-          OutlinedButton.icon(
-            style: buttonStyle,
-            onPressed: onJournal,
-            icon: const Icon(Icons.menu_book, size: 20),
-            label: Text('Journal $discoveredCount/$totalMagicWords'),
+        if (showBridge)
+          PillChip(
+            icon: Icons.alt_route,
+            value: 'Jump',
+            badgeColor: WColors.wood,
+            onTap: onBridge,
           ),
-          if (showWell)
-            OutlinedButton.icon(
-              style: styleWith(wellUsed ? Colors.grey.shade200 : const Color(0xFFE1F5FE)),
-              onPressed: wellUsed ? null : onWell,
-              icon: const Icon(Icons.water_drop, size: 20),
-              label: Text(wellUsed ? 'Well used' : 'Free letter'),
-            ),
-          if (showBridge)
-            OutlinedButton.icon(
-              style: buttonStyle,
-              onPressed: onBridge,
-              icon: const Icon(Icons.alt_route, size: 20),
-              label: const Text('Jump'),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-// "Swap letters" under the rack, with a chip saying what it costs. spec-03
-// restyles it; this is the plain version.
+// "Swap letters" under the rack, with a chip saying what it costs.
 class _SwapButton extends StatelessWidget {
   const _SwapButton({
     required this.allPinned,
@@ -801,37 +885,25 @@ class _SwapButton extends StatelessWidget {
     const cost = InfiniteEstateScreen.swapCost;
     final enabled = !allPinned && (free || canAfford);
     final String? chip = allPinned ? null : (free ? 'Free - Farm' : (canAfford ? '$cost coins' : 'Need $cost coins'));
-    final chipColor = !enabled ? Colors.grey.shade600 : (free ? const Color(0xFF2E7D32) : const Color(0xFF6D4C41));
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: ElevatedButton(
-          onPressed: enabled ? onSwap : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFDCEDC8),
-            foregroundColor: const Color(0xFF1B5E20),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.swap_horiz, size: 22),
-              const SizedBox(width: 6),
-              Flexible(child: Text(allPinned ? 'All letters pinned' : 'Swap letters', overflow: TextOverflow.ellipsis)),
-              if (chip != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: chipColor, borderRadius: BorderRadius.circular(12)),
-                  child: Text(chip, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+    final chipColor = !enabled ? WColors.boardCell : (free ? WColors.leaf : WColors.sun);
+    return ChunkyButton(
+      label: allPinned ? 'All letters pinned' : 'Swap letters',
+      icon: Icons.swap_horiz,
+      kind: ChunkyKind.secondary,
+      size: ChunkySize.big,
+      expand: true,
+      onPressed: enabled ? onSwap : null,
+      trailing: chip == null
+          ? null
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: chipColor,
+                border: Border.all(color: enabled ? WColors.ink : WColors.muted, width: WSize.outlineSmall),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(chip, style: WText.label.copyWith(color: enabled ? WColors.ink : WColors.muted)),
+            ),
     );
   }
 }
