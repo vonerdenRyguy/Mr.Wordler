@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 // ChangeNotifierProvider is defined by both riverpod and provider; this
 // app uses provider's version for ThemeNotifier, so hide riverpod's.
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
-import 'package:namer_app/screens/menu_screen.dart';
+import 'package:namer_app/screens/home_screen.dart';
 import 'package:namer_app/ui/tokens.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
@@ -58,7 +58,7 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const MenuScreen(),
+      home: const HomeScreen(),
     );
   }
 }

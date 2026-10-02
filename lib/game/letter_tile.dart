@@ -29,12 +29,15 @@ class LetterTile extends StatefulWidget {
     this.isBoard = false,
     this.isPinned = false,
     this.fx,
+    this.faceColor,
   });
 
   final String letter;
   final bool isBoard;
   final bool isPinned;
   final TileFx? fx;
+  // Overrides the cream face (e.g. a mode-colored tile on Home).
+  final Color? faceColor;
 
   /// The plain face with no letter, used as the "ghost" left behind while
   /// a tile is being dragged.
@@ -137,7 +140,7 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
     final lip = (side * 0.07).clamp(2.0, 4.0);
     final outlineWidth = pinned ? 2.5 : (widget.isBoard ? (side < 30 ? 1.0 : 1.5) : 2.0);
     final outlineColor = pinned ? _pinAccent : _ink;
-    final baseFace = pinned ? _pinFace : _face;
+    final baseFace = pinned ? _pinFace : (widget.faceColor ?? _face);
     final face = Color.lerp(baseFace, _glowFace, glow)!;
 
     final tile = SizedBox(
