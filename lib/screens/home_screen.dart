@@ -12,13 +12,12 @@ import '../ui/tokens.dart';
 import '../village/magic_word.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
-import 'game_screen.dart';
 import 'infinite_estate_screen.dart';
+import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 import 'theme_rush_screen.dart';
-import 'time_attack_screen.dart';
 
 // The app's one entry screen: your level and coins, your village, today's
 // puzzle, and the three quick modes. Replaces the old menu and the
@@ -104,7 +103,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               color: WModeColors.freePlay,
                               name: 'Free Play',
                               line: 'No clock',
-                              onTap: () => _open(const GameScreen()),
+                              onTap: () => _open(const FreePlayStartPage()),
                             ),
                           ),
                           const SizedBox(width: WSize.gap2),
@@ -114,7 +113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               color: WModeColors.timeAttack,
                               name: 'Time Attack',
                               line: '3 minutes',
-                              onTap: () => _open(const TimeAttackScreen()),
+                              onTap: () => _open(const TimeAttackStartPage()),
                             ),
                           ),
                           const SizedBox(width: WSize.gap2),

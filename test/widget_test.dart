@@ -51,10 +51,16 @@ Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
 Future<void> openFreePlay(WidgetTester tester) async {
   await tester.tap(find.text('Free Play'));
   await tester.pumpAndSettle();
+  expect(find.text('Build words at your own pace.'), findsOneWidget);
+  await tester.tap(find.text('Start'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> openTimeAttack(WidgetTester tester) async {
   await tester.tap(find.text('Time Attack'));
+  await tester.pumpAndSettle();
+  expect(find.text('Use every letter before the clock runs out.'), findsOneWidget);
+  await tester.tap(find.text('Start - 3:00'));
   await tester.pumpAndSettle();
 }
 
@@ -278,7 +284,8 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text("Today's theme:"), findsOneWidget);
+    expect(find.text('Spell one word that fits the theme.'), findsOneWidget);
+    expect(find.textContaining('Theme: '), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
 
     await tester.tap(find.text('Start'));
