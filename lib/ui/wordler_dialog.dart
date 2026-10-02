@@ -92,12 +92,22 @@ Future<T?> showWordlerDialog<T>(
   return showDialog<T>(
     context: context,
     barrierDismissible: barrierDismissible,
-    builder: (context) => WordlerDialog(
+    builder: (dialogContext) => WordlerDialog(
       title: title,
       bodyText: bodyText,
       body: body,
       icon: icon,
-      actions: actions,
+      actions: [
+        for (final action in actions)
+          WordlerDialogAction(
+            action.label,
+            () {
+              Navigator.of(dialogContext).pop();
+              action.onPressed();
+            },
+            kind: action.kind,
+          ),
+      ],
     ),
   );
 }

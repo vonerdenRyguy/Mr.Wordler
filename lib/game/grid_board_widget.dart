@@ -8,6 +8,7 @@ import 'letter_tile.dart';
 import 'tile_location.dart';
 import 'word_landing.dart';
 import 'word_landing_banner.dart';
+import '../ui/tokens.dart';
 
 // The (possibly rotated) Quad InteractiveViewer.builder reports isn't
 // axis-aligned in general, but our board never rotates, so the bounding
@@ -51,18 +52,18 @@ Future<void> _showDefinitionIfAny(BuildContext context, WidgetRef ref, int board
   );
 }
 
-// Board/rack color theme. Defaults match the look every mode has always
-// had; a mode can pass its own (e.g. Infinite Estate's land/estate
-// palette) without affecting the others, since they all share this widget.
+// Board/rack color theme. Defaults are the 10x10 modes' token colors; a
+// mode can pass its own (e.g. Infinite Estate's grass field) without
+// affecting the others, since they all share this widget.
 class GridTheme {
   final Color boardColor;
   final Color rackColor;
   final Color boardBorderColor;
 
   const GridTheme({
-    this.boardColor = Colors.orangeAccent,
-    this.rackColor = Colors.deepPurple,
-    this.boardBorderColor = Colors.black,
+    this.boardColor = WColors.boardCell,
+    this.rackColor = WColors.soilDeep,
+    this.boardBorderColor = WColors.boardBed,
   });
 
   static const classic = GridTheme();
@@ -221,6 +222,7 @@ class GridBoardView extends ConsumerWidget {
     this.landmarkIndices = const {},
     this.transformController,
     this.cellSize,
+    this.cellGap = 0,
   });
 
   final GridTheme theme;
@@ -249,6 +251,9 @@ class GridBoardView extends ConsumerWidget {
   // current viewport are built -- so the board can be arbitrarily large
   // while only ever rendering a screenful of cells at a time.
   final double? cellSize;
+  // Space between cells on the eager (10x10) path, so the board's bed
+  // shows through as thin lines between them.
+  final double cellGap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -279,7 +284,7 @@ class GridBoardView extends ConsumerWidget {
               physics: const NeverScrollableScrollPhysics(),
               children: List.generate(config.boardCellCount, (index) {
                 return Padding(
-                  padding: EdgeInsets.zero,
+                  padding: EdgeInsets.all(cellGap / 2),
                   child: AspectRatio(
                     aspectRatio: 1.0,
                     child: GridTileWidget(
@@ -346,9 +351,14 @@ class GridRackView extends ConsumerWidget {
     this.pinnedIndices = const {},
     this.onTogglePin,
     this.childAspectRatio = 0.7,
+    this.bordered = true,
+    this.cellPadding = 4.0,
   });
 
   final int crossAxisCount;
+  // False when the caller draws its own frame around the rack.
+  final bool bordered;
+  final double cellPadding;
   // Width/height of each rack cell. Every 10x10 mode keeps the original
   // 0.7 (tall cells inside a fixed-flex rack area); Infinite Estate passes
   // 1.0 and lets the rack size itself to its content so all of its rows
@@ -365,7 +375,7 @@ class GridRackView extends ConsumerWidget {
     // extra bonus slots beyond its base size (see drawBonusLetter).
     final rackSize = ref.watch(gridGameControllerProvider.select((s) => s.rackCells.length));
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: Colors.black, width: 2.0)),
+      decoration: bordered ? BoxDecoration(border: Border.all(color: Colors.black, width: 2.0)) : null,
       child: Center(
         child: GridView.count(
           physics: const NeverScrollableScrollPhysics(),
@@ -374,7 +384,7 @@ class GridRackView extends ConsumerWidget {
           shrinkWrap: true,
           children: List.generate(rackSize, (index) {
             return Padding(
-              padding: const EdgeInsets.all(4.0),
+              padding: EdgeInsets.all(cellPadding),
               child: AspectRatio(
                 aspectRatio: 1.0,
                 child: GridTileWidget(

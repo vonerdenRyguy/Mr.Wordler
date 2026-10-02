@@ -7,12 +7,17 @@ import '../daily/daily_challenge_data.dart';
 import '../daily/daily_seed.dart';
 import '../daily/daily_tier.dart';
 import '../daily/share_card.dart';
-import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
-import '../game/tile_location.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../portfolio/property_tier.dart';
+import '../ui/chunky_button.dart';
+import '../ui/chunky_card.dart';
+import '../ui/game_layout.dart';
+import '../ui/tokens.dart';
+import '../ui/wordler_dialog.dart';
+import '../ui/wordler_scaffold.dart';
+import 'game_screen.dart' show showCheckResultDialog;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,9 +89,9 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
   Widget build(BuildContext context) {
     switch (_loadState) {
       case _LoadState.loading:
-        return Scaffold(
-          appBar: AppBar(title: const Text('Daily Estate Challenge'), backgroundColor: Colors.deepPurple),
-          body: const Center(child: CircularProgressIndicator()),
+        return const WordlerScaffold(
+          title: 'Daily Estate Challenge',
+          body: Center(child: CircularProgressIndicator()),
         );
       case _LoadState.alreadyPlayedToday:
         return const _AlreadyPlayedView();
@@ -110,35 +115,40 @@ class _AlreadyPlayedView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(dailyChallengeProvider);
     final result = data.lastResult;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Daily Estate Challenge'), backgroundColor: Colors.deepPurple),
-      backgroundColor: Colors.orangeAccent,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+    return WordlerScaffold(
+      title: 'Daily Estate Challenge',
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(WSize.screenPadding),
+        child: ChunkyCard(
+          hero: true,
+          color: WColors.skyTint,
+          padding: const EdgeInsets.all(20),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.check_circle, color: Colors.deepPurple, size: 64),
-              const SizedBox(height: 16),
-              const Text("You've already played today!",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+              const Icon(Icons.check_circle, color: WColors.grass, size: 64),
               const SizedBox(height: 12),
-              Text('Current streak: ${data.streak} day${data.streak == 1 ? '' : 's'}'),
+              const Text("You've already played today!", style: WText.heading, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              Text('Current streak: ${data.streak} day${data.streak == 1 ? '' : 's'}', style: WText.bodyBold),
               if (result != null) ...[
                 const SizedBox(height: 8),
-                Text(result.completed
-                    ? 'Completed in ${_formatSeconds(result.timeSeconds)} -- ${result.tierAwarded.label}${result.bonusWordFound ? ' (bonus word found!)' : ''}'
-                    : "Today's attempt: gave up"),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share Result'),
+                Text(
+                  result.completed
+                      ? 'Completed in ${_formatSeconds(result.timeSeconds)} -- ${result.tierAwarded.label}${result.bonusWordFound ? ' (bonus word found!)' : ''}'
+                      : "Today's attempt: gave up",
+                  style: WText.body,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ChunkyButton(
+                  label: 'Share Result',
+                  icon: Icons.share,
+                  kind: ChunkyKind.secondary,
                   onPressed: () => _shareResult(context, result, data.streak),
                 ),
               ],
-              const SizedBox(height: 20),
-              const Text('Come back tomorrow for a new puzzle!'),
+              const SizedBox(height: 16),
+              const Text('Come back tomorrow for a new puzzle!', style: WText.body, textAlign: TextAlign.center),
             ],
           ),
         ),
@@ -180,7 +190,6 @@ class _DailyChallengeBody extends ConsumerStatefulWidget {
 
 class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
   late StopwatchManager _stopwatchManager;
-  DateTime? _lastPopAttempt;
   bool _roundEnded = false;
 
   @override
@@ -204,19 +213,17 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
   }
 
   Future<void> _giveUp() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
-        title: const Text('Give up?'),
-        content: const Text("You won't be able to try again today."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Playing')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Give Up')),
-        ],
-      ),
+    var confirmed = false;
+    await showWordlerDialog<void>(
+      context,
+      title: 'Give up?',
+      bodyText: "You won't be able to try again today.",
+      actions: [
+        WordlerDialogAction('Keep Playing', () {}),
+        WordlerDialogAction('Give Up', () => confirmed = true, kind: ChunkyKind.danger),
+      ],
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (_roundEnded) return;
     _roundEnded = true;
     _stopwatchManager.stop();
@@ -239,32 +246,7 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
 
     final isWin = ref.read(gridGameControllerProvider).isPoolEmptied;
     if (!(isWin && result.areValid && result.areConnected)) {
-      if (!result.areConnected && result.areValid) {
-        showDialog(
-          context: context,
-          builder: (context) => const AlertDialog(
-            backgroundColor: Colors.orangeAccent,
-            title: Text('All valid words must be connected'),
-          ),
-        );
-      } else {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: Colors.orangeAccent,
-            title: Text(result.areValid ? 'Valid Words!' : 'Invalid Words:'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: result.words
-                  .map((word) => Text(word,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: result.areValid ? Colors.green : Colors.red)))
-                  .toList(),
-            ),
-          ),
-        );
-      }
+      showCheckResultDialog(context, result);
       return;
     }
 
@@ -293,137 +275,80 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
     portfolioController.addXp(bonusWordFound ? 150 : 100);
 
     if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.orangeAccent,
-        title: const Text('Daily Challenge Complete!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Time: ${_stopwatchManager.elapsedTime}'),
+    showWordlerDialog<void>(
+      context,
+      title: 'Daily Challenge Complete!',
+      barrierDismissible: false,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Time: ${_stopwatchManager.elapsedTime}'),
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(tier.icon, color: WColors.ink),
+            const SizedBox(width: 8),
+            Text('Awarded: ${tier.label}', style: WText.bodyBold),
+          ]),
+          if (bonusWordFound) ...[
             const SizedBox(height: 8),
-            Row(children: [
-              Icon(tier.icon, color: Colors.deepPurple),
-              const SizedBox(width: 8),
-              Text('Awarded: ${tier.label}'),
-            ]),
-            if (bonusWordFound) ...[
-              const SizedBox(height: 8),
-              Text("Bonus word found: ${widget.bonusWord!.toUpperCase()}!",
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-            ] else if (widget.bonusWord != null) ...[
-              const SizedBox(height: 8),
-              Text("Today's bonus word was ${widget.bonusWord!.toUpperCase()} -- missed it this time!"),
-            ],
+            Text("Bonus word found: ${widget.bonusWord!.toUpperCase()}!",
+                style: WText.bodyBold.copyWith(color: WColors.grass)),
+          ] else if (widget.bonusWord != null) ...[
+            const SizedBox(height: 8),
+            Text("Today's bonus word was ${widget.bonusWord!.toUpperCase()} -- missed it this time!"),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              final text = buildDailyShareText(
-                dateKey: dailyDateKey(widget.today),
-                completed: true,
-                timeSeconds: timeSeconds,
-                streak: ref.read(dailyChallengeProvider).streak,
-                tier: tier,
-                bonusWordFound: bonusWordFound,
-              );
-              Clipboard.setData(ClipboardData(text: text));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Result copied to clipboard!')),
-              );
-            },
-            child: const Text('Share'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-            child: const Text('Done'),
-          ),
         ],
       ),
+      actions: [
+        WordlerDialogAction('Done', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+        WordlerDialogAction('Share', () {
+          final text = buildDailyShareText(
+            dateKey: dailyDateKey(widget.today),
+            completed: true,
+            timeSeconds: timeSeconds,
+            streak: ref.read(dailyChallengeProvider).streak,
+            tier: tier,
+            bonusWordFound: bonusWordFound,
+          );
+          Clipboard.setData(ClipboardData(text: text));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Result copied to clipboard!')),
+          );
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }, kind: ChunkyKind.secondary),
+      ],
+    );
+  }
+
+  // Leaving doesn't record an attempt, so the player can come back later
+  // today and start again with the same letters.
+  void _confirmLeave() {
+    if (_roundEnded) {
+      Navigator.of(context).pop();
+      return;
+    }
+    confirmLeaveRound(
+      context,
+      title: "Leave today's puzzle?",
+      body: 'You can come back later today and start again with the same letters.',
+      onLeave: _stopwatchManager.stop,
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // The back gesture asks first, the same as the Leave button.
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        final now = DateTime.now();
-        if (_lastPopAttempt != null && now.difference(_lastPopAttempt!) < const Duration(seconds: 2)) {
-          _stopwatchManager.stop();
-          Navigator.of(context).pop();
-          return;
-        }
-        _lastPopAttempt = now;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Swipe again to exit (progress is not saved)'), duration: Duration(seconds: 2)),
-        );
+        if (!didPop) _confirmLeave();
       },
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          toolbarHeight: 90,
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              DragTarget<TileLocation>(
-                builder: (context, candidateData, rejectData) {
-                  return Container(
-                    decoration: BoxDecoration(color: Colors.orangeAccent, borderRadius: BorderRadius.circular(8.0)),
-                    child: Image.asset('lib_assests/trade.png', height: kToolbarHeight - 5),
-                  );
-                },
-                onWillAcceptWithDetails: (details) {
-                  if (details.data.zone != TileZone.rack) return false;
-                  final rack = ref.read(gridGameControllerProvider).rackCells;
-                  final emptyCount = rack
-                      .asMap()
-                      .entries
-                      .where((e) => e.value == null || e.key == details.data.index)
-                      .length;
-                  return emptyCount >= 3;
-                },
-                onAcceptWithDetails: (details) {
-                  ref.read(gridGameControllerProvider.notifier).tradeIn(details.data.index);
-                },
-              ),
-              ElevatedButton(
-                onPressed: _onCheckPressed,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.green),
-                child: const Text('Check'),
-              ),
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                    color: Colors.orangeAccent,
-                    border: Border.all(color: Colors.white),
-                    borderRadius: BorderRadius.circular(8.0)),
-                child: Text(_stopwatchManager.elapsedTime, style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.deepPurple,
-          automaticallyImplyLeading: false,
-          actions: [
-            TextButton(
-              onPressed: _giveUp,
-              child: const Text('Give Up', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-        body: const SafeArea(
-          child: Column(
-            children: [
-              Expanded(flex: 5, child: GridBoardView()),
-              Expanded(flex: 3, child: GridRackView()),
-              Expanded(flex: 1, child: ColoredBox(color: Colors.orangeAccent)),
-            ],
-          ),
-        ),
+      child: GameLayout(
+        onLeave: _confirmLeave,
+        pill: GamePill(label: 'Time', value: _stopwatchManager.elapsedTime, color: WModeColors.daily),
+        giveUp: _giveUp,
+        onCheck: _onCheckPressed,
       ),
     );
   }
