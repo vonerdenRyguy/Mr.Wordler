@@ -23,6 +23,11 @@ class GridConfig {
   // empty until a trade-in returns letters to the pool.
   final bool refillRackOnPlace;
 
+  // Infinite Estate: every rack refill uses drawBalanced (balanced_draw.dart)
+  // instead of a plain random draw, so vowels never run out and hard
+  // letters can't pile up. Off for every 10x10 mode.
+  final bool balancedRefill;
+
   const GridConfig({
     required this.boardWidth,
     required this.boardHeight,
@@ -30,6 +35,7 @@ class GridConfig {
     this.totalPoolSize = 144,
     this.randomSeed,
     this.refillRackOnPlace = false,
+    this.balancedRefill = false,
   });
 
   int get boardCellCount => boardWidth * boardHeight;

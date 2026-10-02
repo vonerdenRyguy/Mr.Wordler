@@ -12,6 +12,7 @@ import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/village_board_view.dart';
 import '../village/village_save.dart';
+import '../village/village_save_migration.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +25,8 @@ enum _ViewMode { words, village }
 // feel as every other mode's board and generous pan range so the space
 // reads as open rather than a small fixed grid. The rack refills itself
 // the instant a tile leaves it for the board (GridConfig.refillRackOnPlace),
-// so there's no separate "trade in" affordance.
+// with balanced draws (GridConfig.balancedRefill) so it never jams; a
+// "Swap letters" button trades the whole unpinned rack for coins.
 //
 // 500x500 = 250,000 cells -- far too many to build eagerly (see every
 // other mode's GridBoardView, which does exactly that and is fine at
@@ -43,6 +45,10 @@ class InfiniteEstateScreen extends StatelessWidget {
   const InfiniteEstateScreen({super.key});
 
   static const int boardSize = 500;
+  // 10 big tiles in 2 rows of 5 (was 21). Saves from the 21-tile days are
+  // migrated on load -- see village_save_migration.dart.
+  static const int rackSize = 10;
+  static const int swapCost = 5;
   // Fixed on-screen size (at zoom scale 1.0) of one board cell, in logical
   // pixels -- see GridBoardView.cellSize. Chosen to be comfortably
   // tappable without the lazily-built board needing to know anything
@@ -61,9 +67,10 @@ class InfiniteEstateScreen extends StatelessWidget {
           const GridConfig(
             boardWidth: boardSize,
             boardHeight: boardSize,
-            rackSize: 21,
+            rackSize: rackSize,
             totalPoolSize: totalPoolSize,
             refillRackOnPlace: true,
+            balancedRefill: true,
           ),
         ),
       ],
@@ -130,6 +137,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // since that would just be a way to farm free letters). Session-only,
   // not persisted.
   bool _wellUsedThisVisit = false;
+  // Farm structure ability: the first Swap each visit is free. Works like
+  // the Well's limit: session-only, reset when the screen is reopened.
+  bool _farmSwapUsedThisVisit = false;
 
   // Bridge structure ability: drives GridBoardView's InteractiveViewer to
   // jump/pan to a reached landmark. _boardViewportSize is captured by the
@@ -170,18 +180,29 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
     if (!mounted) return;
+    var needsSave = false;
     if (saved != null) {
-      ref.read(gridGameControllerProvider.notifier).restoreState(
-            boardCells: saved.boardCells,
-            rackCells: saved.rackCells,
-            pool: saved.pool,
-            dealtLetters: saved.dealtLetters,
-          );
-      _lastCashedOutScore = saved.lastCashedOutScore;
-      _reachedLandmarks = saved.reachedLandmarks;
-      _discoveredWords = saved.discoveredWords;
+      // Older saves (21-letter rack) are brought up to the current format
+      // first; the extra letters go back to the pool, nothing is lost.
+      final migrated = migrateVillageSave(saved, rackSize: InfiniteEstateScreen.rackSize);
+      final controller = ref.read(gridGameControllerProvider.notifier);
+      controller.restoreState(
+        boardCells: migrated.boardCells,
+        rackCells: migrated.rackCells,
+        pool: migrated.pool,
+        dealtLetters: migrated.dealtLetters,
+      );
+      // A migrated rack that held fewer than 10 letters is topped up.
+      controller.fillEmptyBaseRackSlots();
+      _lastCashedOutScore = migrated.lastCashedOutScore;
+      _reachedLandmarks = migrated.reachedLandmarks;
+      _discoveredWords = migrated.discoveredWords;
+      needsSave = saved.saveVersion != migrated.saveVersion;
     }
     setState(() => _restoring = false);
+    // Write the migrated save straight away so migration only ever runs
+    // once.
+    if (needsSave) await _saveVillage();
     // Bring score/structures in sync with whatever board we ended up
     // with (restored or fresh).
     await _refreshStructures();
@@ -341,6 +362,32 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(newScore);
       }
     }
+  }
+
+  bool get _farmSwapAvailable => _hasStructure('FARM') && !_farmSwapUsedThisVisit;
+
+  // Swap letters: pinned letters stay, the rest are traded for balanced
+  // draws. The Farm's free swap is used first if available; otherwise it
+  // costs swapCost coins, spent only once the swap actually happened.
+  void _swapRack() {
+    final free = _farmSwapAvailable;
+    if (!free && ref.read(portfolioProvider).currency < InfiniteEstateScreen.swapCost) return;
+    final swapped = ref.read(gridGameControllerProvider.notifier).swapRack(keepIndices: _pinnedRackIndices);
+    if (!swapped) return;
+    if (free) {
+      setState(() => _farmSwapUsedThisVisit = true);
+    } else {
+      ref.read(portfolioProvider.notifier).spendCurrency(InfiniteEstateScreen.swapCost);
+    }
+  }
+
+  // True when no base rack letter is left unpinned, i.e. Swap would have
+  // nothing to trade.
+  bool _allBaseSlotsPinned(List<String?> rack) {
+    for (int i = 0; i < InfiniteEstateScreen.rackSize && i < rack.length; i++) {
+      if (rack[i] != null && !_pinnedRackIndices.contains(i)) return false;
+    }
+    return true;
   }
 
   void _drawFromWell() {
@@ -608,7 +655,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                               maxScale: 2.5,
                               boundaryMargin: const EdgeInsets.all(400),
                               landmarkIndices: _landmarkIndices,
-                              preferBalancedRefill: _hasStructure('FARM'),
                               transformController: _transformController,
                               cellSize: InfiniteEstateScreen.cellSize,
                             )
@@ -625,15 +671,21 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                   },
                 ),
               ),
-              // Sized to its content (square tiles, every row visible)
-              // instead of a fixed share of the screen, which used to cut
-              // off the bottom row of the 21-letter rack. Grows by a row if
-              // bonus letters push it past 21.
+              // Sized to its content (square tiles, every row visible), so
+              // any spare height goes to the board. A bonus letter adds a
+              // third row.
               GridRackView(
                 theme: _estateTheme,
+                crossAxisCount: 5,
                 childAspectRatio: 1.0,
                 pinnedIndices: _pinnedRackIndices,
                 onTogglePin: _togglePin,
+              ),
+              _SwapButton(
+                allPinned: _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                free: _farmSwapAvailable,
+                canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
+                onSwap: _swapRack,
               ),
             ],
           ),
@@ -724,6 +776,61 @@ class _VillageActionBar extends StatelessWidget {
               label: const Text('Jump'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// "Swap letters" under the rack, with a chip saying what it costs. spec-03
+// restyles it; this is the plain version.
+class _SwapButton extends StatelessWidget {
+  const _SwapButton({
+    required this.allPinned,
+    required this.free,
+    required this.canAfford,
+    required this.onSwap,
+  });
+
+  final bool allPinned;
+  final bool free;
+  final bool canAfford;
+  final VoidCallback onSwap;
+
+  @override
+  Widget build(BuildContext context) {
+    const cost = InfiniteEstateScreen.swapCost;
+    final enabled = !allPinned && (free || canAfford);
+    final String? chip = allPinned ? null : (free ? 'Free - Farm' : (canAfford ? '$cost coins' : 'Need $cost coins'));
+    final chipColor = !enabled ? Colors.grey.shade600 : (free ? const Color(0xFF2E7D32) : const Color(0xFF6D4C41));
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton(
+          onPressed: enabled ? onSwap : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFDCEDC8),
+            foregroundColor: const Color(0xFF1B5E20),
+            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.swap_horiz, size: 22),
+              const SizedBox(width: 6),
+              Flexible(child: Text(allPinned ? 'All letters pinned' : 'Swap letters', overflow: TextOverflow.ellipsis)),
+              if (chip != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: chipColor, borderRadius: BorderRadius.circular(12)),
+                  child: Text(chip, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

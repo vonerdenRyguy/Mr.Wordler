@@ -16,6 +16,12 @@ class VillageSaveData {
   final int lastCashedOutScore;
   final Set<int> reachedLandmarks;
   final Set<String> discoveredWords;
+  // Format version. 1 = the original 21-letter rack (saves written before
+  // this field existed); 2 = the 10-letter rack. See
+  // village_save_migration.dart.
+  final int saveVersion;
+
+  static const int currentVersion = 2;
 
   const VillageSaveData({
     required this.boardCells,
@@ -25,6 +31,7 @@ class VillageSaveData {
     required this.lastCashedOutScore,
     this.reachedLandmarks = const {},
     this.discoveredWords = const {},
+    this.saveVersion = currentVersion,
   });
 
   Map<String, dynamic> toJson() => {
@@ -35,6 +42,7 @@ class VillageSaveData {
         'lastCashedOutScore': lastCashedOutScore,
         'reachedLandmarks': reachedLandmarks.toList(),
         'discoveredWords': discoveredWords.toList(),
+        'saveVersion': saveVersion,
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -47,6 +55,7 @@ class VillageSaveData {
             (json['reachedLandmarks'] as List?)?.map((e) => e as int).toSet() ?? const {},
         discoveredWords:
             (json['discoveredWords'] as List?)?.map((e) => e as String).toSet() ?? const {},
+        saveVersion: json['saveVersion'] as int? ?? 1,
       );
 }
 

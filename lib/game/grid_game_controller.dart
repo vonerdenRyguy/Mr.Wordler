@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart';
+import 'balanced_draw.dart';
 import 'grid_config.dart';
 import 'grid_game_state.dart';
 import 'tile_location.dart';
@@ -12,9 +15,12 @@ import 'tile_location.dart';
 // player can perform on them. UI-specific behavior (timers, win/lose
 // screens, rewards) lives in each mode's screen, built on top of this.
 class GridGameController extends StateNotifier<GridGameState> {
-  GridGameController(GridConfig config) : super(_initialState(config));
+  GridGameController(GridConfig config, {Random? random})
+      : _random = random ?? Random(),
+        super(_initialState(config));
 
   final WordValidator _validator = WordValidator();
+  final Random _random;
 
   static GridGameState _initialState(GridConfig config) {
     final pool = LetterGenerator.generateLetters(
@@ -36,20 +42,9 @@ class GridGameController extends StateNotifier<GridGameState> {
   List<String?> _cellsFor(TileZone zone) =>
       zone == TileZone.board ? state.boardCells : state.rackCells;
 
-  static const _vowels = {'A', 'E', 'I', 'O', 'U'};
-
   // Moves a tile from one slot to another (board<->board, rack<->rack, or
   // board<->rack). No-ops if `from` is empty or `to` is already occupied.
-  //
-  // `preferBalancedRefill` (used by Infinite Estate/Village's Farm
-  // structure ability, off by default/for every other mode) only affects
-  // the auto-refill-on-place behavior below: instead of a uniformly
-  // random draw, it prefers whichever of vowel/consonant the rack (after
-  // this move) has fewer of, falling back to a random draw if the pool
-  // has none of that type. Purely a nicer distribution, never a worse one
-  // -- an unlucky player never ends up worse off than the random draw
-  // would have left them.
-  void moveTile(TileLocation from, TileLocation to, {bool preferBalancedRefill = false}) {
+  void moveTile(TileLocation from, TileLocation to) {
     final fromCells = List<String?>.from(_cellsFor(from.zone));
     final letter = fromCells[from.index];
     if (letter == null) return;
@@ -79,7 +74,9 @@ class GridGameController extends StateNotifier<GridGameState> {
         from.index < state.config.rackSize &&
         state.pool.isNotEmpty) {
       final newPool = List<String>.from(state.pool);
-      final drawn = preferBalancedRefill ? _drawBalancedLetter(newPool, rack) : _drawRandomLetter(newPool);
+      // `rack` still has this slot empty, which is exactly what
+      // drawBalanced expects.
+      final drawn = _drawRefill(newPool, rack);
       rack = List<String?>.from(rack);
       rack[from.index] = drawn;
       state = state.copyWith(
@@ -114,19 +111,74 @@ class GridGameController extends StateNotifier<GridGameState> {
     return pool.removeLast();
   }
 
-  String _drawBalancedLetter(List<String> pool, List<String?> currentRack) {
-    final vowelCount = currentRack.where((c) => c != null && _vowels.contains(c)).length;
-    final consonantCount = currentRack.where((c) => c != null && !_vowels.contains(c)).length;
-    final wantVowel = vowelCount < consonantCount;
+  // One refill draw for a rack slot. `rack` must have that slot empty.
+  String _drawRefill(List<String> pool, List<String?> rack) =>
+      state.config.balancedRefill ? drawBalanced(pool, rack, _random) : _drawRandomLetter(pool);
 
-    pool.shuffle();
-    final matchIndex = pool.indexWhere((letter) => _vowels.contains(letter) == wantVowel);
-    if (matchIndex != -1) {
-      return pool.removeAt(matchIndex);
+  // Infinite Estate's "Swap letters": every base rack slot (index <
+  // rackSize) holding a letter and not in `keepIndices` (the player's
+  // pins) goes back to the pool, and is refilled one at a time. Bonus
+  // slots are left alone. New letters are drawn before the old ones go
+  // back into the pool, so a swap never just hands back what it took
+  // (unless the pool would otherwise run dry). Returns false, changing
+  // nothing, if the pool is empty or there's nothing to swap. Paying for
+  // it is the caller's job, and only after this returns true.
+  bool swapRack({required Set<int> keepIndices}) {
+    if (state.pool.isEmpty) return false;
+    final base = state.config.rackSize;
+    final rack = List<String?>.from(state.rackCells);
+    final swapIndices = [
+      for (int i = 0; i < base && i < rack.length; i++)
+        if (rack[i] != null && !keepIndices.contains(i)) i,
+    ];
+    if (swapIndices.isEmpty) return false;
+
+    final returned = <String>[];
+    for (final i in swapIndices) {
+      returned.add(rack[i]!);
+      rack[i] = null;
     }
-    // Pool has none of the preferred type right now -- fall back to a
-    // normal random draw rather than leaving the rack slot empty.
-    return pool.removeLast();
+    final dealt = List<String>.from(state.dealtLetters);
+    for (final letter in returned) {
+      dealt.remove(letter);
+    }
+
+    final pool = List<String>.from(state.pool);
+    for (final i in swapIndices) {
+      if (pool.isEmpty) {
+        pool.addAll(returned);
+        returned.clear();
+      }
+      final drawn = _drawRefill(pool, rack);
+      rack[i] = drawn;
+      dealt.add(drawn);
+    }
+    pool.addAll(returned);
+
+    state = state.copyWith(rackCells: rack, pool: pool, dealtLetters: dealt);
+    return true;
+  }
+
+  // Fills any empty base rack slot (index < rackSize) from the pool, e.g.
+  // right after a migrated save that held fewer letters than the rack
+  // size, so the player opens to a full rack. No-op if nothing is empty.
+  void fillEmptyBaseRackSlots() {
+    final base = state.config.rackSize;
+    final rack = List<String?>.from(state.rackCells);
+    final pool = List<String>.from(state.pool);
+    final drawnLetters = <String>[];
+    for (int i = 0; i < base && i < rack.length && pool.isNotEmpty; i++) {
+      if (rack[i] != null) continue;
+      final drawn = _drawRefill(pool, rack);
+      rack[i] = drawn;
+      drawnLetters.add(drawn);
+    }
+    if (drawnLetters.isEmpty) return;
+    state = state.copyWith(
+      rackCells: rack,
+      pool: pool,
+      dealtLetters: [...state.dealtLetters, ...drawnLetters],
+    );
   }
 
   // Trades one rack tile back into the pool for 3 fresh ones (classic

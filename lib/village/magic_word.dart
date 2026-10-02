@@ -37,7 +37,7 @@ const List<MagicWordDef> kMagicWords = [
     displayName: 'Farm',
     icon: Icons.grass,
     color: Color(0xFFDCE775),
-    description: 'Improves the vowel/consonant balance when your rack refills.',
+    description: 'One free Swap each visit.',
     hasAbility: true,
   ),
   MagicWordDef(
