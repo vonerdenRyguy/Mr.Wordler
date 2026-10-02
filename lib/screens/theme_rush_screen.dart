@@ -9,6 +9,8 @@ import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../theme_rush/theme_category.dart';
+import '../ui/mode_start_view.dart';
+import '../ui/tokens.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,31 +149,19 @@ class _ThemeRushBodyState extends ConsumerState<_ThemeRushBody> {
     });
 
     if (!_started) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Theme Rush'), backgroundColor: Colors.deepPurple),
-        backgroundColor: Colors.orangeAccent,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text("Today's theme:", style: TextStyle(fontSize: 18)),
-                const SizedBox(height: 8),
-                Text(widget.theme.name,
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                const SizedBox(height: 24),
-                const Text('Place one valid, connected word matching the theme as fast as you can.'),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _start,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.greenAccent, foregroundColor: Colors.green),
-                  child: const Text('Start'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      final best = ref.watch(modeStatsProvider.select((s) => s.themeRushBestSeconds[widget.theme.id]));
+      return ModeStartView(
+        color: WModeColors.themeRush,
+        icon: Icons.category_outlined,
+        title: 'Theme Rush',
+        description: 'Spell one word that fits the theme.',
+        rows: [
+          ModeStartRow('?', 'Theme: ${widget.theme.name}'),
+          const ModeStartRow('1', 'One word is all you need'),
+          const ModeStartRow('⏱', 'Your best time per theme is saved'),
+        ],
+        stats: [ModeStartStat('Best for ${widget.theme.name}', best == null ? '-' : formatSeconds(best))],
+        onStart: _start,
       );
     }
 

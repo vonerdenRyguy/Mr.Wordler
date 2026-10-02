@@ -18,6 +18,9 @@ class TimeAttackScreen extends StatelessWidget {
 
   static const Duration timeLimit = Duration(minutes: 3);
 
+  // Shown on the start page; not saved, so it resets when the app does.
+  static String? lastResultThisSession;
+
   @override
   Widget build(BuildContext context) {
     return ProviderScope(
@@ -67,6 +70,7 @@ class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
   void _onTimeExpired() {
     if (_roundEnded || !mounted) return;
     _roundEnded = true;
+    TimeAttackScreen.lastResultThisSession = "Time's up";
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -103,6 +107,7 @@ class _TimeAttackBodyState extends ConsumerState<_TimeAttackBody> {
     if (isWin && result.areValid && result.areConnected) {
       _roundEnded = true;
       _countdown.stop();
+      TimeAttackScreen.lastResultThisSession = 'Won, ${_countdown.remainingTime} left';
 
       // Small amount of currency, more for a faster clear -- Time Attack
       // is about quick replayable sessions, not primary progression, so
