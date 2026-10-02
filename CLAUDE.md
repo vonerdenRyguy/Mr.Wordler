@@ -53,7 +53,8 @@ Flutter-generated output (already gitignored), not source.
     Infinite Estate restyled with a clear Words/Village toggle and
     building-color stripes on tiles; Stats gains Free Play top times;
     Portfolio's dev "Test controls" are removed; Settings' Dark Mode
-    switch is hidden. Built in 7 commits; awaiting on-device check.
+    switch is hidden. Built in 7 commits; merged to master 2026-10-02
+    (`1b18497`) after on-device check.
   - Specs 01-03 live in `Desktop\MrWordlerScreenshots\specs\`. The
     next design spec (spec-04, Village view art / empty-village fix) has
     not been written yet.
@@ -201,6 +202,11 @@ test/                Mirrors lib/ for the pieces with real logic (grid engine,
 6. A set of reference screenshots (4 mode screens, Portfolio x2, one
    Infinite Estate gameplay screen) was captured to
    `C:\Users\Ryan the Avatar\Desktop\MrWordlerScreenshots\` for handing
-   off to a design-focused Claude session; a fresh set from 2026-10-01
-   is in its `2026-10-01\` subfolder. All of them predate spec-03's new
-   look.
+   off to a design-focused Claude session. The current set (after
+   specs 01-03) is in its `2026-10-02\` subfolder, with
+   `NOTES_FOR_CLAUDE_DESIGN.txt` listing what's worth a design look.
+7. **Two small spec-03 bugs seen on-device:** the 10x10 game top bar's
+   timer pill only takes ~1/3 of the bar (the trailing chips' `Flexible
+   flex: 2` group in `GameLayout` claims the rest), which also hides its
+   "Time left" label; and `SwapDropTarget`'s dashed outline is painted
+   behind the fill (`CustomPaint.painter` should be `foregroundPainter`).
