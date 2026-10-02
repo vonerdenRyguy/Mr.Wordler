@@ -205,8 +205,3 @@ test/                Mirrors lib/ for the pieces with real logic (grid engine,
    off to a design-focused Claude session. The current set (after
    specs 01-03) is in its `2026-10-02\` subfolder, with
    `NOTES_FOR_CLAUDE_DESIGN.txt` listing what's worth a design look.
-7. **Two small spec-03 bugs seen on-device:** the 10x10 game top bar's
-   timer pill only takes ~1/3 of the bar (the trailing chips' `Flexible
-   flex: 2` group in `GameLayout` claims the rest), which also hides its
-   "Time left" label; and `SwapDropTarget`'s dashed outline is painted
-   behind the fill (`CustomPaint.painter` should be `foregroundPainter`).
