@@ -15,7 +15,7 @@ import 'package:namer_app/util/theme_notifier.dart';
 
 // Mirrors main()'s actual widget nesting (ProviderScope wraps
 // ChangeNotifierProvider wraps MyApp) so tests exercise the same provider
-// setup the real app runs with -- ModeSelectScreen/PortfolioScreen read
+// setup the real app runs with -- HomeScreen/PortfolioScreen read
 // the global portfolioProvider directly and need an ancestor ProviderScope
 // to do that, the same as they would in production.
 Future<void> pumpApp(WidgetTester tester) async {
@@ -46,6 +46,22 @@ Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
     widget.data!.length == 1 &&
     RegExp(r'^[A-Z]$').hasMatch(widget.data!));
 
+// How each mode is reached from Home. Kept in one place so the tests
+// follow the app's navigation as it changes.
+Future<void> openFreePlay(WidgetTester tester) async {
+  await tester.tap(find.text('Free Play'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> openTimeAttack(WidgetTester tester) async {
+  await tester.tap(find.text('Time Attack'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> openThemeRush(WidgetTester tester) async {
+  await tester.tap(find.text('Theme Rush'));
+}
+
 void main() {
   // PortfolioController reads SharedPreferences as soon as it's created
   // (unlike ThemeNotifier, whose loadFromPrefs() these tests never call);
@@ -55,12 +71,21 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('Menu screen shows title and buttons', (WidgetTester tester) async {
+  testWidgets('Home shows village, daily, and modes', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester);
+    await tester.pumpAndSettle();
 
-    expect(find.text('Mr. Wordler'), findsOneWidget);
-    expect(find.text('Play'), findsOneWidget);
-    expect(find.text('Leaderboard'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.bySemanticsLabel('Mr. Wordler'), findsOneWidget);
+    for (final label in ['Visit your village', "Today's puzzle", 'Free Play', 'Time Attack', 'Theme Rush']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    expect(find.text('Leaderboard'), findsNothing);
+    expect(find.text('New village'), findsOneWidget);
   });
 
   testWidgets('Game screen deals a rack via the shared grid engine', (WidgetTester tester) async {
@@ -75,8 +100,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Play'));
-    await tester.pumpAndSettle();
+    await openFreePlay(tester);
 
     // A build-time exception in one subtree (e.g. GridBoardView) doesn't
     // fail pumpAndSettle by itself -- Flutter swaps just that subtree for
@@ -93,32 +117,6 @@ void main() {
     expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
-  testWidgets('Game Modes: swiping changes page and shows each explanation',
-      (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await pumpApp(tester);
-
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-
-    // Starts on Daily Estate Challenge, with its explanation and Play button.
-    expect(find.text('Daily Estate Challenge'), findsOneWidget);
-    expect(find.text('Play Daily Estate Challenge'), findsOneWidget);
-
-    // Swiping left should move to the next page (Time Attack) without
-    // needing to tap the bottom nav bar.
-    await tester.fling(find.text('Daily Estate Challenge').first, const Offset(-400, 0), 1000);
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Play Time Attack'), findsOneWidget);
-  });
-
   testWidgets('Time Attack mode deals a rack via the shared grid engine', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -127,19 +125,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    // "Time Attack" is unambiguous here: the default page (Daily Estate
-    // Challenge) doesn't show that text yet, only the bottom nav item does.
-    expect(find.text('Time Attack'), findsOneWidget);
-    await tester.tap(find.text('Time Attack'));
-    await tester.pumpAndSettle();
-
-    // Now on the Time Attack detail page -- "Time Attack" matches both the
-    // bottom nav item and the page title, so target the unique Play button.
-    expect(find.text('Play Time Attack'), findsOneWidget);
-    await tester.tap(find.text('Play Time Attack'));
-    await tester.pumpAndSettle();
+    await openTimeAttack(tester);
 
     // Same explicit checks as the Free Play test -- see the comment there
     // for why a plain widget count alone isn't enough to catch a broken
@@ -159,13 +145,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-
-    await tester.tap(find.byTooltip('Portfolio'));
+    await tester.tap(find.text('Portfolio'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -220,7 +200,7 @@ void main() {
     Future<String> tinyDictionary() async => 'cat\ndog\nrat\nsun\nrun\ntree\nstar\nrose\nnote\ngate\n';
 
     // A minimal two-route harness (root screen -> Daily Challenge) instead
-    // of the full app/menu, since ModeSelectScreen's navigation always
+    // of the full app, since Home's navigation always
     // constructs a real DailyChallengeScreen with no way to inject the
     // test dictionary loader from outside.
     await tester.pumpWidget(
@@ -292,12 +272,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    // Unambiguous here: the default page doesn't show "Theme Rush" yet.
-    await tester.tap(find.text('Theme Rush'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Play Theme Rush'));
+    await openThemeRush(tester);
     // No perpetual timer yet -- it only starts after tapping Start.
     await tester.pumpAndSettle();
 
@@ -323,13 +298,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    // Bottom nav label is the short "Infinite"; the page itself says
-    // "Infinite Estate".
-    await tester.tap(find.text('Infinite'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Play Infinite Estate'));
+    await tester.tap(find.text('Visit your village'));
     // No perpetual timer in this mode -- pumpAndSettle is safe throughout.
     await tester.pumpAndSettle();
 
@@ -405,11 +374,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Infinite'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Play Infinite Estate'));
+    await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -424,11 +389,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester);
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Infinite'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Play Infinite Estate'));
+    await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle();
   }
 
@@ -494,9 +455,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Game Modes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Stats'));
+    await tester.tap(find.text('Stats'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
