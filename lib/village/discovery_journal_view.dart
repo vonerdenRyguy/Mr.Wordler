@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../ui/chunky_card.dart';
+import '../ui/tokens.dart';
 import 'magic_word.dart';
 
 // How many of `word`'s letters (respecting duplicates -- two A's needed
@@ -50,18 +52,17 @@ class DiscoveryJournalView extends StatelessWidget {
       builder: (context, scrollController) {
         return Container(
           decoration: const BoxDecoration(
-            color: Color(0xFFFFFDE7),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            color: WColors.card,
+            border: Border(top: BorderSide(color: WColors.ink, width: WSize.outline)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(WSize.radiusHero)),
           ),
           child: ListView(
             controller: scrollController,
             padding: const EdgeInsets.all(16.0),
             children: [
-              const Text('Discovery Journal',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+              Semantics(header: true, child: const Text('Discovery Journal', style: WText.heading)),
               const SizedBox(height: 4),
-              const Text('Magic words that can be built into structures.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const Text('Magic words that can be built into structures.', style: WText.label),
               const SizedBox(height: 12),
               for (final def in kMagicWords)
                 _JournalEntry(
@@ -88,25 +89,39 @@ class _JournalEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     final needed = def.word.length;
     final ready = lettersHave >= needed;
-    return Card(
-      color: isDiscovered ? Colors.white : Colors.grey.shade100,
-      margin: const EdgeInsets.only(bottom: 10.0),
-      child: ListTile(
-        leading: Icon(def.icon, color: isDiscovered ? def.color : Colors.grey),
-        title: Text(def.displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: WSize.gap2),
+      child: ChunkyCard(
+        color: isDiscovered ? WColors.card : WColors.paper,
+        padding: const EdgeInsets.all(12),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(def.description, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(
-              isDiscovered ? 'Discovered!' : '$lettersHave of $needed letters needed',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: isDiscovered
-                    ? Colors.green.shade700
-                    : (ready ? Colors.orange.shade800 : Colors.black54),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: def.color,
+                border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(def.icon, color: WColors.ink, size: 24),
+            ),
+            const SizedBox(width: WSize.gap3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(def.displayName, style: WText.bodyBold),
+                  Text(def.description, style: WText.body.copyWith(fontSize: 15)),
+                  const SizedBox(height: 4),
+                  Text(
+                    isDiscovered ? 'Discovered!' : '$lettersHave of $needed letters needed',
+                    style: WText.label.copyWith(
+                      color: isDiscovered ? WColors.grass : (ready ? WColors.ink : WColors.muted),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

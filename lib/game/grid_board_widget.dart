@@ -9,6 +9,7 @@ import 'tile_location.dart';
 import 'word_landing.dart';
 import 'word_landing_banner.dart';
 import '../ui/tokens.dart';
+import '../ui/wordler_dialog.dart';
 
 // The (possibly rotated) Quad InteractiveViewer.builder reports isn't
 // axis-aligned in general, but our board never rotates, so the bounding
@@ -39,16 +40,11 @@ Future<void> _showDefinitionIfAny(BuildContext context, WidgetRef ref, int board
   if (definition == null) return;
   if (!context.mounted) return;
 
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: Colors.orangeAccent,
-      title: Text(word),
-      content: Text(definition),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-      ],
-    ),
+  showWordlerDialog<void>(
+    context,
+    title: word,
+    bodyText: definition,
+    actions: [WordlerDialogAction('Close', () {})],
   );
 }
 
@@ -126,9 +122,9 @@ class GridTileWidget extends ConsumerWidget {
       }
       if (showLandmarkGlow) {
         return BoxDecoration(
-          color: Colors.amber.shade200,
-          border: Border.all(color: Colors.amber.shade800, width: 2.5),
-          boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
+          color: WColors.sun,
+          border: Border.all(color: WColors.ink, width: 2.5),
+          boxShadow: [BoxShadow(color: WColors.sun.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
         );
       }
       if (isBoardStyle) {
@@ -153,7 +149,7 @@ class GridTileWidget extends ConsumerWidget {
           content = Center(
             child: LayoutBuilder(
               builder: (context, c) =>
-                  Icon(Icons.star, color: Colors.amber.shade900, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
+                  Icon(Icons.star, color: WColors.ink, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
             ),
           );
         } else if (letter != null) {
