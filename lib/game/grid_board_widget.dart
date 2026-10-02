@@ -81,6 +81,7 @@ class GridTileWidget extends ConsumerWidget {
     this.isLandmark = false,
     this.isPinned = false,
     this.onTogglePin,
+    this.stripe,
   });
 
   final TileLocation location;
@@ -98,6 +99,8 @@ class GridTileWidget extends ConsumerWidget {
   // gesture entirely rather than just no-op'ing it.
   final bool isPinned;
   final ValueChanged<int>? onTogglePin;
+  // Building stripe color for this board cell, if it's part of one.
+  final Color? stripe;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -182,7 +185,7 @@ class GridTileWidget extends ConsumerWidget {
               onLongPress: isBoard
                   ? () => _showDefinitionIfAny(context, ref, location.index)
                   : (onTogglePin != null ? () => onTogglePin!(location.index) : null),
-              child: placed(LetterTile(letter: letter, isBoard: isBoard, isPinned: showPin, fx: fx)),
+              child: placed(LetterTile(letter: letter, isBoard: isBoard, isPinned: showPin, fx: fx, stripe: stripe)),
             ),
           );
         } else {
@@ -223,6 +226,7 @@ class GridBoardView extends ConsumerWidget {
     this.transformController,
     this.cellSize,
     this.cellGap = 0,
+    this.stripes = const {},
   });
 
   final GridTheme theme;
@@ -254,6 +258,9 @@ class GridBoardView extends ConsumerWidget {
   // Space between cells on the eager (10x10) path, so the board's bed
   // shows through as thin lines between them.
   final double cellGap;
+  // Board index -> building stripe color (Infinite Estate's built magic
+  // words). Empty for every other mode.
+  final Map<int, Color> stripes;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -292,6 +299,7 @@ class GridBoardView extends ConsumerWidget {
                       isBoardStyle: true,
                       isLandmark: landmarkIndices.contains(index),
                       theme: theme,
+                      stripe: stripes[index],
                     ),
                   ),
                 );
@@ -332,6 +340,7 @@ class GridBoardView extends ConsumerWidget {
                       isBoardStyle: true,
                       isLandmark: landmarkIndices.contains(row * config.boardWidth + col),
                       theme: theme,
+                      stripe: stripes[row * config.boardWidth + col],
                     ),
                   ),
             ],

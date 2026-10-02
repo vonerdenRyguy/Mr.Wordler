@@ -30,6 +30,7 @@ class LetterTile extends StatefulWidget {
     this.isPinned = false,
     this.fx,
     this.faceColor,
+    this.stripe,
   });
 
   final String letter;
@@ -38,6 +39,9 @@ class LetterTile extends StatefulWidget {
   final TileFx? fx;
   // Overrides the cream face (e.g. a mode-colored tile on Home).
   final Color? faceColor;
+  // Infinite Estate: a tile that's part of a built magic word gets a 6px
+  // stripe in that building's color along its bottom edge.
+  final Color? stripe;
 
   /// The plain face with no letter, used as the "ghost" left behind while
   /// a tile is being dragged.
@@ -161,14 +165,30 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
             ],
           ),
           alignment: Alignment.center,
-          child: Text(
-            widget.letter,
-            style: TextStyle(
-              fontFamily: 'LilitaOne',
-              color: _ink,
-              fontSize: (side * 0.6).clamp(12.0, 34.0),
-              height: 1.0,
-            ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (widget.stripe != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 6,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(max(0, side * 0.18 - outlineWidth))),
+                    child: ColoredBox(color: widget.stripe!),
+                  ),
+                ),
+              Text(
+                widget.letter,
+                style: TextStyle(
+                  fontFamily: 'LilitaOne',
+                  color: _ink,
+                  fontSize: (side * 0.6).clamp(12.0, 34.0),
+                  height: 1.0,
+                ),
+              ),
+            ],
           ),
         ),
       ),
