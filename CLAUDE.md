@@ -7,7 +7,7 @@ words. Repo: `vonerdenRyguy/Mr.Wordler`.
 **Ignore `build/` and `.dart_tool/`** when exploring this codebase — both are
 Flutter-generated output (already gitignored), not source.
 
-## Current state (as of 2026-10-01)
+## Current state (as of 2026-10-02)
 
 - `master` is up to date through commit `47a880f` (fast-forward of
   `village-fixes`, merged 2026-10-01 after the user confirmed on-device
