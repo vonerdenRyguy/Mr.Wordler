@@ -41,6 +41,15 @@ class PortfolioController extends StateNotifier<PortfolioData> {
     _save();
   }
 
+  // Returns false (and changes nothing) if the player can't afford it.
+  bool spendCurrency(int amount) {
+    if (amount < 0 || state.currency < amount) return false;
+    if (amount == 0) return true;
+    state = state.copyWith(currency: state.currency - amount);
+    _save();
+    return true;
+  }
+
   void addXp(int amount) {
     if (amount == 0) return;
     state = state.copyWith(totalXp: state.totalXp + amount);

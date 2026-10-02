@@ -1,6 +1,8 @@
 // Basic smoke tests: the app boots, and navigating into each built mode
 // renders without error.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
@@ -340,7 +342,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('End'), findsOneWidget);
-    expect(oneLetterTileFinder(), findsNWidgets(21));
+    expect(oneLetterTileFinder(), findsNWidgets(10));
 
     // Structure abilities (Well/Bridge) only appear once their magic word
     // is actually built -- a fresh board has none, so neither should show.
@@ -348,7 +350,7 @@ void main() {
     expect(find.text('Jump'), findsNothing);
 
     // Switching to Village view should render without error. A fresh
-    // board has no magic words built yet, so Words view's 21 rack tiles
+    // board has no magic words built yet, so Words view's 10 rack tiles
     // are still there (the rack is unaffected by the toggle) but the
     // board itself shows no letters in Village view.
     expect(find.text('Words'), findsOneWidget);
@@ -358,9 +360,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    // The rack (unaffected by the toggle) still shows its 21 letters;
+    // The rack (unaffected by the toggle) still shows its 10 letters;
     // the empty board itself contributes none in Village view.
-    expect(oneLetterTileFinder(), findsNWidgets(21));
+    expect(oneLetterTileFinder(), findsNWidgets(10));
 
     // Switching back to Words view should restore the interactive board.
     await tester.tap(find.text('Words'));
@@ -414,6 +416,74 @@ void main() {
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.byIcon(Icons.landscape), findsOneWidget);
     expect(find.text('End'), findsOneWidget);
+  });
+
+  Future<void> openInfiniteEstate(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpApp(tester);
+    await tester.tap(find.text('Game Modes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Infinite'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Play Infinite Estate'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Infinite Estate shows 10 rack tiles in 2 rows and a Swap button', (WidgetTester tester) async {
+    await openInfiniteEstate(tester);
+
+    expect(tester.takeException(), isNull);
+    final tiles = oneLetterTileFinder().evaluate().toList();
+    expect(tiles.length, 10);
+    final rows = tiles.map((e) => tester.getCenter(find.byWidget(e.widget)).dy.round()).toSet();
+    expect(rows.length, 2);
+    expect(find.text('Swap letters'), findsOneWidget);
+  });
+
+  testWidgets('Swap with 0 coins says "Need 5 coins" and does nothing', (WidgetTester tester) async {
+    await openInfiniteEstate(tester);
+
+    expect(find.text('Need 5 coins'), findsOneWidget);
+    String rackLetters() => oneLetterTileFinder().evaluate().map((e) => (e.widget as Text).data).join();
+    final before = rackLetters();
+    await tester.tap(find.text('Swap letters'));
+    await tester.pumpAndSettle();
+    expect(rackLetters(), before);
+  });
+
+  testWidgets('a version-1 village save opens with 10 rack tiles and the same board', (WidgetTester tester) async {
+    const size = 500;
+    const center = (size ~/ 2) * size + size ~/ 2;
+    final board = List<String?>.filled(size * size, null);
+    board[center] = 'W';
+    board[center + 1] = 'E';
+    board[center + 2] = 'L';
+    board[center + 3] = 'L';
+    final rack = [for (int i = 0; i < 21; i++) 'ABCDEFGHIJKLMNOPRSTUV'[i]];
+    SharedPreferences.setMockInitialValues({
+      'infiniteEstateVillageSave': jsonEncode({
+        'boardCells': board,
+        'rackCells': rack,
+        'pool': List<String>.filled(50, 'E'),
+        'dealtLetters': ['W', 'E', 'L', 'L', ...rack],
+        'lastCashedOutScore': 0,
+      }),
+    });
+
+    await openInfiniteEstate(tester);
+
+    expect(tester.takeException(), isNull);
+    // 4 board letters around the center (where the view opens) + 10 rack.
+    expect(oneLetterTileFinder(), findsNWidgets(14));
+    for (final l in ['W', 'L']) {
+      expect(find.text(l), findsWidgets);
+    }
+    final rackTexts = oneLetterTileFinder().evaluate().map((e) => (e.widget as Text).data).toList();
+    expect(rackTexts, containsAll(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']));
+    expect(rackTexts, isNot(contains('K')));
   });
 
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {

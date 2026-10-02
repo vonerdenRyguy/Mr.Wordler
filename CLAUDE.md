@@ -18,10 +18,24 @@ Flutter-generated output (already gitignored), not source.
   rack is always full), rack pins follow the letter rather than the
   slot, and the Village AppBar/rack layout no longer cuts off the
   bottom rack row.
-- No open branches/PRs. **Workflow going forward:** the user designs
-  features in the Claude app's design tool, then brings the spec to a
-  fresh Claude Code session to implement. Keep this file current so
-  each fresh session can pick up from it.
+- **In progress (2026-10-02): design specs 01-03** from
+  `Desktop\MrWordlerScreenshots\specs\`, built in order, one branch
+  each, each checked on the phone and merged only on the user's OK
+  before the next starts.
+  - `spec-01-infinite-rack`: Infinite Estate rack is now **10 tiles**
+    (2 rows of 5) with **balanced refill** (`lib/game/balanced_draw.dart`,
+    `GridConfig.balancedRefill`: keeps 3-4 vowels, max 2 hard letters
+    J/K/Q/V/X/Z, no doubled hard letter, no Q without U), a **Swap
+    letters** button (`GridGameController.swapRack`, 5 coins via
+    `PortfolioController.spendCurrency`, pinned letters kept), and the
+    **Farm now gives one free Swap per visit** (its old balanced-refill
+    ability became the default; `preferBalancedRefill` is gone). Village
+    saves have **`saveVersion` 2**; version-1 saves (21-letter rack) are
+    migrated once on load by `lib/village/village_save_migration.dart`
+    (first 10 rack letters kept, the rest go back to the pool). The 10x10
+    modes are unchanged.
+  - Next: spec-02 (tile visuals + word-landing feedback), then spec-03
+    (one look for the whole app).
 - On-device runs: phone is a Samsung SM S926U (`flutter run -d
   R5CX213D2EJ`). If `flutter devices` says "not authorized", the user
   needs to accept the USB-debugging prompt on the phone.
@@ -69,7 +83,8 @@ Flutter-generated output (already gitignored), not source.
 lib/
   game/              Shared grid engine used by every mode
     grid_config.dart         Per-mode config (board/rack size, seed, refill behavior)
-    grid_game_controller.dart  Core move/draw/trade logic (StateNotifier)
+    grid_game_controller.dart  Core move/draw/trade/swap logic (StateNotifier)
+    balanced_draw.dart        Infinite Estate's balanced refill rules
     grid_game_state.dart      Immutable state (board/rack/pool cells)
     grid_board_widget.dart    GridBoardView/GridRackView/GridTileWidget + GridTheme
     grid_providers.dart       gridConfigProvider / gridGameControllerProvider
@@ -86,7 +101,8 @@ lib/
                                from board center, golden-angle spread)
     bridge_transform.dart     Pure pan/zoom-to-cell transform math (Bridge ability)
     discovery_journal_view.dart  Journal bottom sheet + "letters toward word" logic
-    village_save.dart         Persistence (SharedPreferences)
+    village_save.dart         Persistence (SharedPreferences), saveVersion
+    village_save_migration.dart  v1 (21-letter rack) -> v2 (10) save migration
   portfolio/         Neighborhoods/property tiers/currency/XP meta-progression
   daily/             Daily Estate Challenge (seeded puzzle, bonus word, streak)
   stats/             Per-mode stats tracking
@@ -105,7 +121,7 @@ test/                Mirrors lib/ for the pieces with real logic (grid engine,
 - `flutter analyze` — should always be clean except the one pre-existing
   `bananagramsTiles.dart` filename-casing lint (long-standing, not worth
   a rename mid-feature).
-- `flutter test` — 40 tests across `test/*.dart` as of this writing, all
+- `flutter test` — 60 tests across `test/*.dart` as of this writing, all
   passing on `master`.
 - No real device/emulator is reliably available in this environment by
   default — when one is connected (`flutter devices`), prefer running on
