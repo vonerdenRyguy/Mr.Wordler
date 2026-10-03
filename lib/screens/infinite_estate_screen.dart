@@ -18,6 +18,7 @@ import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
 import '../village/village_cards.dart';
+import '../village/village_rewards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 
@@ -150,9 +151,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // since that would just be a way to farm free letters). Session-only,
   // not persisted.
   bool _wellUsedThisVisit = false;
-  // Farm structure ability: the first Swap each visit is free. Works like
+  // Free Swaps used this visit (1 each visit, 2 with a Farm). Works like
   // the Well's limit: session-only, reset when the screen is reopened.
-  bool _farmSwapUsedThisVisit = false;
+  int _freeSwapsUsed = 0;
 
   // Bridge structure ability: drives GridBoardView's InteractiveViewer to
   // jump/pan to a reached landmark. _boardViewportSize is captured by the
@@ -396,7 +397,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       final runs = await controller.currentWordRuns(isValid: ref.read(wordCheckProvider));
       if (!mounted) return;
       final structures = computeStructures(runs);
-      final newlyDiscovered = structures.map((s) => s.def.word).where((w) => !_discoveredWords.contains(w)).toSet();
+      final newlyDiscovered = newDiscoveries(structures, _discoveredWords);
       setState(() {
         _structures = structures;
         _wordRuns = runs;
@@ -404,7 +405,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
         }
       });
-      if (newlyDiscovered.isNotEmpty) await _saveVillage();
+      if (newlyDiscovered.isNotEmpty) {
+        await _saveVillage();
+        _celebrateNewBuildings(newlyDiscovered);
+      }
     } finally {
       _computingStructures = false;
     }
@@ -425,18 +429,46 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     }
   }
 
-  bool get _farmSwapAvailable => _hasStructure('FARM') && !_farmSwapUsedThisVisit;
+  int get _freeSwapsLeft => freeSwapsLeft(used: _freeSwapsUsed, hasFarm: _hasStructure('FARM'));
+
+  // +10 coins the first time each building is ever built, with a dialog.
+  // Words already discovered (older saves included) never pay again.
+  void _celebrateNewBuildings(Set<String> words) {
+    final coins = coinsForDiscoveries(words);
+    ref.read(portfolioProvider.notifier).addCurrency(coins);
+    if (!mounted) return;
+    final defs = [for (final w in words) magicWordFor(w)!];
+    final names = defs.map((d) => d.displayName).toList();
+    final title = names.length == 1
+        ? 'You built a ${names.first}!'
+        : 'You built a ${names.sublist(0, names.length - 1).join(', a ')} and a ${names.last}!';
+    final card = _spriteMeta[defs.first.word]?.cardPath;
+    showWordlerDialog<void>(
+      context,
+      title: title,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (card != null) SizedBox(height: 160, child: Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true)),
+          const SizedBox(height: WSize.gap2),
+          Text('+$coins coins. Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see what ${names.length == 1 ? 'it does' : 'they do'}.',
+              style: WText.body),
+        ],
+      ),
+      actions: [WordlerDialogAction('Wonderful!', () {})],
+    );
+  }
 
   // Swap letters: pinned letters stay, the rest are traded for balanced
   // draws. The Farm's free swap is used first if available; otherwise it
   // costs swapCost coins, spent only once the swap actually happened.
   void _swapRack() {
-    final free = _farmSwapAvailable;
+    final free = _freeSwapsLeft > 0;
     if (!free && ref.read(portfolioProvider).currency < InfiniteEstateScreen.swapCost) return;
     final swapped = ref.read(gridGameControllerProvider.notifier).swapRack(keepIndices: _pinnedRackIndices);
     if (!swapped) return;
     if (free) {
-      setState(() => _farmSwapUsedThisVisit = true);
+      setState(() => _freeSwapsUsed++);
     } else {
       ref.read(portfolioProvider.notifier).spendCurrency(InfiniteEstateScreen.swapCost);
     }
@@ -921,7 +953,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                           _SwapButton(
                             allPinned:
                                 _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                            free: _farmSwapAvailable,
+                            freeLeft: _freeSwapsLeft,
                             canAfford:
                                 ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
                             onSwap: _swapRack,
@@ -1117,21 +1149,23 @@ class _VillageActionBar extends StatelessWidget {
 class _SwapButton extends StatelessWidget {
   const _SwapButton({
     required this.allPinned,
-    required this.free,
+    required this.freeLeft,
     required this.canAfford,
     required this.onSwap,
   });
 
   final bool allPinned;
-  final bool free;
+  final int freeLeft;
   final bool canAfford;
   final VoidCallback onSwap;
 
   @override
   Widget build(BuildContext context) {
     const cost = InfiniteEstateScreen.swapCost;
+    final free = freeLeft > 0;
     final enabled = !allPinned && (free || canAfford);
-    final String? chip = allPinned ? null : (free ? 'Free - Farm' : (canAfford ? '$cost coins' : 'Need $cost coins'));
+    final String? chip =
+        allPinned ? null : (free ? (freeLeft > 1 ? 'Free x2' : 'Free') : (canAfford ? '$cost coins' : 'Need $cost coins'));
     final chipColor = !enabled ? WColors.boardCell : (free ? WColors.leaf : WColors.sun);
     return ChunkyButton(
       label: allPinned ? 'All letters pinned' : 'Swap letters',

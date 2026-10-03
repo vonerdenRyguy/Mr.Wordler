@@ -405,8 +405,13 @@ void main() {
     expect(find.text('Swap letters'), findsOneWidget);
   });
 
-  testWidgets('Swap with 0 coins says "Need 5 coins" and does nothing', (WidgetTester tester) async {
+  testWidgets('the first Swap is free; then with 0 coins it says "Need 5 coins" and does nothing',
+      (WidgetTester tester) async {
     await openInfiniteEstate(tester);
+
+    expect(find.text('Free'), findsOneWidget);
+    await tester.tap(find.text('Swap letters'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Need 5 coins'), findsOneWidget);
     String rackLetters() => oneLetterTileFinder().evaluate().map((e) => (e.widget as Text).data).join();

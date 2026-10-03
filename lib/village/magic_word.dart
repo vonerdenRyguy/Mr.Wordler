@@ -37,7 +37,7 @@ const List<MagicWordDef> kMagicWords = [
     displayName: 'Farm',
     icon: Icons.grass,
     color: Color(0xFFDCE775),
-    description: 'One free Swap each visit.',
+    description: 'Two free Swaps each visit.',
     hasAbility: true,
   ),
   MagicWordDef(
