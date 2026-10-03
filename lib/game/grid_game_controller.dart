@@ -8,6 +8,7 @@ import 'balanced_draw.dart';
 import 'grid_config.dart';
 import 'grid_game_state.dart';
 import 'tile_location.dart';
+import 'word_runs.dart';
 
 // Shared game logic for every grid-based mode (Free Play, Time Attack,
 // Daily Estate Challenge, Theme Rush, Infinite Estate). Holds no
@@ -282,6 +283,17 @@ class GridGameController extends StateNotifier<GridGameState> {
   // its tile positions. Generic (no notion of "magic words" -- that's a
   // Village-specific concept layered on top by callers, e.g.
   // lib/village/, so the shared engine stays mode-agnostic).
+  // Every valid word on the board as its own WordRun, repeats included
+  // (unlike currentWordPositions, where a second copy of a word
+  // overwrites the first). Village view and building detection use this.
+  Future<List<WordRun>> currentWordRuns() {
+    return _validator.findValidRuns(
+      state.boardCells,
+      state.config.boardWidth,
+      state.config.boardHeight,
+    );
+  }
+
   Future<Map<String, Set<int>>> currentWordPositions() async {
     await _validator.findValidWords(
       state.boardCells,

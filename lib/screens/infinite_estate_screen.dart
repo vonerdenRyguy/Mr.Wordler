@@ -10,6 +10,7 @@ import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/landmark.dart';
 import '../village/magic_word.dart';
+import '../village/structures.dart';
 import '../village/village_board_view.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
@@ -332,9 +333,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     _computingStructures = true;
     try {
       final controller = ref.read(gridGameControllerProvider.notifier);
-      final wordPositions = await controller.currentWordPositions();
+      final runs = await controller.currentWordRuns();
       if (!mounted) return;
-      final structures = computeStructures(wordPositions);
+      final structures = computeStructures(runs);
       final newlyDiscovered = structures
           .map((s) => s.def.word)
           .where((w) => !_discoveredWords.contains(w))

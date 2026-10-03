@@ -9,7 +9,8 @@ import 'package:namer_app/game/word_landing.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:namer_app/village/magic_word.dart';
-import 'package:namer_app/village/village_board_view.dart';
+import 'package:namer_app/game/word_runs.dart';
+import 'package:namer_app/village/structures.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -45,10 +46,10 @@ void main() {
 
   testWidgets('tiles of a built magic word get its stripe, others do not', (tester) async {
     final well = kMagicWords.firstWhere((d) => d.word == 'WELL');
-    final stripes = buildingStripes(computeStructures({
-      'WELL': {0, 1, 2, 3},
-      'AX': {4, 5},
-    }));
+    final stripes = buildingStripes(computeStructures(const [
+      WordRun('WELL', [0, 1, 2, 3], true),
+      WordRun('AX', [4, 5], true),
+    ]));
     await tester.pumpWidget(ProviderScope(
       overrides: [
         gridConfigProvider.overrideWithValue(const GridConfig(boardWidth: 6, boardHeight: 1, rackSize: 1)),

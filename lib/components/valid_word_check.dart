@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:spell_check_on_client/spell_check_on_client.dart';
 
+import '../game/word_runs.dart';
+
 /*
 This file goes column by column checking if there is a letter.
 If there is a letter add that letter to a string then continue to check the next tile
@@ -197,6 +199,50 @@ class WordValidator {
       areValid: allInvalidWords.isEmpty,
       areConnected: areConnected,
     );
+  }
+
+  /// Every valid across and down word on the board, one WordRun per word
+  /// in board order (across words row by row, then down words column by
+  /// column), keeping repeats: two WELLs are two runs. [isValid] defaults
+  /// to the dictionary; tests can pass a fake.
+  Future<List<WordRun>> findValidRuns(
+    List<String?> board,
+    int boardWidth,
+    int boardHeight, {
+    Future<bool> Function(String word)? isValid,
+  }) async {
+    assert(board.length == boardWidth * boardHeight);
+    final check = isValid ?? isValidWord;
+    final runs = <WordRun>[];
+
+    Future<void> scanLine(int count, int Function(int i) indexAt, bool across) async {
+      var positions = <int>[];
+      Future<void> flush() async {
+        if (positions.length > 1) {
+          final word = positions.map((i) => board[i]!).join();
+          if (await check(word)) runs.add(WordRun(word, positions, across));
+        }
+        positions = <int>[];
+      }
+
+      for (int i = 0; i < count; i++) {
+        final index = indexAt(i);
+        if (board[index] != null) {
+          positions.add(index);
+        } else {
+          await flush();
+        }
+      }
+      await flush();
+    }
+
+    for (int row = 0; row < boardHeight; row++) {
+      await scanLine(boardWidth, (col) => row * boardWidth + col, true);
+    }
+    for (int col = 0; col < boardWidth; col++) {
+      await scanLine(boardHeight, (row) => row * boardWidth + col, false);
+    }
+    return runs;
   }
 
   String findWordFromPositions(Set<int> positions) {

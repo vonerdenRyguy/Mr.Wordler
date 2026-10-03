@@ -5,37 +5,7 @@ import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../game/grid_providers.dart';
 import '../ui/tokens.dart';
 import 'magic_word.dart';
-
-// One structure currently built on the board: a magic word's footprint
-// (every tile position its letters occupy) plus which structure it is.
-// Purely derived from the current board state -- if the word's letters
-// get moved away, the structure disappears next recompute. This matches
-// the spec's "Village view is a rendering switch on the same grid data,
-// not a separate data model" -- there's no persisted "structures list".
-class BoardStructure {
-  final MagicWordDef def;
-  final Set<int> positions;
-
-  const BoardStructure({required this.def, required this.positions});
-}
-
-/// Board index -> its building's color, for the stripe on Words view
-/// tiles that belong to a built magic word.
-Map<int, Color> buildingStripes(List<BoardStructure> structures) => {
-      for (final structure in structures)
-        for (final position in structure.positions) position: structure.def.color,
-    };
-
-List<BoardStructure> computeStructures(Map<String, Set<int>> wordPositions) {
-  final structures = <BoardStructure>[];
-  for (final entry in wordPositions.entries) {
-    final def = magicWordFor(entry.key);
-    if (def != null) {
-      structures.add(BoardStructure(def: def, positions: entry.value));
-    }
-  }
-  return structures;
-}
+import 'structures.dart';
 
 const _plainLandColor = WColors.grassFieldCell;
 const _plotBorderColor = WColors.grassField;
