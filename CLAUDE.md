@@ -2,206 +2,185 @@
 
 A Bananagrams-style word tile game (Flutter/Dart). Draw letter tiles from a
 pool into a rack, drag them onto a board to form connected, dictionary-valid
-words. Repo: `vonerdenRyguy/Mr.Wordler`.
+words. The main mode is a village builder: magic words become buildings.
+Repo: `vonerdenRyguy/Mr.Wordler`.
 
 **Ignore `build/` and `.dart_tool/`** when exploring this codebase — both are
 Flutter-generated output (already gitignored), not source.
 
-## Current state (as of 2026-10-02)
+## How we work
 
-- `master` is up to date through commit `47a880f` (fast-forward of
-  `village-fixes`, merged 2026-10-01 after the user confirmed on-device
-  that it looks right): all game modes, the Portfolio meta-progression
-  system, the Village Builder pivot through "structure abilities"
-  (milestone 5), the board-rendering rework, and the Village fixes —
-  bonus letters now get a one-off extra rack slot (Infinite Estate's
-  rack is always full), rack pins follow the letter rather than the
-  slot, and the Village AppBar/rack layout no longer cuts off the
-  bottom rack row.
-- **In progress (2026-10-02): design specs 01-03** from
-  `Desktop\MrWordlerScreenshots\specs\`, built in order, one branch
-  each, each checked on the phone and merged only on the user's OK
-  before the next starts.
-  - `spec-01-infinite-rack`: Infinite Estate rack is now **10 tiles**
-    (2 rows of 5) with **balanced refill** (`lib/game/balanced_draw.dart`,
-    `GridConfig.balancedRefill`: keeps 3-4 vowels, max 2 hard letters
-    J/K/Q/V/X/Z, no doubled hard letter, no Q without U), a **Swap
-    letters** button (`GridGameController.swapRack`, 5 coins via
-    `PortfolioController.spendCurrency`, pinned letters kept), and the
-    **Farm now gives one free Swap per visit** (its old balanced-refill
-    ability became the default; `preferBalancedRefill` is gone). Village
-    saves have **`saveVersion` 2**; version-1 saves (21-letter rack) are
-    migrated once on load by `lib/village/village_save_migration.dart`
-    (first 10 rack letters kept, the rest go back to the pool). The 10x10
-    modes are unchanged.
-    Merged to master 2026-10-02 (`4a92d1c`) after on-device check.
-  - `spec-02-tile-visuals`: every board/rack tile is a `LetterTile`
-    (`lib/game/letter_tile.dart`): cream wooden face, ink outline, bottom
-    lip, bundled **Lilita One** font (`assets/fonts/`). Word-landing
-    feedback in the shared engine: `lib/game/word_landing.dart`
-    (`tileLandingProvider` watches the grid state; exactly one new board
-    letter = a landing; valid words via the overridable
-    `wordCheckProvider`) + `word_runs.dart` + `word_landing_banner.dart`
-    (banner over the board, outside its zoom). Settle bump, pop + gold
-    glow on new words, one light haptic, nothing for invalid words;
-    respects system "remove animations". No saved data changes.
-    Merged to master 2026-10-02 (`7295563`) after on-device check.
-  - `spec-03-one-look`: **one look for the whole app** (see "Design
-    system" below). Home replaces the old menu + Game Modes screens;
-    each mode has a start page; the four 10x10 modes share one game
-    layout with a Leave button (+ confirm, also on the back gesture);
-    Infinite Estate restyled with a clear Words/Village toggle and
-    building-color stripes on tiles; Stats gains Free Play top times;
-    Portfolio's dev "Test controls" are removed; Settings' Dark Mode
-    switch is hidden. Built in 7 commits; merged to master 2026-10-02
-    (`1b18497`) after on-device check.
-  - Specs 01-03 live in `Desktop\MrWordlerScreenshots\specs\`. The
-    next design spec (spec-04, Village view art / empty-village fix) has
-    not been written yet.
-- On-device runs: phone is a Samsung SM S926U (`flutter run -d
-  R5CX213D2EJ`). If `flutter devices` says "not authorized", the user
-  needs to accept the USB-debugging prompt on the phone.
+- The user designs features in the Claude app's design tool, which writes
+  a numbered spec (`Desktop\MrWordlerScreenshots\specs\spec-NN-*.md`).
+  A fresh Claude Code session builds one spec at a time on its own branch,
+  in the spec's commit order, running `flutter analyze` + `flutter test`
+  before every commit; puts it on the phone; walks the user through the
+  spec's manual check list; and merges to master only on the user's OK.
+  Before installing a build that touches saves, back up the phone's
+  `shared_prefs/FlutterSharedPreferences.xml` (`adb exec-out run-as
+  com.example.namer_app cat ...`).
+- After a merge, fresh screenshots go into a new dated folder under
+  `Desktop\MrWordlerScreenshots\` for the next design session.
+- Phone: Samsung SM S926U (`flutter run -d R5CX213D2EJ`). If `flutter
+  devices` says "not authorized", the user must tap "Allow USB debugging".
+- OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
+  re-run `flutter test`.
+
+## Current state (as of 2026-10-03)
+
+Built from specs 01-04 (each merged after an on-device check):
+- **spec-01:** Infinite Estate's 10-tile rack with balanced refill
+  (`lib/game/balanced_draw.dart`), Swap, and village save
+  `saveVersion` 2 (v1 21-letter racks migrate once on load).
+- **spec-02:** `LetterTile` (cream wooden tiles, Lilita One) and
+  word-landing feedback (`tileLandingProvider`, banner, haptic).
+- **spec-03:** one look for the whole app (see Design system), Home,
+  start pages, the shared 10x10 game layout with a Leave confirm.
+- **spec-04** (branch `spec-04-see-your-village`, awaiting on-device
+  check):
+  - **Angled Village view** (`lib/village/iso_village_view.dart`): every
+    word on its own squares; magic words are raised letter blocks with
+    their building sprite on top, other letters are stone path slabs.
+    Tap a building or word for a card with what it means
+    (`village_cards.dart`, `DefinitionService`). Switching views keeps
+    the same center cell and zoom (`iso_math.dart`). A "Build your first
+    building" helper shows until there's one.
+  - Word scanning keeps repeats (`currentWordRuns`), so two WELLs are two
+    buildings.
+  - **Coins:** +10 the first time each building is built; 1 free Swap per
+    visit (2 with a Farm) (`lib/village/village_rewards.dart`).
+  - **Free Play and Theme Rush are removed.** Their stored data
+    (`leaderboardEntries`, `themeRushBestSeconds`) is left in storage.
+  - Home fits one screen with a live picture of your village; "Daily
+    Estate Challenge" is now **"Daily puzzle"** everywhere it's shown.
+  - **Settings:** Text size (Normal/Large/Extra large) and Reduce motion
+    (`lib/settings/settings_controller.dart`), How to play.
 
 ## Key architectural decisions
 
 - **Riverpod** (`flutter_riverpod`) for all real game state via
   `StateNotifierProvider`; legacy `provider` package is kept *only* for
   `ThemeNotifier` (dark mode), imported with `hide ChangeNotifierProvider`
-  to avoid clashing with Riverpod's own.
+  (and `hide Consumer` in `main.dart`).
 - **One shared grid engine** (`lib/game/`) backs every mode. Each mode
   screen wraps its content in its own `ProviderScope(overrides:
   [gridConfigProvider.overrideWithValue(...)])` so modes never share
-  state, while `GridBoardView`/`GridRackView`/`GridTileWidget` and
-  `GridGameController` are reused everywhere. `gridGameControllerProvider`
-  intentionally throws if `gridConfigProvider` isn't overridden, so a
-  missing override fails loudly instead of silently sharing state.
-- **Lazy board rendering for large boards.** `GridBoardView` and
-  `VillageBoardView` default to the original eager `GridView.count`
-  (fine for every 10x10 mode), but take an optional `cellSize` that
-  switches them to `InteractiveViewer.builder` — fixed-pixel-size cells,
-  laid out at real `(col*cellSize, row*cellSize)` positions, with only
-  cells intersecting the current viewport actually built. This is what
-  lets Infinite Estate's board be 500x500 without eagerly constructing
-  250,000 widgets. See `lib/game/grid_board_widget.dart` and
-  `lib/village/village_board_view.dart`.
-- **Village view is a pure rendering switch**, not a separate data model:
-  `computeStructures()` derives "structures" fresh from the live board's
-  word positions every time. Only the actual board/rack/pool plus a few
-  event-tracking sets (`reachedLandmarks`, `discoveredWords`,
-  `lastCashedOutScore`) are persisted (`lib/village/village_save.dart`,
-  via `shared_preferences`).
+  state. `gridGameControllerProvider` intentionally throws if
+  `gridConfigProvider` isn't overridden.
+- **Lazy rendering for the 500x500 board.** Words view (`GridBoardView`
+  with `cellSize`) builds only visible cells inside
+  `InteractiveViewer.builder`; Village view is one `CustomPainter` that
+  paints only visible cells (grass as one checker path; letters, blocks
+  and buildings only for occupied cells).
+- **Village view is a pure rendering of the board**, not a separate data
+  model: `computeStructures(runs)` (`lib/village/structures.dart`) derives
+  buildings fresh each time, and `VillageScene` holds the geometry both
+  painting and tap hit-testing use. Only board/rack/pool plus
+  `reachedLandmarks`, `discoveredWords` and `lastCashedOutScore` are saved
+  (`village_save.dart`).
+- **Word checks are injectable:** `wordCheckProvider` (defaults to the
+  dictionary) is used by word-landing feedback and the village word scan,
+  so tests can fake it (the real 1.5MB dictionary can't load in tests).
 - **Accessibility-first for Village Builder** (explicit user directive):
   no timers, no punishing fail states, gentle positive feedback only.
-  Landmark/Well rewards are always upside, never a penalty.
-- **Verification policy** (established after a Riverpod scoping bug once
-  reached the user's device despite passing tests): large/risky changes
-  go to a feature branch, not directly to master, with `flutter analyze`
-  + `flutter test` run before every commit, and an explicit note of what
-  hasn't been visually confirmed on-device.
+  Tile letters never grow with text size (`TextScaler.noScaling`); the
+  whole rack must always fit.
+- **Verification policy:** risky changes go on a feature branch with
+  analyze + test before every commit and an on-device check before merge.
 
 ## Design system (spec-03)
 
 - **Every color, text style, size and radius comes from
   `lib/ui/tokens.dart`** (`WColors`, `WModeColors`, `WText`, `WSize`,
-  `wLip()`); `buildWordlerTheme()` is the app's one ThemeData. Don't use
-  Material named colors in screens -- `test/stats_top_times_test.dart`
-  fails if `Colors.deepPurple/orangeAccent/greenAccent` come back, and
-  `test/tokens_test.dart` checks WCAG contrast for the text/background
-  pairs. Nothing is smaller than 14px text.
-- Fonts are bundled (no network): **Lilita One** (titles, buttons,
-  numbers, tiles) and **Atkinson Hyperlegible** (everything else), in
-  `assets/fonts/` with their OFL licenses.
+  `wLip()`); `buildWordlerTheme()` is the app's one ThemeData.
+  `test/tokens_test.dart` checks WCAG contrast and fails if
+  `Colors.deepPurple/orangeAccent/greenAccent` come back. Nothing is
+  smaller than 14px text.
+- Fonts are bundled: **Lilita One** (titles, buttons, numbers, tiles) and
+  **Atkinson Hyperlegible** (everything else), in `assets/fonts/`.
 - Shared widgets in `lib/ui/`: `ChunkyButton`/`ChunkyIconButton`,
-  `ChunkyCard`, `PillChip`, `WordlerScaffold` (paper screen + 64px top
-  bar), `WordlerDialog`/`showWordlerDialog` (every dialog; each action
-  closes the dialog first), `ModeStartView`, `GameLayout` (10x10 modes)
-  + `confirmLeaveRound`.
-- Light theme only for now: `darkTheme` points at the same theme and the
-  switch is hidden; `ThemeNotifier` and its saved value are untouched.
+  `ChunkyCard`, `PillChip`, `WordlerScaffold`, `WordlerDialog`/
+  `showWordlerDialog` (each action closes the dialog first),
+  `ModeStartView`, `GameLayout` + `confirmLeaveRound`,
+  `check_result_dialog.dart`.
+- Light theme only: `darkTheme` points at the same theme and the switch is
+  hidden; `ThemeNotifier` and its saved value are untouched.
 
 ## Code organization
 
 ```
+assets/
+  fonts/             Lilita One, Atkinson Hyperlegible (+ OFL licenses)
+  images/            village_preview.png (Home picture with no village yet)
+  village/           buildings/*.png (sprites), cards/*.png (tap-card art),
+                     buildings.json (sprite anchors: the pixel that sits on
+                     the ground at the word's middle cell)
 lib/
-  game/              Shared grid engine used by every mode
-    grid_config.dart         Per-mode config (board/rack size, seed, refill behavior)
-    grid_game_controller.dart  Core move/draw/trade/swap logic (StateNotifier)
+  game/              Shared grid engine
+    grid_config.dart, grid_game_state.dart, grid_providers.dart, tile_location.dart
+    grid_game_controller.dart  Move/draw/trade/swap; currentWordRuns()
     balanced_draw.dart        Infinite Estate's balanced refill rules
-    letter_tile.dart          LetterTile: the one tile look, + TileFx animation
-    word_runs.dart            Across/down runs through a board cell
+    letter_tile.dart          LetterTile (+ TileFx animation, stripe, faceColor)
+    word_runs.dart            WordRun; across/down runs through a cell
     word_landing.dart         tileLandingProvider, wordCheckProvider, fxFor
-    word_landing_banner.dart  The big "CAT" banner over the board
-    grid_game_state.dart      Immutable state (board/rack/pool cells)
+    word_landing_banner.dart  The "CAT" banner over the board
     grid_board_widget.dart    GridBoardView/GridRackView/GridTileWidget + GridTheme
-    grid_providers.dart       gridConfigProvider / gridGameControllerProvider
-    tile_location.dart        TileZone/TileLocation (drag payload)
-  ui/                Design tokens + shared chunky widgets (see Design system)
-  screens/           One file per mode/top-level screen
-    home_screen.dart (the entry screen: level/coins, village card, Today's
-    puzzle, 3 mode cards, Portfolio/Stats), mode_start_pages.dart (Free
-    Play + Time Attack start pages; Theme Rush's is inside its screen),
-    game_screen.dart (Free Play), daily_challenge_screen.dart,
-    time_attack_screen.dart, theme_rush_screen.dart,
-    infinite_estate_screen.dart (Village Builder — the biggest/most actively
-    developed screen), portfolio_screen.dart, stats_screen.dart, settings_screen.dart
-    Navigation: Home -> start page -> round (Start replaces the start page,
-    so leaving a round returns to Home); Home -> "Visit your village" goes
-    straight into Infinite Estate.
-  village/           Village Builder-specific logic, layered on the grid engine
-    magic_word.dart           Curated list of ~6-8 magic words + their structure defs
-    village_board_view.dart   Read-only "Village" map rendering (structures/landmarks)
-    landmark.dart             Formula-based landmark placement (fraction-of-radius
-                               from board center, golden-angle spread)
-    bridge_transform.dart     Pure pan/zoom-to-cell transform math (Bridge ability)
-    discovery_journal_view.dart  Journal bottom sheet + "letters toward word" logic
-    village_save.dart         Persistence (SharedPreferences), saveVersion
-    village_save_migration.dart  v1 (21-letter rack) -> v2 (10) save migration
-  portfolio/         Neighborhoods/property tiers/currency/XP meta-progression
-  daily/             Daily Estate Challenge (seeded puzzle, bonus word, streak)
-  stats/             Per-mode stats tracking; leaderboard.dart (Free Play top times)
-  theme_rush/        Theme Rush's theme/word-list data
+  ui/                Design tokens + shared chunky widgets
+  screens/
+    home_screen.dart          Level/coins, live village picture, Daily puzzle,
+                              Time Attack, Portfolio/Stats
+    mode_start_pages.dart     Time Attack's start page
+    time_attack_screen.dart, daily_challenge_screen.dart
+    infinite_estate_screen.dart  The village (Words + Village views)
+    portfolio_screen.dart, stats_screen.dart, settings_screen.dart
+    Navigation: Home -> Time Attack start page -> round (Start replaces the
+    start page, so leaving returns Home); Home -> "Visit your village" and
+    the Daily card go straight in.
+  village/
+    magic_word.dart           The 8 magic words + their building defs
+    structures.dart           BoardStructure, computeStructures(runs), stripes
+    iso_math.dart             Isometric projection + view-switch camera helpers
+    iso_village_view.dart     IsoVillageView, VillageScene, hitTestVillage
+    village_art.dart          Loads buildings.json + sprites (with alpha)
+    village_cards.dart        Building/word/meaning cards, first-building helper
+    village_rewards.dart      First-building coins, free Swaps
+    landmark.dart, bridge_transform.dart
+    discovery_journal_view.dart  Journal sheet (+ "What it means")
+    village_save.dart, village_save_migration.dart
+  settings/          settings_controller.dart (textSizeStep, reduceMotion)
+  portfolio/         Neighborhoods/property tiers/currency/XP
+  daily/             Daily puzzle (seeded letters, bonus word, streak)
+  stats/             Mode stats (Infinite high score; old Theme Rush times kept)
   dictionary/        Tap-for-definition (dictionaryapi.dev, cached locally)
-  components/        Shared low-level widgets (tiles, timer, word validator)
+  components/        Timer, word validator (findValidRuns), letter generator
   util/              ThemeNotifier (dark mode, legacy `provider` package)
-
-test/                Mirrors lib/ for the pieces with real logic (grid engine,
-                     village, dictionary, bonus-letter rules); widget_test.dart
-                     covers full-app smoke tests per mode.
 ```
+
+SharedPreferences keys: `infiniteEstateVillageSave`, `portfolioData`,
+`dailyChallengeData`, `modeStatsData`, `leaderboardEntries` (unused since
+spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`,
+`definitionCache_*`.
 
 ## Testing
 
-- `flutter analyze` — should always be clean except the one pre-existing
-  `bananagramsTiles.dart` filename-casing lint (long-standing, not worth
-  a rename mid-feature).
-- `flutter test` — 89 tests across `test/*.dart` as of this writing, all
-  passing on `master`.
-- No real device/emulator is reliably available in this environment by
-  default — when one is connected (`flutter devices`), prefer running on
-  it (`flutter run -d <id>`) over Windows desktop (needs Developer Mode
-  enabled, usually off) for visual verification. `flutter screenshot -d
-  <id> -o <path>` can grab a real on-device PNG once the app is running.
+- `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
+  filename-casing lint.
+- `flutter test` — 110 tests as of spec-04. `widget_test.dart` loads the
+  real fonts (`loadAppFonts`) so layout-fit checks match the phone.
+- Prefer the real phone for visual checks; `adb exec-out screencap -p`
+  grabs a screenshot.
 
 ## Known open items / next steps
 
-1. **Dark palette.** The app is light-only since spec-03 (the Dark Mode
-   switch is hidden, its saved value kept). A proper dark palette is a
-   later spec.
-2. **Ocean Ave's "+15s starting time" perk** is listed in
-   `neighborhood.dart` but Time Attack doesn't apply it yet (fixed 3:00);
-   the start page deliberately doesn't show it.
-3. **Bridge's "jump to landmark" pan/zoom** has unit/property test
-   coverage for its transform math but hasn't been visually confirmed
-   on-device yet.
-4. **Well's once-per-visit limit** resets on app restart rather than
-   per village-visit (session-only state, not persisted) — confirm this
-   is the intended behavior.
-5. Rack tile pinning is intentionally *not* persisted across sessions
-   (pure UI affordance, not a saved record) — confirm this is still
-   wanted now that pins follow letters instead of slots.
-6. A set of reference screenshots (4 mode screens, Portfolio x2, one
-   Infinite Estate gameplay screen) was captured to
-   `C:\Users\Ryan the Avatar\Desktop\MrWordlerScreenshots\` for handing
-   off to a design-focused Claude session. The current set (after
-   specs 01-03) is in its `2026-10-02\` subfolder, with
-   `NOTES_FOR_CLAUDE_DESIGN.txt` listing what's worth a design look.
+1. **spec-05:** Word of the day; themed Daily (theme, secret word, Clue
+   button, no Swap in Daily, bonus).
+2. **spec-06:** building upgrades, village level, building plans,
+   districts. Later: a Word book page, hints/assist mode, power-ups.
+3. **Dark palette** (the app is light-only; switch hidden).
+4. **Ocean Ave's "+15s starting time" perk** isn't applied by Time Attack
+   yet (fixed 3:00).
+5. **Well's once-per-visit limit** and the free Swaps reset when the
+   village screen reopens (session-only, not saved), by design.
+6. Rack pins are intentionally not saved across sessions.
+7. The Village view chip row (score, buildings, Journal) wraps to two
+   lines on the S24+; worth a design look.
