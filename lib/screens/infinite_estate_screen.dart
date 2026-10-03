@@ -1,19 +1,23 @@
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
+import '../dictionary/definition_service.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
 import '../game/grid_providers.dart';
+import '../game/word_landing.dart' show wordCheckProvider;
+import '../game/word_runs.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
+import '../village/iso_math.dart';
+import '../village/iso_village_view.dart';
 import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
-import '../village/iso_math.dart';
-import '../village/iso_village_view.dart';
 import '../village/village_art.dart';
+import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 
@@ -159,12 +163,19 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // Village view has its own camera (its content is the angled map).
   final _villageTransform = TransformationController();
   bool _villageCentered = false;
-  static const _isoGrid = IsoGrid(boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
+  static const _isoGrid =
+      IsoGrid(boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
   // Rebuilt only when the board or the buildings change.
   VillageScene? _scene;
   List<String?>? _sceneBoard;
   List<BoardStructure>? _sceneStructures;
   Map<String, SpriteMeta> _spriteMeta = const {};
+  VillageArt? _art;
+  // Every valid word on the board (repeats included), for tap cards.
+  List<WordRun> _wordRuns = const [];
+  // The word whose card is open, lit up on the map.
+  Set<int> _highlight = const {};
+  BoardStructure? _highlightBuilding;
   Size? _boardViewportSize;
   // The board is far too large to show all at once, so the very first
   // frame instead centers the view on the village's origin (the board's
@@ -187,6 +198,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
       if (mounted) setState(() => _spriteMeta = meta);
+    }).catchError((_) {});
+    VillageArt.load().then((art) {
+      if (mounted) setState(() => _art = art);
     }).catchError((_) {});
   }
 
@@ -379,15 +393,13 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     _computingStructures = true;
     try {
       final controller = ref.read(gridGameControllerProvider.notifier);
-      final runs = await controller.currentWordRuns();
+      final runs = await controller.currentWordRuns(isValid: ref.read(wordCheckProvider));
       if (!mounted) return;
       final structures = computeStructures(runs);
-      final newlyDiscovered = structures
-          .map((s) => s.def.word)
-          .where((w) => !_discoveredWords.contains(w))
-          .toSet();
+      final newlyDiscovered = structures.map((s) => s.def.word).where((w) => !_discoveredWords.contains(w)).toSet();
       setState(() {
         _structures = structures;
+        _wordRuns = runs;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
         }
@@ -439,6 +451,27 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     return true;
   }
 
+  // Under the map in Village view (you can't place letters there): a hint
+  // line, or the first-building helper until there's a building.
+  Widget _villageFooter() {
+    if (_structures.isNotEmpty) {
+      return Text(
+        'Every word you spell is here. Tap one to see what it means.',
+        style: WText.label,
+        textAlign: TextAlign.center,
+      );
+    }
+    final grid = ref.watch(gridGameControllerProvider);
+    final closest = closestBuilding(grid.rackCells, grid.boardCells);
+    return FirstBuildingHelper(
+      def: closest.def,
+      have: closest.have,
+      haveEach: closest.haveEach,
+      spritePath: _spriteMeta[closest.def.word]?.spritePath,
+      onGoToWords: () => _switchView(_ViewMode.words),
+    );
+  }
+
   void _drawFromWell() {
     if (_wellUsedThisVisit) return;
     // Only spend the once-per-visit draw if a letter actually arrived
@@ -470,8 +503,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   void _centerViewIfNeeded(Size viewportSize) {
     if (_viewCentered) return;
     _viewCentered = true;
-    const centerIndex = (InfiniteEstateScreen.boardSize ~/ 2) * InfiniteEstateScreen.boardSize +
-        (InfiniteEstateScreen.boardSize ~/ 2);
+    // The middle of all the letters (the board center if there are none).
+    final center = _villageScene().lettersCenter();
+    final centerIndex = center.r * InfiniteEstateScreen.boardSize + center.c;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _transformController.value = computeCenterTransform(
@@ -482,6 +516,152 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         scale: 1.0,
       );
     });
+  }
+
+  // Switching views keeps you looking at the same spot, at the same zoom.
+  void _switchView(_ViewMode mode) {
+    if (mode == _viewMode) return;
+    final viewport = _boardViewportSize;
+    if (viewport == null) {
+      setState(() => _viewMode = mode);
+      return;
+    }
+    if (mode == _ViewMode.village) {
+      final cell = centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
+          boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
+      final scale = transformScale(_transformController.value);
+      _villageCentered = true;
+      setState(() => _viewMode = mode);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _villageTransform.value =
+            isoTransformCenteredOn(cell.r, cell.c, _boardViewportSize ?? viewport, scale, _isoGrid);
+      });
+    } else {
+      final cell = centerCellOfIsoView(_villageTransform.value, viewport, _isoGrid);
+      _centerWordsOn(cell.r * InfiniteEstateScreen.boardSize + cell.c, transformScale(_villageTransform.value));
+    }
+  }
+
+  // Switches to Words view centered on board cell [index].
+  void _centerWordsOn(int index, double scale) {
+    final fallback = _boardViewportSize;
+    _viewCentered = true;
+    setState(() => _viewMode = _ViewMode.words);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final viewport = _boardViewportSize ?? fallback;
+      if (!mounted || viewport == null) return;
+      _transformController.value = computeCenterTransform(
+        viewportSize: viewport,
+        boardIndex: index,
+        boardWidth: InfiniteEstateScreen.boardSize,
+        cellSize: InfiniteEstateScreen.cellSize,
+        scale: scale,
+      );
+    });
+  }
+
+  void _showInWords(List<int> positions) {
+    _centerWordsOn(positions[(positions.length - 1) ~/ 2], transformScale(_villageTransform.value));
+  }
+
+  Future<String?> _loadDefinition(String word) => ref.read(definitionServiceProvider).getDefinition(word);
+
+  void _onVillageTap(Offset contentPoint) {
+    final art = _art;
+    final hit = hitTestVillage(
+      contentPoint,
+      _villageScene(),
+      opaque: art == null ? null : (s, x, y) => art.sprites[s.def.word]?.opaqueAt(x, y) ?? true,
+    );
+    switch (hit) {
+      case BuildingHit(:final structure):
+        _openBuildingCard(structure);
+      case CellHit(:final index):
+        _openWordCard(index);
+      case NoHit():
+        break;
+    }
+  }
+
+  BuildingAbility? _abilityFor(MagicWordDef def, BuildContext sheetContext) {
+    switch (def.word) {
+      case 'WELL':
+        return BuildingAbility(
+          _wellUsedThisVisit ? 'Well used' : 'Draw a free letter',
+          _wellUsedThisVisit
+              ? null
+              : () {
+                  _drawFromWell();
+                  Navigator.of(sheetContext).pop();
+                },
+        );
+      case 'BRIDGE':
+        return BuildingAbility(
+          'Jump to a landmark',
+          _reachedLandmarks.isEmpty
+              ? null
+              : () {
+                  Navigator.of(sheetContext).pop();
+                  _openBridgeJumpMenu();
+                },
+        );
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _openBuildingCard(BoardStructure structure) async {
+    setState(() {
+      _highlight = structure.positions;
+      _highlightBuilding = structure;
+    });
+    await showVillageSheet<void>(
+      context,
+      Builder(
+        builder: (sheetContext) => BuildingCard(
+          def: structure.def,
+          cardImagePath: _spriteMeta[structure.def.word]?.cardPath,
+          loadDefinition: _loadDefinition,
+          ability: _abilityFor(structure.def, sheetContext),
+          onShowInWords: () {
+            Navigator.of(sheetContext).pop();
+            _showInWords(structure.ordered);
+          },
+        ),
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _highlight = const {};
+        _highlightBuilding = null;
+      });
+    }
+  }
+
+  Future<void> _openWordCard(int index) async {
+    final runs = _wordRuns.where((r) => r.positions.contains(index)).toList()
+      ..sort((a, b) => (a.across ? 0 : 1).compareTo(b.across ? 0 : 1));
+    if (runs.isEmpty) {
+      await showVillageSheet<void>(context, const NotAWordCard());
+      return;
+    }
+    setState(() => _highlight = runs.first.positions.toSet());
+    await showVillageSheet<void>(
+      context,
+      Builder(
+        builder: (sheetContext) => WordCard(
+          runs: runs,
+          loadDefinition: _loadDefinition,
+          onWordChanged: (run) => setState(() => _highlight = run.positions.toSet()),
+          onShowInWords: (run) {
+            Navigator.of(sheetContext).pop();
+            _showInWords(run.positions);
+          },
+        ),
+      ),
+    );
+    if (mounted) setState(() => _highlight = const {});
   }
 
   void _openBridgeJumpMenu() {
@@ -623,7 +803,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                     Expanded(
                       child: _ViewToggle(
                         mode: _viewMode,
-                        onChanged: (mode) => setState(() => _viewMode = mode),
+                        onChanged: _switchView,
                       ),
                     ),
                     const SizedBox(width: WSize.gap2),
@@ -644,6 +824,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                   onWell: _drawFromWell,
                   showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
                   onBridge: _openBridgeJumpMenu,
+                  buildingCount: _viewMode == _ViewMode.village ? _structures.length : null,
                 ),
               ),
               Expanded(
@@ -688,6 +869,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                         key: const ValueKey('village'),
                                         scene: scene,
                                         transformController: _villageTransform,
+                                        highlight: _highlight,
+                                        highlightBuilding: _highlightBuilding,
+                                        onTapContent: _onVillageTap,
                                         minScale: 0.2,
                                         maxScale: 2.5,
                                         boundaryMargin: const EdgeInsets.all(400),
@@ -708,39 +892,42 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(WSize.gamePadding, WSize.gap3, WSize.gamePadding, WSize.gamePadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Sized to its content (square tiles, every row
-                    // visible), so any spare height goes to the board. A
-                    // bonus letter adds a third row.
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: WColors.soil,
-                        border: Border.all(color: WColors.ink, width: WSize.outline),
-                        borderRadius: BorderRadius.circular(18),
+                child: _viewMode == _ViewMode.village
+                    ? _villageFooter()
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Sized to its content (square tiles, every row
+                          // visible), so any spare height goes to the board. A
+                          // bonus letter adds a third row.
+                          Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: WColors.soil,
+                              border: Border.all(color: WColors.ink, width: WSize.outline),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: GridRackView(
+                              theme: _estateTheme,
+                              crossAxisCount: 5,
+                              childAspectRatio: 1.0,
+                              bordered: false,
+                              cellPadding: 3,
+                              pinnedIndices: _pinnedRackIndices,
+                              onTogglePin: _togglePin,
+                            ),
+                          ),
+                          const SizedBox(height: WSize.gap3),
+                          _SwapButton(
+                            allPinned:
+                                _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                            free: _farmSwapAvailable,
+                            canAfford:
+                                ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
+                            onSwap: _swapRack,
+                          ),
+                        ],
                       ),
-                      child: GridRackView(
-                        theme: _estateTheme,
-                        crossAxisCount: 5,
-                        childAspectRatio: 1.0,
-                        bordered: false,
-                        cellPadding: 3,
-                        pinnedIndices: _pinnedRackIndices,
-                        onTogglePin: _togglePin,
-                      ),
-                    ),
-                    const SizedBox(height: WSize.gap3),
-                    _SwapButton(
-                      allPinned: _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                      free: _farmSwapAvailable,
-                      canAfford:
-                          ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
-                      onSwap: _swapRack,
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -862,6 +1049,7 @@ class _VillageActionBar extends StatelessWidget {
     required this.onWell,
     required this.showBridge,
     required this.onBridge,
+    this.buildingCount,
   });
 
   final int score;
@@ -874,6 +1062,8 @@ class _VillageActionBar extends StatelessWidget {
   final VoidCallback onWell;
   final bool showBridge;
   final VoidCallback onBridge;
+  // Village view only.
+  final int? buildingCount;
 
   @override
   Widget build(BuildContext context) {
@@ -889,6 +1079,13 @@ class _VillageActionBar extends StatelessWidget {
           tooltip: 'Village score (tap to recount)',
           onTap: onScoreTap,
         ),
+        if (buildingCount != null)
+          PillChip(
+            icon: Icons.house,
+            value: '$buildingCount',
+            label: buildingCount == 1 ? 'building' : 'buildings',
+            badgeColor: WColors.leaf,
+          ),
         PillChip(
           icon: Icons.menu_book,
           value: 'Journal $discoveredCount/$totalMagicWords',

@@ -320,10 +320,9 @@ void main() {
     expect(find.text('Free letter'), findsNothing);
     expect(find.text('Jump'), findsNothing);
 
-    // Switching to Village view should render without error. A fresh
-    // board has no magic words built yet, so Words view's 10 rack tiles
-    // are still there (the rack is unaffected by the toggle) but the
-    // board itself shows no letters in Village view.
+    // Switching to Village view should render without error. You can't
+    // place letters there, so the rack is hidden, and a fresh village
+    // shows the first-building helper instead.
     expect(find.text('Words'), findsOneWidget);
     expect(find.text('Village'), findsOneWidget);
     await tester.tap(find.text('Village'));
@@ -331,9 +330,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    // The rack (unaffected by the toggle) still shows its 10 letters;
-    // the empty board itself contributes none in Village view.
-    expect(oneLetterTileFinder(), findsNWidgets(10));
+    expect(find.text('Build your first building'), findsOneWidget);
+    expect(find.text('Go to Words'), findsOneWidget);
+    expect(find.text('Swap letters'), findsNothing);
 
     // Switching back to Words view should restore the interactive board.
     await tester.tap(find.text('Words'));

@@ -286,11 +286,13 @@ class GridGameController extends StateNotifier<GridGameState> {
   // Every valid word on the board as its own WordRun, repeats included
   // (unlike currentWordPositions, where a second copy of a word
   // overwrites the first). Village view and building detection use this.
-  Future<List<WordRun>> currentWordRuns() {
+  // [isValid] defaults to the dictionary.
+  Future<List<WordRun>> currentWordRuns({Future<bool> Function(String word)? isValid}) {
     return _validator.findValidRuns(
       state.boardCells,
       state.config.boardWidth,
       state.config.boardHeight,
+      isValid: isValid,
     );
   }
 

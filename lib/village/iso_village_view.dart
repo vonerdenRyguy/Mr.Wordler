@@ -459,3 +459,47 @@ class IsoVillagePainter extends CustomPainter {
       oldDelegate.highlight != highlight ||
       !identical(oldDelegate.highlightBuilding, highlightBuilding);
 }
+
+/// What a tap in Village view landed on.
+sealed class VillageHit {
+  const VillageHit();
+}
+
+class BuildingHit extends VillageHit {
+  const BuildingHit(this.structure);
+  final BoardStructure structure;
+}
+
+class CellHit extends VillageHit {
+  const CellHit(this.index);
+  final int index;
+}
+
+class NoHit extends VillageHit {
+  const NoHit();
+}
+
+/// Buildings first, front to back, using the sprite's alpha ([opaque]
+/// answers "is this sprite pixel solid?"; null treats every pixel inside
+/// the sprite's rectangle as solid). Otherwise the letter under the tap,
+/// trying the point itself and then the point shifted down by the block
+/// height, so the top of a raised block hits its own cell.
+VillageHit hitTestVillage(
+  Offset p,
+  VillageScene scene, {
+  bool Function(BoardStructure s, int x, int y)? opaque,
+}) {
+  final front = [...scene.structures]..sort((a, b) => scene.buildingDepth(b).compareTo(scene.buildingDepth(a)));
+  for (final s in front) {
+    final pixel = scene.spritePixelAt(s, p);
+    if (pixel == null) continue;
+    if (opaque == null || opaque(s, pixel.x, pixel.y)) return BuildingHit(s);
+  }
+  for (final point in [p, p + const Offset(0, isoBlockHeight)]) {
+    final cell = scene.grid.cellAt(point);
+    if (cell == null) continue;
+    final index = cell.r * scene.grid.boardWidth + cell.c;
+    if (scene.boardCells[index] != null) return CellHit(index);
+  }
+  return const NoHit();
+}
