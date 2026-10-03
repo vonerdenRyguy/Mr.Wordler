@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 // app uses provider's version for ThemeNotifier, so hide riverpod's.
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:namer_app/screens/home_screen.dart';
+import 'package:namer_app/settings/settings_controller.dart';
 import 'package:namer_app/ui/tokens.dart';
 import 'package:namer_app/util/theme_notifier.dart';
-import 'package:provider/provider.dart';
+import 'package:provider/provider.dart' hide Consumer;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,22 +43,22 @@ class MyApp extends StatelessWidget {
       theme: wordlerTheme,
       darkTheme: wordlerTheme,
       themeMode: themeNotifier.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      builder: (context, child) {
-        // Clamp the OS font-scale setting so a phone with "large text"
-        // accessibility settings enabled doesn't blow out the tightly
-        // packed letter grid; the game already scales its own tile text
-        // to the screen size, so this only guards against extreme cases.
-        final mediaQuery = MediaQuery.of(context);
-        return MediaQuery(
-          data: mediaQuery.copyWith(
-            textScaler: mediaQuery.textScaler.clamp(
-              minScaleFactor: 0.8,
-              maxScaleFactor: 1.2,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Consumer(builder: (context, ref, _) {
+            // The phone's text size times the in-app Text size setting,
+            // clamped so nothing gets silly. Tiles draw their letters at a
+            // fixed size, so the board and rack always fit. Reduce motion
+            // is on if either the phone or the app setting asks for it.
+            final settings = ref.watch(settingsProvider);
+            final mediaQuery = MediaQuery.of(context);
+            final scale = (mediaQuery.textScaler.scale(1.0) * settings.textScale).clamp(0.8, 1.6);
+            return MediaQuery(
+              data: mediaQuery.copyWith(
+                textScaler: TextScaler.linear(scale),
+                disableAnimations: mediaQuery.disableAnimations || settings.reduceMotion,
+              ),
+              child: child!,
+            );
+          }),
       home: const HomeScreen(),
     );
   }

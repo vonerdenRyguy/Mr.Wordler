@@ -351,6 +351,33 @@ class _WordCardState extends State<WordCard> {
   }
 }
 
+/// Just a word and what it means (the Journal's "What it means" link).
+class MeaningCard extends StatelessWidget {
+  const MeaningCard({super.key, required this.word, required this.loadDefinition});
+
+  final String word;
+  final DefinitionLoader loadDefinition;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: PathWordTiles(word: word)),
+            const _CloseButton(),
+          ],
+        ),
+        const SizedBox(height: WSize.gap3),
+        _MeaningBox(word: word, loadDefinition: loadDefinition),
+      ],
+    );
+  }
+}
+
 class NotAWordCard extends StatelessWidget {
   const NotAWordCard({super.key});
 

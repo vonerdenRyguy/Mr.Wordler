@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
 import 'magic_word.dart';
+import 'village_cards.dart';
 
 // How many of `word`'s letters (respecting duplicates -- two A's needed
 // means two A's in hand, not one) are currently in the player's rack.
@@ -37,10 +38,13 @@ class DiscoveryJournalView extends StatelessWidget {
     super.key,
     required this.rackCells,
     required this.discoveredWords,
+    this.loadDefinition,
   });
 
   final List<String?> rackCells;
   final Set<String> discoveredWords;
+  // For each row's "What it means" link; null hides the link.
+  final DefinitionLoader? loadDefinition;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +73,9 @@ class DiscoveryJournalView extends StatelessWidget {
                   def: def,
                   isDiscovered: discoveredWords.contains(def.word),
                   lettersHave: lettersTowardWord(def.word, rackCells),
+                  onWhatItMeans: loadDefinition == null
+                      ? null
+                      : () => showVillageSheet<void>(context, MeaningCard(word: def.word, loadDefinition: loadDefinition!)),
                 ),
             ],
           ),
@@ -79,11 +86,12 @@ class DiscoveryJournalView extends StatelessWidget {
 }
 
 class _JournalEntry extends StatelessWidget {
-  const _JournalEntry({required this.def, required this.isDiscovered, required this.lettersHave});
+  const _JournalEntry({required this.def, required this.isDiscovered, required this.lettersHave, this.onWhatItMeans});
 
   final MagicWordDef def;
   final bool isDiscovered;
   final int lettersHave;
+  final VoidCallback? onWhatItMeans;
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +129,21 @@ class _JournalEntry extends StatelessWidget {
                       color: isDiscovered ? WColors.grass : (ready ? WColors.ink : WColors.muted),
                     ),
                   ),
+                  if (onWhatItMeans != null)
+                    Semantics(
+                      button: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onWhatItMeans,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'What it means',
+                            style: WText.label.copyWith(color: WColors.ink, decoration: TextDecoration.underline),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

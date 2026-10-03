@@ -416,6 +416,29 @@ void main() {
     expect(rackTexts, isNot(contains('K')));
   });
 
+  testWidgets('Infinite Estate at Extra large text on 390x844: the whole rack shows, nothing overflows',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({'textSizeStep': 2});
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpApp(tester);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Visit your village'));
+    await tester.tap(find.text('Visit your village'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final tiles = oneLetterTileFinder().evaluate().toList();
+    expect(tiles.length, 10);
+    const screen = Rect.fromLTWH(0, 0, 390, 844);
+    for (final t in tiles) {
+      final r = tester.getRect(find.byWidget(t.widget));
+      expect(screen.contains(r.topLeft) && screen.contains(r.bottomRight), isTrue);
+    }
+  });
+
   testWidgets('Stats screen shows all sections', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;

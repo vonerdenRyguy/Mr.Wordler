@@ -347,6 +347,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DiscoveryJournalView(
+        loadDefinition: _loadDefinition,
         rackCells: rackCells,
         discoveredWords: _discoveredWords,
       ),

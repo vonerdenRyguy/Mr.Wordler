@@ -184,6 +184,8 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
                 ),
               Text(
                 widget.letter,
+                // Sized from the tile, so it never grows with text size.
+                textScaler: TextScaler.noScaling,
                 style: TextStyle(
                   fontFamily: 'LilitaOne',
                   color: _ink,
