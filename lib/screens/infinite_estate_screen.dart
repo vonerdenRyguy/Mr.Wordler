@@ -449,9 +449,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       body: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (card != null) SizedBox(height: 160, child: Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true)),
+          if (card != null)
+            SizedBox(height: 160, child: Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true)),
           const SizedBox(height: WSize.gap2),
-          Text('+$coins coins. Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see what ${names.length == 1 ? 'it does' : 'they do'}.',
+          Text(
+              '+$coins coins. Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see what ${names.length == 1 ? 'it does' : 'they do'}.',
               style: WText.body),
         ],
       ),
@@ -857,6 +859,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                   showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
                   onBridge: _openBridgeJumpMenu,
                   buildingCount: _viewMode == _ViewMode.village ? _structures.length : null,
+                  // Explains the stripes until there are a few buildings.
+                  // Worked out from the live structures, not saved.
+                  showStripeHint: _viewMode == _ViewMode.words && _structures.length < 3,
                 ),
               ),
               Expanded(
@@ -911,11 +916,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                     }),
                             ),
                           ),
-                          // Explains the stripes until the player has a few
-                          // buildings. Worked out from the live structures,
-                          // not saved.
-                          if (_viewMode == _ViewMode.words && _structures.length < 3)
-                            const Positioned(left: 8, bottom: 8, child: IgnorePointer(child: _StripeHint())),
                         ],
                       );
                     },
@@ -929,35 +929,54 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Sized to its content (square tiles, every row
-                          // visible), so any spare height goes to the board. A
-                          // bonus letter adds a third row.
-                          Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: WColors.soil,
-                              border: Border.all(color: WColors.ink, width: WSize.outline),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: GridRackView(
-                              theme: _estateTheme,
-                              crossAxisCount: 5,
-                              childAspectRatio: 1.0,
-                              bordered: false,
-                              cellPadding: 3,
-                              pinnedIndices: _pinnedRackIndices,
-                              onTogglePin: _togglePin,
-                            ),
-                          ),
-                          const SizedBox(height: WSize.gap3),
-                          _SwapButton(
-                            allPinned:
-                                _allBaseSlotsPinned(ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                            freeLeft: _freeSwapsLeft,
-                            canAfford:
-                                ref.watch(portfolioProvider.select((p) => p.currency)) >= InfiniteEstateScreen.swapCost,
-                            onSwap: _swapRack,
-                          ),
+                          // The rack sized to its content (square tiles, every row
+                          // visible; a bonus letter adds a row), with Swap in a
+                          // column beside it, so the board gets the height.
+                          LayoutBuilder(builder: (context, constraints) {
+                            const swapWidth = 72.0;
+                            const gap = 8.0;
+                            const frame = WSize.outline * 2 + 4 * 2;
+                            final rackLength = ref.watch(gridGameControllerProvider.select((s) => s.rackCells.length));
+                            final cell = (constraints.maxWidth - swapWidth - gap - frame) / 5;
+                            final rackHeight = (rackLength / 5).ceil() * cell + frame;
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: WColors.soil,
+                                      border: Border.all(color: WColors.ink, width: WSize.outline),
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                    child: GridRackView(
+                                      theme: _estateTheme,
+                                      crossAxisCount: 5,
+                                      childAspectRatio: 1.0,
+                                      bordered: false,
+                                      cellPadding: 2,
+                                      pinnedIndices: _pinnedRackIndices,
+                                      onTogglePin: _togglePin,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: gap),
+                                SizedBox(
+                                  width: swapWidth,
+                                  height: rackHeight,
+                                  child: _SwapColumn(
+                                    allPinned: _allBaseSlotsPinned(
+                                        ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                                    freeLeft: _freeSwapsLeft,
+                                    canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
+                                        InfiniteEstateScreen.swapCost,
+                                    onSwap: _swapRack,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }),
                         ],
                       ),
               ),
@@ -1037,34 +1056,6 @@ class _ViewToggle extends StatelessWidget {
   }
 }
 
-class _StripeHint extends StatelessWidget {
-  const _StripeHint();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: WColors.card,
-        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 18,
-            height: 6,
-            decoration: BoxDecoration(color: WColors.leaf, borderRadius: BorderRadius.circular(3)),
-          ),
-          const SizedBox(width: 6),
-          Text('Colored stripe = a building', style: WText.label.copyWith(color: WColors.ink)),
-        ],
-      ),
-    );
-  }
-}
-
 // The row under the top bar: village score plus every structure ability
 // and the Journal, as pill chips. A Wrap (not a Row) so a narrow phone or
 // a large system text size flows onto a second line instead of
@@ -1082,6 +1073,7 @@ class _VillageActionBar extends StatelessWidget {
     required this.showBridge,
     required this.onBridge,
     this.buildingCount,
+    this.showStripeHint = false,
   });
 
   final int score;
@@ -1096,6 +1088,7 @@ class _VillageActionBar extends StatelessWidget {
   final VoidCallback onBridge;
   // Village view only.
   final int? buildingCount;
+  final bool showStripeHint;
 
   @override
   Widget build(BuildContext context) {
@@ -1124,6 +1117,8 @@ class _VillageActionBar extends StatelessWidget {
           badgeColor: WColors.sun,
           onTap: onJournal,
         ),
+        if (showStripeHint)
+          const PillChip(icon: Icons.horizontal_rule, value: 'Stripe = building', badgeColor: WColors.leaf),
         if (showWell)
           PillChip(
             icon: Icons.water_drop,
@@ -1145,9 +1140,9 @@ class _VillageActionBar extends StatelessWidget {
   }
 }
 
-// "Swap letters" under the rack, with a chip saying what it costs.
-class _SwapButton extends StatelessWidget {
-  const _SwapButton({
+// "Swap" in a column beside the rack: icon, label, and what it costs.
+class _SwapColumn extends StatelessWidget {
+  const _SwapColumn({
     required this.allPinned,
     required this.freeLeft,
     required this.canAfford,
@@ -1164,27 +1159,47 @@ class _SwapButton extends StatelessWidget {
     const cost = InfiniteEstateScreen.swapCost;
     final free = freeLeft > 0;
     final enabled = !allPinned && (free || canAfford);
-    final String? chip =
-        allPinned ? null : (free ? (freeLeft > 1 ? 'Free x2' : 'Free') : (canAfford ? '$cost coins' : 'Need $cost coins'));
+    final String chip = allPinned
+        ? 'All letters pinned'
+        : (free ? (freeLeft > 1 ? 'Free x2' : 'Free') : (canAfford ? '$cost coins' : 'Need $cost coins'));
     final chipColor = !enabled ? WColors.boardCell : (free ? WColors.leaf : WColors.sun);
-    return ChunkyButton(
-      label: allPinned ? 'All letters pinned' : 'Swap letters',
-      icon: Icons.swap_horiz,
-      kind: ChunkyKind.secondary,
-      size: ChunkySize.big,
-      expand: true,
-      onPressed: enabled ? onSwap : null,
-      trailing: chip == null
-          ? null
-          : Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: chipColor,
-                border: Border.all(color: enabled ? WColors.ink : WColors.muted, width: WSize.outlineSmall),
-                borderRadius: BorderRadius.circular(12),
+    final ink = enabled ? WColors.ink : WColors.muted;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: 'Swap letters, $chip',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onSwap : null,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: WSize.lip),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          decoration: BoxDecoration(
+            color: enabled ? WColors.card : WColors.boardCell,
+            border: Border.all(color: ink, width: WSize.outline),
+            borderRadius: BorderRadius.circular(WSize.radiusButton),
+            boxShadow: enabled ? wLip(WSize.lip) : null,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(allPinned ? Icons.push_pin : Icons.swap_horiz, color: ink, size: 26),
+              Text('Swap', style: WText.buttonSmall.copyWith(color: ink)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: chipColor,
+                  border: Border.all(color: ink, width: WSize.outlineSmall),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(chip, textAlign: TextAlign.center, style: WText.label.copyWith(color: ink, height: 1.1)),
               ),
-              child: Text(chip, style: WText.label.copyWith(color: enabled ? WColors.ink : WColors.muted)),
-            ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

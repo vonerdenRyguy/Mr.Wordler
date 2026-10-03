@@ -332,7 +332,7 @@ void main() {
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.text('Build your first building'), findsOneWidget);
     expect(find.text('Go to Words'), findsOneWidget);
-    expect(find.text('Swap letters'), findsNothing);
+    expect(find.text('Swap'), findsNothing);
 
     // Switching back to Words view should restore the interactive board.
     await tester.tap(find.text('Words'));
@@ -394,7 +394,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Infinite Estate shows 10 rack tiles in 2 rows and a Swap button', (WidgetTester tester) async {
+  testWidgets('Infinite Estate shows 10 rack tiles in 2 rows and a Swap button beside the rack', (WidgetTester tester) async {
     await openInfiniteEstate(tester);
 
     expect(tester.takeException(), isNull);
@@ -402,7 +402,7 @@ void main() {
     expect(tiles.length, 10);
     final rows = tiles.map((e) => tester.getCenter(find.byWidget(e.widget)).dy.round()).toSet();
     expect(rows.length, 2);
-    expect(find.text('Swap letters'), findsOneWidget);
+    expect(find.text('Swap'), findsOneWidget);
   });
 
   testWidgets('the first Swap is free; then with 0 coins it says "Need 5 coins" and does nothing',
@@ -410,13 +410,13 @@ void main() {
     await openInfiniteEstate(tester);
 
     expect(find.text('Free'), findsOneWidget);
-    await tester.tap(find.text('Swap letters'));
+    await tester.tap(find.text('Swap'));
     await tester.pumpAndSettle();
 
     expect(find.text('Need 5 coins'), findsOneWidget);
     String rackLetters() => oneLetterTileFinder().evaluate().map((e) => (e.widget as Text).data).join();
     final before = rackLetters();
-    await tester.tap(find.text('Swap letters'));
+    await tester.tap(find.text('Swap'));
     await tester.pumpAndSettle();
     expect(rackLetters(), before);
   });
