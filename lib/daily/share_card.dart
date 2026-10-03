@@ -34,7 +34,7 @@ String buildDailyShareText({
   required bool bonusWordFound,
 }) {
   final buffer = StringBuffer()
-    ..writeln('Mr. Wordler — Daily Estate Challenge')
+    ..writeln('Mr. Wordler — Daily puzzle')
     ..writeln(dateKey);
 
   if (!completed) {

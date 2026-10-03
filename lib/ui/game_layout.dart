@@ -309,8 +309,13 @@ class SwapDropTarget extends ConsumerWidget {
                     const Icon(Icons.swap_horiz, color: WColors.ink),
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text('Swap 1 for 3',
-                          style: WText.button.copyWith(fontSize: 18, color: WColors.ink), textAlign: TextAlign.center),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Swap', style: WText.button.copyWith(fontSize: 18, color: WColors.ink)),
+                          Text('1 for 3', style: WText.button.copyWith(fontSize: 14, color: WColors.ink)),
+                        ],
+                      ),
                     ),
                   ],
                 ),

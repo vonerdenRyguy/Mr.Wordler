@@ -43,10 +43,8 @@ class WColors {
 class WModeColors {
   WModeColors._();
 
-  static const freePlay = WColors.tile;
   static const daily = WColors.sky;
   static const timeAttack = WColors.coral;
-  static const themeRush = WColors.lilac;
   static const village = WColors.leaf;
 }
 

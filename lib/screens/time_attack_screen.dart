@@ -7,7 +7,7 @@ import '../ui/chunky_button.dart';
 import '../ui/game_layout.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
-import 'game_screen.dart' show showCheckResultDialog;
+import '../ui/check_result_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

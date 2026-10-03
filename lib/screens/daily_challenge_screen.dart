@@ -17,7 +17,7 @@ import '../ui/game_layout.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
-import 'game_screen.dart' show showCheckResultDialog;
+import '../ui/check_result_dialog.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -90,7 +90,7 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
     switch (_loadState) {
       case _LoadState.loading:
         return const WordlerScaffold(
-          title: 'Daily Estate Challenge',
+          title: 'Daily puzzle',
           body: Center(child: CircularProgressIndicator()),
         );
       case _LoadState.alreadyPlayedToday:
@@ -116,7 +116,7 @@ class _AlreadyPlayedView extends ConsumerWidget {
     final data = ref.watch(dailyChallengeProvider);
     final result = data.lastResult;
     return WordlerScaffold(
-      title: 'Daily Estate Challenge',
+      title: 'Daily puzzle',
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(WSize.screenPadding),
         child: ChunkyCard(
@@ -277,7 +277,7 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
     if (!mounted) return;
     showWordlerDialog<void>(
       context,
-      title: 'Daily Challenge Complete!',
+      title: 'Daily puzzle complete!',
       barrierDismissible: false,
       body: Column(
         mainAxisSize: MainAxisSize.min,

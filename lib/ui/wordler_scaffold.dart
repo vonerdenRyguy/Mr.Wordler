@@ -48,10 +48,10 @@ class WordlerScaffold extends StatelessWidget {
                       Expanded(
                         child: Semantics(
                           header: true,
-                          child: Text(
-                            title,
-                            style: WText.heading.copyWith(fontSize: 28),
-                            overflow: TextOverflow.ellipsis,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(title, maxLines: 1, style: WText.heading.copyWith(fontSize: 28)),
                           ),
                         ),
                       ),

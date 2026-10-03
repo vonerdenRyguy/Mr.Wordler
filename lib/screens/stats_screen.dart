@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../daily/daily_challenge_controller.dart';
 import '../portfolio/level_info.dart';
 import '../portfolio/portfolio_controller.dart';
-import '../stats/leaderboard.dart';
 import '../stats/mode_stats_controller.dart';
-import '../theme_rush/theme_category.dart';
 import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_scaffold.dart';
@@ -36,7 +34,7 @@ class StatsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: WSize.gap3),
           _StatsSection(
-            title: 'Daily Estate Challenge',
+            title: 'Daily puzzle',
             rows: [
               _StatRow('Current streak', '${daily.streak} day${daily.streak == 1 ? '' : 's'}'),
               _StatRow('Completions', '${daily.completions}'),
@@ -47,39 +45,10 @@ class StatsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: WSize.gap3),
           _StatsSection(
-            title: 'Theme Rush (best times)',
-            rows: [
-              for (final theme in kThemeCategories)
-                _StatRow(
-                  theme.name,
-                  modeStats.themeRushBestSeconds.containsKey(theme.id)
-                      ? _formatSeconds(modeStats.themeRushBestSeconds[theme.id]!)
-                      : 'Not played yet',
-                ),
-            ],
-          ),
-          const SizedBox(height: WSize.gap3),
-          _StatsSection(
             title: 'Infinite Estate',
             rows: [
               _StatRow('High score', '${modeStats.infiniteEstateHighScore}'),
             ],
-          ),
-          const SizedBox(height: WSize.gap3),
-          // Free Play's leaderboard (it used to be a button on the menu).
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: loadLeaderboardEntries(),
-            builder: (context, snapshot) {
-              final entries = (snapshot.data ?? const []).take(10).toList();
-              return _StatsSection(
-                title: 'Free Play top times',
-                emptyText: snapshot.hasData && entries.isEmpty ? 'No wins yet' : null,
-                rows: [
-                  for (int i = 0; i < entries.length; i++)
-                    _StatRow('${i + 1}. ${entries[i]['name']}', '${entries[i]['displayTime']}'),
-                ],
-              );
-            },
           ),
         ],
       ),
@@ -100,11 +69,10 @@ class _StatRow {
 }
 
 class _StatsSection extends StatelessWidget {
-  const _StatsSection({required this.title, required this.rows, this.emptyText});
+  const _StatsSection({required this.title, required this.rows});
 
   final String title;
   final List<_StatRow> rows;
-  final String? emptyText;
 
   @override
   Widget build(BuildContext context) {
@@ -114,7 +82,6 @@ class _StatsSection extends StatelessWidget {
         children: [
           Semantics(header: true, child: Text(title, style: WText.heading.copyWith(fontSize: 22))),
           const SizedBox(height: WSize.gap2),
-          if (emptyText != null) Text(emptyText!, style: WText.body.copyWith(color: WColors.muted)),
           for (final row in rows)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4.0),

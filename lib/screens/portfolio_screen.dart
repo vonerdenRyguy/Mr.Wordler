@@ -98,21 +98,21 @@ class _TierGuideCard extends StatelessWidget {
   static const _tiers = [
     (
       tier: PropertyTier.vacantLot,
-      how: 'Complete the Daily Estate Challenge (any time), or spend coins earned from '
+      how: 'Complete the Daily puzzle (any time), or spend coins earned from '
           'Time Attack / Theme Rush / Infinite Estate to fill an empty slot directly.',
     ),
     (
       tier: PropertyTier.cottage,
-      how: 'Complete the Daily Estate Challenge in under 6 minutes.',
+      how: 'Complete the Daily puzzle in under 6 minutes.',
     ),
     (
       tier: PropertyTier.house,
-      how: 'Complete the Daily Estate Challenge in under 3 minutes, or find the hidden '
+      how: 'Complete the Daily puzzle in under 3 minutes, or find the hidden '
           'bonus word.',
     ),
     (
       tier: PropertyTier.mansion,
-      how: 'Complete the Daily Estate Challenge quickly (under 6 minutes) AND find the '
+      how: 'Complete the Daily puzzle quickly (under 6 minutes) AND find the '
           'hidden bonus word in the same run.',
     ),
   ];

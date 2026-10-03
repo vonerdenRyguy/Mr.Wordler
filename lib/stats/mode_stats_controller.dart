@@ -36,16 +36,6 @@ class ModeStatsController extends StateNotifier<ModeStatsData> {
     return true;
   }
 
-  // Returns true if this was a new personal best for the theme.
-  bool reportThemeRushTime(String themeId, int seconds) {
-    final current = state.themeRushBestSeconds[themeId];
-    if (current != null && seconds >= current) return false;
-    final updated = Map<String, int>.from(state.themeRushBestSeconds);
-    updated[themeId] = seconds;
-    state = state.copyWith(themeRushBestSeconds: updated);
-    _save();
-    return true;
-  }
 }
 
 final modeStatsProvider = StateNotifierProvider<ModeStatsController, ModeStatsData>((ref) {

@@ -72,7 +72,7 @@ class ModeStartView extends StatelessWidget {
                           const Text('Home', style: WText.label),
                         ],
                       ),
-                      const SizedBox(height: WSize.gap4),
+                      const Spacer(),
                       Center(
                         child: Container(
                           width: 112,

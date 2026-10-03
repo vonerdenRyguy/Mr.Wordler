@@ -2,8 +2,10 @@
 // renders without error.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -48,14 +50,6 @@ Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
 
 // How each mode is reached from Home. Kept in one place so the tests
 // follow the app's navigation as it changes.
-Future<void> openFreePlay(WidgetTester tester) async {
-  await tester.tap(find.text('Free Play'));
-  await tester.pumpAndSettle();
-  expect(find.text('Build words at your own pace.'), findsOneWidget);
-  await tester.tap(find.text('Start'));
-  await tester.pumpAndSettle();
-}
-
 Future<void> openTimeAttack(WidgetTester tester) async {
   await tester.tap(find.text('Time Attack'));
   await tester.pumpAndSettle();
@@ -64,11 +58,25 @@ Future<void> openTimeAttack(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> openThemeRush(WidgetTester tester) async {
-  await tester.tap(find.text('Theme Rush'));
+// Tests draw text in a placeholder font with wide square glyphs, which
+// wraps text the real fonts don't. Layout-size checks load the real ones.
+Future<void> loadAppFonts() async {
+  Future<void> load(String family, List<String> files) async {
+    final loader = FontLoader(family);
+    for (final f in files) {
+      final bytes = File(f).readAsBytesSync();
+      loader.addFont(Future.value(ByteData.view(bytes.buffer)));
+    }
+    await loader.load();
+  }
+
+  await load('LilitaOne', ['assets/fonts/LilitaOne-Regular.ttf']);
+  await load('Atkinson', ['assets/fonts/AtkinsonHyperlegible-Regular.ttf', 'assets/fonts/AtkinsonHyperlegible-Bold.ttf']);
 }
 
 void main() {
+  setUpAll(loadAppFonts);
+
   // PortfolioController reads SharedPreferences as soon as it's created
   // (unlike ThemeNotifier, whose loadFromPrefs() these tests never call);
   // without a mock, SharedPreferences.getInstance() throws in the test
@@ -77,8 +85,9 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('Home shows village, daily, and modes', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1080, 2400);
+  testWidgets('Home fits one screen: village, Daily puzzle, Time Attack, Portfolio, Stats',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -87,40 +96,18 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.bySemanticsLabel('Mr. Wordler'), findsOneWidget);
-    for (final label in ['Visit your village', "Today's puzzle", 'Free Play', 'Time Attack', 'Theme Rush']) {
+    const screen = Rect.fromLTWH(0, 0, 390, 844);
+    for (final label in ['Visit your village', 'Daily puzzle', 'Time Attack', 'Portfolio', 'Stats']) {
       expect(find.text(label), findsOneWidget, reason: label);
+      final box = tester.getRect(find.text(label));
+      expect(screen.contains(box.topLeft) && screen.contains(box.bottomRight), isTrue,
+          reason: '$label is fully on screen without scrolling');
     }
-    expect(find.text('Leaderboard'), findsNothing);
+    expect(find.text('Free Play'), findsNothing);
+    expect(find.text('Theme Rush'), findsNothing);
     expect(find.text('New village'), findsOneWidget);
-  });
-
-  testWidgets('Game screen deals a rack via the shared grid engine', (WidgetTester tester) async {
-    // The default 800x600 test surface doesn't give the rack's GridView
-    // enough height to lay out all 3 rows (it lazily builds only what's
-    // visible, same as on a real device) -- use a phone-sized surface so
-    // the whole rack actually renders.
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await pumpApp(tester);
-
-    await openFreePlay(tester);
-
-    // A build-time exception in one subtree (e.g. GridBoardView) doesn't
-    // fail pumpAndSettle by itself -- Flutter swaps just that subtree for
-    // a red ErrorWidget and keeps going, which let a real Riverpod scoping
-    // bug here slip past this test once already. Assert both explicitly:
-    // no exception was recorded, and no error widget is anywhere in the tree.
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-
-    expect(find.text('Check words'), findsOneWidget);
-    // 21 letters should have been dealt into the rack -- confirms the
-    // Riverpod-backed GridGameController actually initialized and dealt
-    // tiles rather than throwing during setup.
-    expect(oneLetterTileFinder(), findsNWidgets(21));
+    // No "0-day streak".
+    expect(find.textContaining('streak'), findsNothing);
   });
 
   testWidgets('Time Attack mode deals a rack via the shared grid engine', (WidgetTester tester) async {
@@ -133,9 +120,9 @@ void main() {
 
     await openTimeAttack(tester);
 
-    // Same explicit checks as the Free Play test -- see the comment there
-    // for why a plain widget count alone isn't enough to catch a broken
-    // subtree.
+    // A build-time exception in one subtree doesn't fail pumpAndSettle by
+    // itself -- Flutter swaps just that subtree for a red ErrorWidget and
+    // keeps going. Assert both explicitly.
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
 
@@ -255,6 +242,10 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.text("You've already played today!"), findsOneWidget);
+    // The title is "Daily puzzle" and fits (no "..." cut-off).
+    final title = tester.widget<Text>(find.text('Daily puzzle'));
+    expect(title.overflow, isNot(TextOverflow.ellipsis));
+    expect(tester.getRect(find.text('Daily puzzle')).right, lessThanOrEqualTo(1080));
     expect(find.textContaining('gave up'), findsOneWidget);
 
     // The share button should copy a result summary without throwing.
@@ -262,34 +253,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Result copied to clipboard!'), findsOneWidget);
-  });
-
-  testWidgets('Theme Rush shows a theme, then deals a rack once started',
-      (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1080, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await pumpApp(tester);
-
-    await openThemeRush(tester);
-    // No perpetual timer yet -- it only starts after tapping Start.
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.text('Spell one word that fits the theme.'), findsOneWidget);
-    expect(find.textContaining('Theme: '), findsOneWidget);
-    expect(find.text('Start'), findsOneWidget);
-
-    await tester.tap(find.text('Start'));
-    // Starting begins a perpetual stopwatch, so wait with bounded pumps.
-    await pumpUntilFound(tester, oneLetterTileFinder());
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ErrorWidget), findsNothing);
-    expect(oneLetterTileFinder(), findsNWidgets(21));
   });
 
   testWidgets('Infinite Estate deals a rack on a larger board', (WidgetTester tester) async {
@@ -467,11 +430,9 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
     expect(find.text('Overall'), findsOneWidget);
-    expect(find.text('Daily Estate Challenge'), findsOneWidget);
-    expect(find.text('Theme Rush (best times)'), findsOneWidget);
+    expect(find.text('Daily puzzle'), findsOneWidget);
     expect(find.text('Infinite Estate'), findsOneWidget);
-    for (final name in ['Animals', 'Food', 'Countries']) {
-      expect(find.text(name), findsOneWidget);
-    }
+    expect(find.text('Theme Rush (best times)'), findsNothing);
+    expect(find.text('Free Play top times'), findsNothing);
   });
 }

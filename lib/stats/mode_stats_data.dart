@@ -1,5 +1,6 @@
-// Cross-mode personal-best tracking (Infinite Estate's high score, Theme
-// Rush's best time per theme). Kept separate from PortfolioData since
+// Cross-mode personal-best tracking (Infinite Estate's high score; Theme
+// Rush's best time per theme is kept only so old saves still load -- the
+// mode was removed in spec-04). Kept separate from PortfolioData since
 // it's stats, not progression/currency -- the Stats screen (a later
 // phase) reads from here.
 class ModeStatsData {

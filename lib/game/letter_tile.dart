@@ -31,6 +31,7 @@ class LetterTile extends StatefulWidget {
     this.fx,
     this.faceColor,
     this.stripe,
+    this.fontSize,
   });
 
   final String letter;
@@ -42,6 +43,8 @@ class LetterTile extends StatefulWidget {
   // Infinite Estate: a tile that's part of a built magic word gets a 6px
   // stripe in that building's color along its bottom edge.
   final Color? stripe;
+  // Overrides the size worked out from the tile's size.
+  final double? fontSize;
 
   /// The plain face with no letter, used as the "ghost" left behind while
   /// a tile is being dragged.
@@ -184,7 +187,7 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
                 style: TextStyle(
                   fontFamily: 'LilitaOne',
                   color: _ink,
-                  fontSize: (side * 0.6).clamp(12.0, 34.0),
+                  fontSize: widget.fontSize ?? (side * 0.6).clamp(12.0, 34.0),
                   height: 1.0,
                 ),
               ),
