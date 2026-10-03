@@ -1,0 +1,85 @@
+{
+  "_note": "Building sprites for the angled Village view. Sprite PNGs are drawn at 3x the kit units (one letter block = 80 kit units wide). anchorX/anchorY = the pixel in the sprite PNG that sits on the ground at the centre of the word footprint. Down words: draw the same sprite mirrored left-right around the anchor.",
+  "buildings": {
+    "HOUSE": {
+      "sprite": "assets/village/buildings/house.png",
+      "card": "assets/village/cards/house.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 360.0,
+      "anchorY": 667.5,
+      "pngWidth": 694,
+      "pngHeight": 770
+    },
+    "TOWER": {
+      "sprite": "assets/village/buildings/tower.png",
+      "card": "assets/village/cards/tower.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 325.0,
+      "anchorY": 756.3,
+      "pngWidth": 645,
+      "pngHeight": 862
+    },
+    "WELL": {
+      "sprite": "assets/village/buildings/well.png",
+      "card": "assets/village/cards/well.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 207.0,
+      "anchorY": 394.8,
+      "pngWidth": 441,
+      "pngHeight": 439
+    },
+    "FARM": {
+      "sprite": "assets/village/buildings/farm.png",
+      "card": "assets/village/cards/farm.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 284.0,
+      "anchorY": 362.8,
+      "pngWidth": 534,
+      "pngHeight": 440
+    },
+    "BARN": {
+      "sprite": "assets/village/buildings/barn.png",
+      "card": "assets/village/cards/barn.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 308.0,
+      "anchorY": 501.4,
+      "pngWidth": 616,
+      "pngHeight": 582
+    },
+    "MILL": {
+      "sprite": "assets/village/buildings/mill.png",
+      "card": "assets/village/cards/mill.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 252.0,
+      "anchorY": 500.8,
+      "pngWidth": 442,
+      "pngHeight": 546
+    },
+    "GARDEN": {
+      "sprite": "assets/village/buildings/garden.png",
+      "card": "assets/village/cards/garden.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 330.0,
+      "anchorY": 407.8,
+      "pngWidth": 739,
+      "pngHeight": 524
+    },
+    "BRIDGE": {
+      "sprite": "assets/village/buildings/bridge.png",
+      "card": "assets/village/cards/bridge.png",
+      "pngScale": 3,
+      "kitCellWidth": 80,
+      "anchorX": 426.0,
+      "anchorY": 471.8,
+      "pngWidth": 852,
+      "pngHeight": 687
+    }
+  }
+}

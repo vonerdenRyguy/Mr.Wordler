@@ -36,6 +36,9 @@ flutter:
     - lib_assests/words.txt
     - lib_assests/letterBackground.png
     - assets/images/village_preview.png
+    - assets/village/buildings/
+    - assets/village/cards/
+    - assets/village/buildings.json
 
   fonts:
     - family: LilitaOne
