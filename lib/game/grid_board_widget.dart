@@ -14,7 +14,7 @@ import '../ui/wordler_dialog.dart';
 // The (possibly rotated) Quad InteractiveViewer.builder reports isn't
 // axis-aligned in general, but our board never rotates, so the bounding
 // box of its four corners is exactly the visible rectangle in content
-// coordinates. Shared by GridBoardView and VillageBoardView's lazy paths.
+// coordinates. Shared by GridBoardView's lazy path and IsoVillageView.
 Rect axisAlignedBoundingBox(Quad quad) {
   double xMin = quad.point0.x, xMax = quad.point0.x;
   double yMin = quad.point0.y, yMax = quad.point0.y;

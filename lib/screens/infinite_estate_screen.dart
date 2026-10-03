@@ -11,7 +11,9 @@ import '../village/discovery_journal_view.dart';
 import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
-import '../village/village_board_view.dart';
+import '../village/iso_math.dart';
+import '../village/iso_village_view.dart';
+import '../village/village_art.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 
@@ -129,7 +131,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   bool _restoring = true;
   // Kept as both an ordered list (so the Bridge jump dialog can number
   // landmarks in a stable, meaningful order) and a Set (for the O(1)
-  // membership checks GridTileWidget/VillageBoardView need every build).
+  // membership checks GridTileWidget/IsoVillageView need every build).
   late final List<int> _landmarkOrder;
   late final Set<int> _landmarkIndices;
   Set<int> _reachedLandmarks = {};
@@ -154,6 +156,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // transform (see bridge_transform.dart) -- it's only known once that
   // area has actually been laid out, hence nullable.
   final _transformController = TransformationController();
+  // Village view has its own camera (its content is the angled map).
+  final _villageTransform = TransformationController();
+  bool _villageCentered = false;
+  static const _isoGrid = IsoGrid(boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
+  // Rebuilt only when the board or the buildings change.
+  VillageScene? _scene;
+  List<String?>? _sceneBoard;
+  List<BoardStructure>? _sceneStructures;
+  Map<String, SpriteMeta> _spriteMeta = const {};
   Size? _boardViewportSize;
   // The board is far too large to show all at once, so the very first
   // frame instead centers the view on the village's origin (the board's
@@ -174,11 +185,46 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     );
     _landmarkIndices = _landmarkOrder.toSet();
     _loadSavedVillage();
+    VillageArt.loadMeta().then((meta) {
+      if (mounted) setState(() => _spriteMeta = meta);
+    }).catchError((_) {});
+  }
+
+  VillageScene _villageScene() {
+    final board = ref.read(gridGameControllerProvider).boardCells;
+    if (_scene == null ||
+        !identical(board, _sceneBoard) ||
+        !identical(_structures, _sceneStructures) ||
+        !identical(_scene!.spriteMeta, _spriteMeta)) {
+      _sceneBoard = board;
+      _sceneStructures = _structures;
+      _scene = VillageScene(
+        grid: _isoGrid,
+        boardCells: board,
+        structures: _structures,
+        landmarkIndices: _landmarkIndices,
+        spriteMeta: _spriteMeta,
+      );
+    }
+    return _scene!;
+  }
+
+  // The first time Village view shows, center it on the middle of all the
+  // letters (the board center if there are none).
+  void _centerVillageIfNeeded(Size viewportSize, VillageScene scene) {
+    if (_villageCentered) return;
+    _villageCentered = true;
+    final center = scene.lettersCenter();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _villageTransform.value = isoTransformCenteredOn(center.r, center.c, viewportSize, 1.0, _isoGrid);
+    });
   }
 
   @override
   void dispose() {
     _transformController.dispose();
+    _villageTransform.dispose();
     super.dispose();
   }
 
@@ -402,7 +448,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   }
 
   // Pans/zooms the Words-view board to center a reached landmark. Switches
-  // to Words view first since only GridBoardView (not VillageBoardView) is
+  // to Words view first since only GridBoardView (not IsoVillageView) is
   // wired to a TransformationController -- Village view has no meaningful
   // "zoom in on one spot" reading anyway, it's the whole-estate overview.
   void _jumpToLandmark(int boardIndex) {
@@ -635,15 +681,18 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                       cellSize: InfiniteEstateScreen.cellSize,
                                       stripes: stripes,
                                     )
-                                  : VillageBoardView(
-                                      key: const ValueKey('village'),
-                                      structures: _structures,
-                                      landmarkIndices: _landmarkIndices,
-                                      minScale: 0.2,
-                                      maxScale: 2.5,
-                                      boundaryMargin: const EdgeInsets.all(400),
-                                      cellSize: InfiniteEstateScreen.cellSize,
-                                    ),
+                                  : Builder(builder: (context) {
+                                      final scene = _villageScene();
+                                      _centerVillageIfNeeded(constraints.biggest, scene);
+                                      return IsoVillageView(
+                                        key: const ValueKey('village'),
+                                        scene: scene,
+                                        transformController: _villageTransform,
+                                        minScale: 0.2,
+                                        maxScale: 2.5,
+                                        boundaryMargin: const EdgeInsets.all(400),
+                                      );
+                                    }),
                             ),
                           ),
                           // Explains the stripes until the player has a few
