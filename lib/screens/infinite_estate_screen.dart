@@ -1,5 +1,7 @@
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
+import '../daily/word_of_the_day.dart';
+import '../daily/word_of_the_day_controller.dart';
 import '../dictionary/definition_service.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
@@ -410,9 +412,43 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         await _saveVillage();
         _celebrateNewBuildings(newlyDiscovered);
       }
+      await _claimWordOfDay(runs);
     } finally {
       _computingStructures = false;
     }
+  }
+
+  // Word of the day (spec-05): the first time today that the word is
+  // spelled anywhere in the village, +10 coins. A word that was already on
+  // the board when the day started counts too -- rewards are only upside.
+  Future<void> _claimWordOfDay(List<WordRun> runs) async {
+    final List<WordOfDay> words;
+    try {
+      words = await ref.read(wordsOfTheDayProvider.future);
+    } catch (_) {
+      return; // No list, no reward; never an error for the player.
+    }
+    if (!mounted || words.isEmpty) return;
+    final now = DateTime.now();
+    final today = wordOfDayFor(now, words).word;
+    if (!runs.any((run) => run.word.toUpperCase() == today)) return;
+    final claims = ref.read(wordOfDayProvider.notifier);
+    await claims.loaded;
+    if (!mounted || !claims.claim(now)) return;
+    ref.read(portfolioProvider.notifier).addCurrency(kWordOfDayCoins);
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: WColors.ink,
+        duration: const Duration(seconds: 3),
+        content: Text(
+          'Word of the day! $today  +$kWordOfDayCoins coins',
+          textAlign: TextAlign.center,
+          style: WText.bodyBold.copyWith(color: WColors.white),
+        ),
+      ),
+    );
   }
 
   Future<void> _refreshScore() async {
