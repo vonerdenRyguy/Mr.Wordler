@@ -141,11 +141,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onLevel: () => _open(const PortfolioScreen()),
                         onSettings: () => _open(const SettingsScreen()),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       const _TileTitle(),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _WordOfDayCard(
                         word: wordOfDay,
                         claimed: wordClaimed,
@@ -167,7 +167,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   ),
                                 ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _ModeRowCard(
                         letter: 'D',
                         color: WModeColors.daily,
@@ -179,7 +179,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         action: playedToday ? 'See result' : 'Play',
                         onTap: () => _open(const DailyChallengeScreen()),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       _ModeRowCard(
                         letter: 'T',
                         color: WModeColors.timeAttack,
@@ -190,7 +190,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onTap: () => _open(const TimeAttackStartPage()),
                       ),
                       const Spacer(),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
@@ -419,7 +419,7 @@ class _VillageCardState extends State<_VillageCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            height: 150,
+            height: 120,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -465,7 +465,13 @@ class _VillageCardState extends State<_VillageCard> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text('Your village', style: WText.heading),
-                Text('Spell magic words to raise buildings.', style: WText.body.copyWith(color: WColors.muted)),
+                // One line on any phone: it shrinks a little rather than wrapping.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text('Spell magic words to raise buildings.',
+                      maxLines: 1, style: WText.body.copyWith(color: WColors.muted)),
+                ),
                 const SizedBox(height: WSize.gap2),
                 ChunkyButton(label: 'Visit your village', size: ChunkySize.big, expand: true, onPressed: widget.onVisit),
               ],
@@ -498,44 +504,40 @@ class _WordOfDayCard extends StatelessWidget {
         color: WColors.sunTint,
         onTap: onTap,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('WORD OF THE DAY', maxLines: 1, style: WText.label),
-                  Text(word?.word ?? '', maxLines: 1, style: WText.heading.copyWith(fontSize: 22)),
-                  Text(
-                    word?.meaning ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: WText.body.copyWith(fontSize: 15),
+            Row(
+              children: [
+                const Expanded(child: Text('WORD OF THE DAY', maxLines: 1, style: WText.label)),
+                if (word != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: claimed ? WColors.leafTint : WColors.sun,
+                      border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                      borderRadius: BorderRadius.circular(WSize.radiusChip),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (claimed) ...[
+                          const Icon(Icons.check, size: 16, color: WColors.ink),
+                          const SizedBox(width: 2),
+                        ],
+                        Text(claimed ? 'Done' : '+$kWordOfDayCoins coins', style: WText.label.copyWith(color: WColors.ink)),
+                      ],
+                    ),
                   ),
-                ],
-              ),
+              ],
             ),
-            if (word != null) ...[
-              const SizedBox(width: WSize.gap2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: claimed ? WColors.leafTint : WColors.sun,
-                  border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-                  borderRadius: BorderRadius.circular(WSize.radiusChip),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (claimed) ...[
-                      const Icon(Icons.check, size: 16, color: WColors.ink),
-                      const SizedBox(width: 2),
-                    ],
-                    Text(claimed ? 'Done' : '+$kWordOfDayCoins coins', style: WText.label.copyWith(color: WColors.ink)),
-                  ],
-                ),
-              ),
-            ],
+            Text(word?.word ?? '', maxLines: 1, style: WText.heading.copyWith(fontSize: 22)),
+            Text(
+              word?.meaning ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: WText.body.copyWith(fontSize: 15),
+            ),
           ],
         ),
       ),
