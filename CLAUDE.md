@@ -23,6 +23,18 @@ Flutter-generated output (already gitignored), not source.
   `Desktop\MrWordlerScreenshots\` for the next design session.
 - Phone: Samsung SM S926U (`flutter run -d R5CX213D2EJ`). If `flutter
   devices` says "not authorized", the user must tap "Allow USB debugging".
+- **Building for the phone from Claude Code's shell** (found 2026-11-14):
+  `adb` isn't on PATH; it's at
+  `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`. Gradle fails with
+  `Unable to establish loopback connection` unless
+  `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<a folder outside Temp>`
+  is set (`%USERPROFILE%\.gradle\sock` works). If Gradle then hits
+  `AccessDeniedException` under `build\app\intermediates\merged_native_libs`
+  (OneDrive again), delete that folder and rebuild. `flutter build apk
+  --debug` then `adb install -r build\app\outputs\flutter-apk\app-debug.apk`
+  updates the app and keeps its save.
+- The phone's text size is 1.15, so `fits one screen` has to hold there,
+  not just in the 390x844 test.
 - OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
   re-run `flutter test`.
 
