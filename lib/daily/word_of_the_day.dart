@@ -24,8 +24,10 @@ List<WordOfDay> parseWordsOfTheDay(String json) => [
         ),
     ];
 
+// Not cached by the bundle: wordsOfTheDayProvider below already keeps the
+// parsed list, so there's no need to hold the raw text as well.
 Future<List<WordOfDay>> loadWordsOfTheDay() async =>
-    parseWordsOfTheDay(await rootBundle.loadString('assets/words/word_of_the_day.json'));
+    parseWordsOfTheDay(await rootBundle.loadString('assets/words/word_of_the_day.json', cache: false));
 
 /// Walks the list in order, one word per UTC day, and starts again at the
 /// end. Changes at the same moment as the Daily puzzle.

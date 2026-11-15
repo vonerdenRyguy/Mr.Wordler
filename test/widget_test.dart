@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:namer_app/daily/daily_puzzle.dart';
+import 'package:namer_app/daily/word_of_the_day.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -97,7 +99,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.bySemanticsLabel('Mr. Wordler'), findsOneWidget);
     const screen = Rect.fromLTWH(0, 0, 390, 844);
-    for (final label in ['Visit your village', 'Daily puzzle', 'Time Attack', 'Portfolio', 'Stats']) {
+    for (final label in ['Visit your village', 'WORD OF THE DAY', 'Daily puzzle', 'Time Attack', 'Portfolio', 'Stats']) {
       expect(find.text(label), findsOneWidget, reason: label);
       final box = tester.getRect(find.text(label));
       expect(screen.contains(box.topLeft) && screen.contains(box.bottomRight), isTrue,
@@ -108,6 +110,36 @@ void main() {
     expect(find.text('New village'), findsOneWidget);
     // No "0-day streak".
     expect(find.textContaining('streak'), findsNothing);
+
+    // spec-05: today's word with its reward chip, and the Daily's theme.
+    final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
+    final today = wordOfDayFor(DateTime.now(), words);
+    expect(find.text(today.word), findsOneWidget);
+    expect(find.text('+10 coins'), findsOneWidget);
+    final theme = find.text("Today's theme: ${dailyPuzzleFor(DateTime.now()).theme.name}");
+    expect(theme, findsOneWidget);
+    expect(screen.contains(tester.getRect(theme).bottomRight), isTrue);
+  });
+
+  testWidgets('tapping the Word of the day card opens its sheet', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpApp(tester);
+    await tester.pumpAndSettle();
+
+    final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
+    final today = wordOfDayFor(DateTime.now(), words);
+    await tester.tap(find.text('WORD OF THE DAY'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Word of the day'), findsOneWidget);
+    // On the card (one line) and, in full, in the sheet.
+    expect(find.text(today.meaning), findsNWidgets(2));
+    expect(find.text('Spell it in your village today for +10 coins.'), findsOneWidget);
+    expect(find.bySemanticsLabel(today.word), findsOneWidget);
   });
 
   testWidgets('Time Attack mode deals a rack via the shared grid engine', (WidgetTester tester) async {

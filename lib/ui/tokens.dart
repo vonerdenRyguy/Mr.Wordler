@@ -20,6 +20,7 @@ class WColors {
   static const grass = Color(0xFF2F7A22); // main action buttons
   static const grassLip = Color(0xFF1E5216);
   static const sun = Color(0xFFF6C443); // selected state, glow, coins, level
+  static const sunTint = Color(0xFFFDF1D6); // Word of the day card
   static const sky = Color(0xFF4DB6EC); // Daily, Well
   static const skyTint = Color(0xFFCDEBFA);
   static const coral = Color(0xFFF59C86); // Time Attack

@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../game/letter_tile.dart';
 import '../game/word_runs.dart';
 import '../ui/chunky_button.dart';
 import '../ui/tokens.dart';
@@ -373,6 +374,63 @@ class MeaningCard extends StatelessWidget {
         ),
         const SizedBox(height: WSize.gap3),
         _MeaningBox(word: word, loadDefinition: loadDefinition),
+      ],
+    );
+  }
+}
+
+/// The Word of the day sheet on Home: the word as tiles, its meaning, and
+/// what spelling it in the village earns.
+class WordOfDayCard extends StatelessWidget {
+  const WordOfDayCard({
+    super.key,
+    required this.word,
+    required this.meaning,
+    required this.claimed,
+    required this.coins,
+    required this.onVisit,
+  });
+
+  final String word;
+  final String meaning;
+  final bool claimed;
+  final int coins;
+  final VoidCallback onVisit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Expanded(child: Text('Word of the day', style: WText.heading)),
+            const _CloseButton(),
+          ],
+        ),
+        const SizedBox(height: WSize.gap2),
+        Semantics(
+          label: word,
+          excludeSemantics: true,
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              for (final letter in word.split('')) SizedBox(width: 40, height: 40, child: LetterTile(letter: letter)),
+            ],
+          ),
+        ),
+        const SizedBox(height: WSize.gap3),
+        Text(meaning, style: WText.body),
+        const SizedBox(height: WSize.gap2),
+        Text(
+          claimed ? 'You spelled it today. +$coins coins earned.' : 'Spell it in your village today for +$coins coins.',
+          style: WText.bodyBold.copyWith(fontSize: 16, color: claimed ? WColors.grass : WColors.ink),
+        ),
+        const SizedBox(height: WSize.gap3),
+        ChunkyButton(label: 'Visit your village', expand: true, onPressed: onVisit),
       ],
     );
   }

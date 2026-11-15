@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../components/valid_word_check.dart' show WordValidator;
 import '../daily/daily_challenge_controller.dart';
+import '../daily/daily_puzzle.dart';
+import '../daily/word_of_the_day.dart';
+import '../daily/word_of_the_day_controller.dart';
 import '../game/letter_tile.dart';
 import '../game/word_landing.dart' show wordCheckProvider;
 import '../portfolio/level_info.dart';
@@ -17,6 +20,7 @@ import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
+import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
 import 'infinite_estate_screen.dart';
@@ -109,7 +113,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final portfolio = ref.watch(portfolioProvider);
     final level = levelInfoForXp(portfolio.totalXp);
     final daily = ref.watch(dailyChallengeProvider);
-    final playedToday = ref.read(dailyChallengeProvider.notifier).hasPlayedToday(DateTime.now());
+    final now = DateTime.now();
+    final playedToday = ref.read(dailyChallengeProvider.notifier).hasPlayedToday(now);
+    final words = ref.watch(wordsOfTheDayProvider).valueOrNull;
+    final wordOfDay = (words == null || words.isEmpty) ? null : wordOfDayFor(now, words);
+    ref.watch(wordOfDayProvider);
+    final wordClaimed = ref.read(wordOfDayProvider.notifier).claimedToday(now);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: wordlerOverlayStyle,
@@ -137,6 +146,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       const SizedBox(height: 12),
                       _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
                       const SizedBox(height: 12),
+                      _WordOfDayCard(
+                        word: wordOfDay,
+                        claimed: wordClaimed,
+                        onTap: wordOfDay == null
+                            ? null
+                            : () => showVillageSheet<void>(
+                                  context,
+                                  Builder(
+                                    builder: (sheetContext) => WordOfDayCard(
+                                      word: wordOfDay.word,
+                                      meaning: wordOfDay.meaning,
+                                      claimed: wordClaimed,
+                                      coins: kWordOfDayCoins,
+                                      onVisit: () {
+                                        Navigator.of(sheetContext).pop();
+                                        _open(const InfiniteEstateScreen());
+                                      },
+                                    ),
+                                  ),
+                                ),
+                      ),
+                      const SizedBox(height: 12),
                       _ModeRowCard(
                         letter: 'D',
                         color: WModeColors.daily,
@@ -144,6 +175,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'Daily puzzle',
                         status: (playedToday ? 'Done for today' : 'Not played yet') +
                             (daily.streak >= 2 ? ' · ${daily.streak}-day streak' : ''),
+                        note: "Today's theme: ${dailyPuzzleFor(now).theme.name}",
                         action: playedToday ? 'See result' : 'Play',
                         onTap: () => _open(const DailyChallengeScreen()),
                       ),
@@ -387,7 +419,7 @@ class _VillageCardState extends State<_VillageCard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            height: 220,
+            height: 150,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -445,6 +477,72 @@ class _VillageCardState extends State<_VillageCard> {
   }
 }
 
+/// The Word of the day: the word, one line of its meaning, and whether
+/// today's village reward is still to be earned. Tapping opens the sheet.
+/// [word] is null while the list loads; the card then just shows its label.
+class _WordOfDayCard extends StatelessWidget {
+  const _WordOfDayCard({required this.word, required this.claimed, required this.onTap});
+
+  final WordOfDay? word;
+  final bool claimed;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final word = this.word;
+    return Semantics(
+      button: word != null,
+      label: word == null ? 'Word of the day' : 'Word of the day: ${word.word}. ${word.meaning} Open.',
+      excludeSemantics: true,
+      child: ChunkyCard(
+        color: WColors.sunTint,
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('WORD OF THE DAY', maxLines: 1, style: WText.label),
+                  Text(word?.word ?? '', maxLines: 1, style: WText.heading.copyWith(fontSize: 22)),
+                  Text(
+                    word?.meaning ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: WText.body.copyWith(fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+            if (word != null) ...[
+              const SizedBox(width: WSize.gap2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: claimed ? WColors.leafTint : WColors.sun,
+                  border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                  borderRadius: BorderRadius.circular(WSize.radiusChip),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (claimed) ...[
+                      const Icon(Icons.check, size: 16, color: WColors.ink),
+                      const SizedBox(width: 2),
+                    ],
+                    Text(claimed ? 'Done' : '+$kWordOfDayCoins coins', style: WText.label.copyWith(color: WColors.ink)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// A full-width mode card: a letter tile, a title and status line, and
 /// the action on the right. The whole card is tappable.
 class _ModeRowCard extends StatelessWidget {
@@ -454,6 +552,7 @@ class _ModeRowCard extends StatelessWidget {
     required this.tint,
     required this.title,
     required this.status,
+    this.note,
     required this.action,
     required this.onTap,
   });
@@ -463,6 +562,8 @@ class _ModeRowCard extends StatelessWidget {
   final Color tint;
   final String title;
   final String status;
+  // A second, quieter line (the Daily's theme).
+  final String? note;
   final String action;
   final VoidCallback onTap;
 
@@ -482,6 +583,7 @@ class _ModeRowCard extends StatelessWidget {
               children: [
                 Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.heading.copyWith(fontSize: 21)),
                 Text(status, style: WText.bodyBold.copyWith(fontSize: 15)),
+                if (note != null) Text(note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.label),
               ],
             ),
           ),
