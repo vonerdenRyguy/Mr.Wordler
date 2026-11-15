@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../players/players.dart';
 import 'word_level.dart';
 
 // Player settings: text size, reduce motion and word level. Saved in
@@ -45,6 +46,10 @@ class SettingsController extends StateNotifier<SettingsData> {
   static const reduceMotionKey = 'reduceMotion';
   static const wordLevelKey = 'wordLevel';
 
+  // The word level is per player (spec-07); text size and Reduce motion
+  // belong to the phone.
+  final String _wordLevelKey = PlayerKeys.of(wordLevelKey);
+
   late final Future<void> _ready;
 
   /// Completes once saved settings have been read.
@@ -57,14 +62,14 @@ class SettingsController extends StateNotifier<SettingsData> {
       textSizeStep: (prefs.getInt(textSizeKey) ?? 0).clamp(0, 2),
       reduceMotion: prefs.getBool(reduceMotionKey) ?? false,
       // Keep a level picked while this was loading.
-      chosenWordLevel: state.chosenWordLevel ?? wordLevelFromName(prefs.getString(wordLevelKey)),
+      chosenWordLevel: state.chosenWordLevel ?? wordLevelFromName(prefs.getString(_wordLevelKey)),
     );
   }
 
   Future<void> setWordLevel(WordLevel level) async {
     state = state.copyWith(chosenWordLevel: level);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(wordLevelKey, level.name);
+    await prefs.setString(_wordLevelKey, level.name);
   }
 
   Future<void> setTextSizeStep(int step) async {
@@ -80,4 +85,7 @@ class SettingsController extends StateNotifier<SettingsData> {
   }
 }
 
-final settingsProvider = StateNotifierProvider<SettingsController, SettingsData>((ref) => SettingsController());
+final settingsProvider = StateNotifierProvider<SettingsController, SettingsData>((ref) {
+  ref.watch(currentPlayerIdProvider);
+  return SettingsController();
+});

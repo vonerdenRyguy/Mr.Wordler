@@ -10,6 +10,10 @@ import '../daily/word_of_the_day_controller.dart';
 import '../game/letter_tile.dart';
 import '../game/word_landing.dart' show wordCheckProvider;
 import '../portfolio/level_info.dart';
+import '../players/family_widgets.dart';
+import '../players/family_word.dart';
+import '../players/player_summary.dart';
+import '../players/players.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
@@ -26,6 +30,7 @@ import '../village/village_art.dart';
 import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
+import 'family_screens.dart';
 import 'infinite_estate_screen.dart';
 import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
@@ -53,7 +58,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     // After the first frame, so Home draws straight away with the static
     // picture.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadVillage());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadVillage();
+      // Family-word coins won while someone else held the phone.
+      claimFamilyCoins(ref, context);
+    });
   }
 
   Future<void> _loadVillage() async {
@@ -109,8 +118,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _open(Widget screen) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    if (!mounted) return;
     // The village (buildings, Journal) may have changed.
     _loadVillage();
+    claimFamilyCoins(ref, context);
   }
 
   // A brand-new player picks a word level before their first Daily.
@@ -139,6 +150,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final wordOfDay = (words == null || words.isEmpty) ? null : wordOfDayFor(now, words);
     ref.watch(wordOfDayProvider);
     final wordClaimed = ref.read(wordOfDayProvider.notifier).claimedToday(now);
+    // Two or more players on this phone: the family features show.
+    final players = ref.watch(playersProvider);
+    ref.watch(familyWordProvider);
+    final familyData = ref.read(familyWordProvider.notifier).today(now);
+    final familyWord = (!players.isFamily || words == null || words.isEmpty) ? null : familyWordFor(now, words);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: wordlerOverlayStyle,
@@ -159,6 +175,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         level: level,
                         coins: portfolio.currency,
                         onLevel: () => _open(const PortfolioScreen()),
+                        player: players.isFamily ? players.current : null,
+                        onSwitch: () => ref.read(playerPickedProvider.notifier).state = false,
                         onSettings: () => _open(const SettingsScreen()),
                       ),
                       const SizedBox(height: 8),
@@ -168,27 +186,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         child: _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
                       ),
                       const SizedBox(height: 8),
-                      _WordOfDayCard(
-                        word: wordOfDay,
-                        claimed: wordClaimed,
-                        onTap: wordOfDay == null
-                            ? null
-                            : () => showVillageSheet<void>(
-                                  context,
-                                  Builder(
-                                    builder: (sheetContext) => WordOfDayCard(
-                                      word: wordOfDay.word,
-                                      meaning: wordOfDay.meaning,
-                                      claimed: wordClaimed,
-                                      coins: kWordOfDayCoins,
-                                      onVisit: () {
-                                        Navigator.of(sheetContext).pop();
-                                        _open(const InfiniteEstateScreen());
-                                      },
+                      if (familyWord != null)
+                        _FamilyWordCard(
+                          word: familyWord.word,
+                          data: familyData,
+                          players: players,
+                          playedToday: playedToday,
+                          onTap: () => _open(const FamilyWordScreen()),
+                        )
+                      else
+                        _WordOfDayCard(
+                          word: wordOfDay,
+                          claimed: wordClaimed,
+                          onTap: wordOfDay == null
+                              ? null
+                              : () => showVillageSheet<void>(
+                                    context,
+                                    Builder(
+                                      builder: (sheetContext) => WordOfDayCard(
+                                        word: wordOfDay.word,
+                                        meaning: wordOfDay.meaning,
+                                        claimed: wordClaimed,
+                                        coins: kWordOfDayCoins,
+                                        onVisit: () {
+                                          Navigator.of(sheetContext).pop();
+                                          _open(const InfiniteEstateScreen());
+                                        },
+                                      ),
                                     ),
                                   ),
-                                ),
-                      ),
+                        ),
                       const SizedBox(height: 8),
                       _ModeRowCard(
                         letter: 'D',
@@ -216,10 +243,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
+                          if (players.isFamily) ...[
+                            Expanded(
+                              flex: 3,
+                              child: ChunkyButton(
+                                label: 'Family',
+                                size: ChunkySize.small,
+                                kind: ChunkyKind.secondary,
+                                expand: true,
+                                onPressed: () => _open(const FamilyScreen()),
+                              ),
+                            ),
+                            const SizedBox(width: WSize.gap2),
+                          ],
                           Expanded(
+                            // The longest word of the three gets a little more room.
+                            flex: players.isFamily ? 4 : 1,
                             child: ChunkyButton(
                               label: 'Portfolio',
-                              icon: Icons.home_work,
+                              size: players.isFamily ? ChunkySize.small : ChunkySize.normal,
+                              icon: players.isFamily ? null : Icons.home_work,
                               kind: ChunkyKind.secondary,
                               expand: true,
                               onPressed: () => _open(const PortfolioScreen()),
@@ -227,9 +270,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           const SizedBox(width: WSize.gap3),
                           Expanded(
+                            flex: players.isFamily ? 3 : 1,
                             child: ChunkyButton(
                               label: 'Stats',
-                              icon: Icons.bar_chart,
+                              size: players.isFamily ? ChunkySize.small : ChunkySize.normal,
+                              icon: players.isFamily ? null : Icons.bar_chart,
                               kind: ChunkyKind.secondary,
                               expand: true,
                               onPressed: () => _open(const StatsScreen()),
@@ -250,7 +295,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.level, required this.coins, required this.onLevel, required this.onSettings});
+  const _TopBar({
+    required this.level,
+    required this.coins,
+    required this.onLevel,
+    required this.onSettings,
+    this.player,
+    this.onSwitch,
+  });
+
+  // With a family on this phone the level pill becomes "who is playing",
+  // and tapping it goes back to "Who's playing?".
+  final Player? player;
+  final VoidCallback? onSwitch;
 
   final LevelInfo level;
   final int coins;
@@ -264,11 +321,13 @@ class _TopBar extends StatelessWidget {
         Expanded(
           child: Semantics(
             button: true,
-            label: 'Level ${level.level}, ${level.xpIntoLevel} of ${level.xpForNextLevel} XP. Open Portfolio',
+            label: player != null
+                ? '${player!.name} is playing. Switch player'
+                : 'Level ${level.level}, ${level.xpIntoLevel} of ${level.xpForNextLevel} XP. Open Portfolio',
             excludeSemantics: true,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: onLevel,
+              onTap: player != null ? onSwitch : onLevel,
               child: Container(
                 height: 52,
                 margin: const EdgeInsets.only(bottom: WSize.lipSmall),
@@ -279,31 +338,47 @@ class _TopBar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: wLip(WSize.lipSmall),
                 ),
-                child: Row(
-                  children: [
-                    _Badge(size: 32, color: WColors.sun, child: Text('${level.level}', style: WText.button)),
-                    const SizedBox(width: WSize.gap2),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                child: player != null
+                    ? Row(
                         children: [
-                          Text('Level ${level.level}', style: WText.button.copyWith(fontSize: 17, color: WColors.ink)),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: level.progress,
-                              minHeight: 8,
-                              color: WColors.grass,
-                              backgroundColor: WColors.boardCell,
+                          PlayerAvatar(player: player!, size: 34),
+                          const SizedBox(width: WSize.gap2),
+                          Expanded(
+                            child: Text(player!.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: WText.button.copyWith(fontSize: 18, color: WColors.ink)),
+                          ),
+                          const Text('Switch', style: WText.label),
+                          const SizedBox(width: 4),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          _Badge(size: 32, color: WColors.sun, child: Text('${level.level}', style: WText.button)),
+                          const SizedBox(width: WSize.gap2),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Level ${level.level}',
+                                    style: WText.button.copyWith(fontSize: 17, color: WColors.ink)),
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: level.progress,
+                                    minHeight: 8,
+                                    color: WColors.grass,
+                                    backgroundColor: WColors.boardCell,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -570,6 +645,62 @@ class _WordOfDayCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Today's family word, in the Word of the day's place once two or more
+/// players share the phone.
+class _FamilyWordCard extends StatelessWidget {
+  const _FamilyWordCard({
+    required this.word,
+    required this.data,
+    required this.players,
+    required this.playedToday,
+    required this.onTap,
+  });
+
+  final String word;
+  final FamilyWordData data;
+  final PlayersState players;
+  final bool playedToday;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = data.solved
+        ? 'Found together!'
+        : playedToday
+            ? 'Pass the phone on to find more letters.'
+            : 'Finish your Daily to find a letter.';
+    return ChunkyCard(
+      color: WColors.sunTint,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('FAMILY WORD', maxLines: 1, style: WText.label)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: data.solved ? WColors.leafTint : WColors.sun,
+                  border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                  borderRadius: BorderRadius.circular(WSize.radiusChip),
+                ),
+                child: Text(data.solved ? 'Found' : '+$kFamilyWordEarlyCoins coins each',
+                    style: WText.label.copyWith(color: WColors.ink)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          FamilyWordSlots(word: word, data: data, players: players, tileSize: 30),
+          const SizedBox(height: 2),
+          Text(line, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.body.copyWith(fontSize: 15)),
+        ],
       ),
     );
   }

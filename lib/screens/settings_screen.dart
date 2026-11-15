@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../game/letter_tile.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
+import 'family_screens.dart';
 import 'word_level_screen.dart';
 import '../ui/chunky_button.dart';
 import '../ui/chunky_card.dart';
@@ -101,6 +102,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ],
                           ),
                         ),
+                        const Icon(Icons.chevron_right, color: WColors.ink),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: WSize.gap3),
+                  ChunkyCard(
+                    onTap: () =>
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FamilyScreen())),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.group, color: WColors.ink, size: 28),
+                        const SizedBox(width: WSize.gap3),
+                        Expanded(child: Text('Players on this phone', style: WText.heading.copyWith(fontSize: 22))),
                         const Icon(Icons.chevron_right, color: WColors.ink),
                       ],
                     ),

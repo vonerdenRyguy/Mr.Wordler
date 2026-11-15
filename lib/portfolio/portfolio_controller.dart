@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../players/players.dart';
 import 'portfolio_data.dart';
 import 'property_tier.dart';
 
@@ -12,16 +13,22 @@ import 'property_tier.dart';
 // the storage pattern the leaderboard already uses elsewhere in the app.
 class PortfolioController extends StateNotifier<PortfolioData> {
   PortfolioController() : super(PortfolioData.initial()) {
-    _load();
+    _ready = _load();
   }
 
-  static const _prefsKey = 'portfolioData';
+  // Per player (spec-07): the key carries the current player's prefix.
+  final String _prefsKey = PlayerKeys.of('portfolioData');
+  late final Future<void> _ready;
+
+  /// Completes once the saved Portfolio has been read. Anything added
+  /// before then would be overwritten by the load.
+  Future<void> get ready => _ready;
   static const int vacantLotCost = 20;
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
-    if (raw == null) return;
+    if (raw == null || !mounted) return;
     try {
       state = PortfolioData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
@@ -107,5 +114,6 @@ class PortfolioController extends StateNotifier<PortfolioData> {
 }
 
 final portfolioProvider = StateNotifierProvider<PortfolioController, PortfolioData>((ref) {
+  ref.watch(currentPlayerIdProvider);
   return PortfolioController();
 });

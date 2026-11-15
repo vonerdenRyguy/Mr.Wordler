@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 // ChangeNotifierProvider is defined by both riverpod and provider; this
 // app uses provider's version for ThemeNotifier, so hide riverpod's.
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
+import 'package:namer_app/players/family_widgets.dart';
+import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
+import 'package:namer_app/screens/players_screens.dart';
 import 'package:namer_app/settings/settings_controller.dart';
 import 'package:namer_app/ui/tokens.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -44,22 +47,37 @@ class MyApp extends StatelessWidget {
       darkTheme: wordlerTheme,
       themeMode: themeNotifier.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       builder: (context, child) => Consumer(builder: (context, ref, _) {
-            // The phone's text size times the in-app Text size setting,
-            // clamped so nothing gets silly. Tiles draw their letters at a
-            // fixed size, so the board and rack always fit. Reduce motion
-            // is on if either the phone or the app setting asks for it.
-            final settings = ref.watch(settingsProvider);
-            final mediaQuery = MediaQuery.of(context);
-            final scale = (mediaQuery.textScaler.scale(1.0) * settings.textScale).clamp(0.8, 1.6);
-            return MediaQuery(
-              data: mediaQuery.copyWith(
-                textScaler: TextScaler.linear(scale),
-                disableAnimations: mediaQuery.disableAnimations || settings.reduceMotion,
-              ),
-              child: child!,
-            );
-          }),
-      home: const HomeScreen(),
+        // The phone's text size times the in-app Text size setting,
+        // clamped so nothing gets silly. Tiles draw their letters at a
+        // fixed size, so the board and rack always fit. Reduce motion
+        // is on if either the phone or the app setting asks for it.
+        final settings = ref.watch(settingsProvider);
+        final mediaQuery = MediaQuery.of(context);
+        final scale = (mediaQuery.textScaler.scale(1.0) * settings.textScale).clamp(0.8, 1.6);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: TextScaler.linear(scale),
+            disableAnimations: mediaQuery.disableAnimations || settings.reduceMotion,
+          ),
+          child: child!,
+        );
+      }),
+      home: const AppRoot(),
     );
+  }
+}
+
+/// The first screen: Home, or "Who's playing?" when two or more players
+/// share this phone and nobody has said who is holding it yet.
+class AppRoot extends ConsumerWidget {
+  const AppRoot({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFamily = ref.watch(playersProvider.select((s) => s.isFamily));
+    final picked = ref.watch(playerPickedProvider);
+    if (isFamily && !picked) return const WhoIsPlayingScreen();
+    // Keyed by player so Home starts afresh when the phone changes hands.
+    return HomeScreen(key: ValueKey(ref.watch(currentPlayerIdProvider)));
   }
 }

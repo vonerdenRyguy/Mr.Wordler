@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../players/players.dart';
+
 // Everything needed to resume a village exactly where it was left: the
 // board/rack/pool (so structures can be re-derived and play continues
 // seamlessly), lastCashedOutScore -- the score value already paid out as
@@ -51,10 +53,8 @@ class VillageSaveData {
         pool: (json['pool'] as List).cast<String>(),
         dealtLetters: (json['dealtLetters'] as List).cast<String>(),
         lastCashedOutScore: json['lastCashedOutScore'] as int? ?? 0,
-        reachedLandmarks:
-            (json['reachedLandmarks'] as List?)?.map((e) => e as int).toSet() ?? const {},
-        discoveredWords:
-            (json['discoveredWords'] as List?)?.map((e) => e as String).toSet() ?? const {},
+        reachedLandmarks: (json['reachedLandmarks'] as List?)?.map((e) => e as int).toSet() ?? const {},
+        discoveredWords: (json['discoveredWords'] as List?)?.map((e) => e as String).toSet() ?? const {},
         saveVersion: json['saveVersion'] as int? ?? 1,
       );
 }
@@ -62,7 +62,11 @@ class VillageSaveData {
 // Persists the Infinite Estate village as a single JSON blob via
 // shared_preferences, matching the app's existing local-storage pattern.
 class VillageSaveController {
-  static const _key = 'infiniteEstateVillageSave';
+  /// [prefix] picks whose village: by default the player holding the
+  /// phone; pass another player's prefix to look at theirs.
+  VillageSaveController({String? prefix}) : _key = '${prefix ?? PlayerKeys.prefix}infiniteEstateVillageSave';
+
+  final String _key;
 
   Future<VillageSaveData?> load() async {
     final prefs = await SharedPreferences.getInstance();

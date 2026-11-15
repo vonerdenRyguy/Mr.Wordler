@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../players/players.dart';
 import '../portfolio/neighborhood.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../portfolio/portfolio_data.dart';
@@ -15,12 +16,12 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
     _load();
   }
 
-  static const _prefsKey = 'dailyChallengeData';
+  final String _prefsKey = PlayerKeys.of('dailyChallengeData');
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
-    if (raw == null) return;
+    if (raw == null || !mounted) return;
     try {
       state = DailyChallengeData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
@@ -57,8 +58,7 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
       lastPlayedDateKey: todayKey,
       streak: newStreak,
       completions: completed ? state.completions + 1 : state.completions,
-      totalCompletionSeconds:
-          completed ? state.totalCompletionSeconds + timeSeconds : state.totalCompletionSeconds,
+      totalCompletionSeconds: completed ? state.totalCompletionSeconds + timeSeconds : state.totalCompletionSeconds,
       bonusWordsFound: (completed && bonusWordFound) ? state.bonusWordsFound + 1 : state.bonusWordsFound,
       lastResult: DailyResult(
         dateKey: todayKey,
@@ -89,8 +89,8 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
   }
 }
 
-final dailyChallengeProvider =
-    StateNotifierProvider<DailyChallengeController, DailyChallengeData>((ref) {
+final dailyChallengeProvider = StateNotifierProvider<DailyChallengeController, DailyChallengeData>((ref) {
+  ref.watch(currentPlayerIdProvider);
   return DailyChallengeController();
 });
 

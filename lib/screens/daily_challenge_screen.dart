@@ -8,6 +8,9 @@ import '../daily/daily_puzzle.dart';
 import '../daily/daily_seed.dart';
 import '../daily/daily_tier.dart';
 import '../daily/share_card.dart';
+import '../daily/word_of_the_day.dart';
+import '../players/family_word.dart';
+import '../players/players.dart';
 import '../dictionary/definition_service.dart';
 import '../dictionary/word_speaker.dart';
 import '../game/grid_config.dart';
@@ -434,6 +437,19 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
           cluesUsed: cluesUsed,
           levelName: _info.name,
         );
+
+    // With a family on this phone, a finished Daily uncovers this player's
+    // share of today's family word (spec-07).
+    final players = ref.read(playersProvider);
+    final familyWords = ref.read(wordsOfTheDayProvider).valueOrNull;
+    if (players.isFamily && familyWords != null && familyWords.isNotEmpty) {
+      ref.read(familyWordProvider.notifier).recordPlayed(
+        playerId: players.currentId,
+        now: widget.today,
+        word: familyWordFor(widget.today, familyWords).word,
+        playerIds: [for (final p in players.players) p.id],
+      );
+    }
 
     final portfolioController = ref.read(portfolioProvider.notifier);
     final portfolioData = ref.read(portfolioProvider);

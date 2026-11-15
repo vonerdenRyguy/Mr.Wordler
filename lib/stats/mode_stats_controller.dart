@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../players/players.dart';
 import 'mode_stats_data.dart';
 
 class ModeStatsController extends StateNotifier<ModeStatsData> {
@@ -10,12 +11,12 @@ class ModeStatsController extends StateNotifier<ModeStatsData> {
     _load();
   }
 
-  static const _prefsKey = 'modeStatsData';
+  final String _prefsKey = PlayerKeys.of('modeStatsData');
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
-    if (raw == null) return;
+    if (raw == null || !mounted) return;
     try {
       state = ModeStatsData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (_) {
@@ -35,9 +36,9 @@ class ModeStatsController extends StateNotifier<ModeStatsData> {
     _save();
     return true;
   }
-
 }
 
 final modeStatsProvider = StateNotifierProvider<ModeStatsController, ModeStatsData>((ref) {
+  ref.watch(currentPlayerIdProvider);
   return ModeStatsController();
 });
