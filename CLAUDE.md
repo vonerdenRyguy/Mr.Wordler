@@ -120,7 +120,7 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     whenever its content fits and only scrolls at very large text.
 
 - **spec-07 a family on one phone** (branch `spec-07-family-one-phone`,
-  **built 2026-11-15, not yet checked on the phone or merged**). Step 2
+  merged to master 2026-11-15 after Ryan's phone check). Step 2
   of the family game.
   - `lib/players/players.dart`: up to 6 `Player`s (id, name, color),
     `playersProvider`, and `PlayerKeys.prefix`. **Every per-player save
@@ -156,7 +156,7 @@ family does together. Approved build order (each a spec, drawn on the
 design canvas first and approved there before any code):
 
 1. Word levels (spec-06, merged).
-2. A whole family on one phone (spec-07, built): several players, each
+2. A whole family on one phone (spec-07, merged): several players, each
    with a plot and a level; a daily family word solved by passing the
    phone. No server.
 3. Accounts and a family code (needs a backend; child-privacy decisions
@@ -293,10 +293,8 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 ## Known open items / next steps
 
-1. **spec-07 phone check owed** (the list is at the end of
-   `Desktop\MrWordlerScreenshots\specs\spec-07-family-on-one-phone.md`);
-   merge only on Ryan's OK. Not built yet: removing a player, and tapping
-   a word for its meaning while visiting a village.
+1. **Left out of spec-07:** removing a player, and tapping a word for its
+   meaning while visiting a village.
 1. **Explorer and Builder on the phone:** only Sprout could be played on
    the day spec-06 was checked (one Daily a day); look at the other two
    levels on a later day.
