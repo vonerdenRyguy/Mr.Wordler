@@ -34,6 +34,7 @@ flutter:
     - lib_assests/scrabble.jpg
     - lib_assests/trade.png
     - lib_assests/words.txt
+    - assets/words/word_of_the_day.json
     - lib_assests/letterBackground.png
     - assets/images/village_preview.png
     - assets/village/buildings/
