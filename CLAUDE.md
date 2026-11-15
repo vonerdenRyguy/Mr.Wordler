@@ -40,9 +40,9 @@ Flutter-generated output (already gitignored), not source.
 
 ## Current state (as of 2026-11-14)
 
-Built from specs 01-05. Specs 01-03 are merged after an on-device check;
-**spec-04 and spec-05 are built but not yet checked on the phone or
-merged** (spec-05's branch sits on top of spec-04's):
+Built from specs 01-05, **all merged to master**. Specs 04 and 05 were
+merged together on 2026-11-14 after Ryan checked them on the phone
+(spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
   (`lib/game/balanced_draw.dart`), Swap, and village save
   `saveVersion` 2 (v1 21-letter racks migrate once on load).
@@ -50,8 +50,7 @@ merged** (spec-05's branch sits on top of spec-04's):
   word-landing feedback (`tileLandingProvider`, banner, haptic).
 - **spec-03:** one look for the whole app (see Design system), Home,
   start pages, the shared 10x10 game layout with a Leave confirm.
-- **spec-04** (branch `spec-04-see-your-village`, awaiting on-device
-  check):
+- **spec-04** (branch `spec-04-see-your-village`, merged):
   - **Angled Village view** (`lib/village/iso_village_view.dart`): every
     word on its own squares; magic words are raised letter blocks with
     their building sprite on top, other letters are stone path slabs.
@@ -70,7 +69,7 @@ merged** (spec-05's branch sits on top of spec-04's):
   - **Settings:** Text size (Normal/Large/Extra large) and Reduce motion
     (`lib/settings/settings_controller.dart`), How to play.
 - **spec-05** (branch `spec-05-word-of-the-day`, cut from spec-04's
-  branch, awaiting on-device check). The spec was drafted by Claude Code
+  branch, merged). The spec was drafted by Claude Code
   from spec-04's outline, not from the design canvas; its `Decisions I
   guessed` table lists the ten choices Ryan approved as written.
   - **Themed Daily** (`lib/daily/daily_puzzle.dart`, `daily_themes.dart`):
@@ -219,11 +218,9 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 ## Known open items / next steps
 
-1. **On-device checks owed:** spec-04's manual check list, then
-   spec-05's (section 8 of each spec), before either merges. For spec-05,
-   watch for a Daily that leaves one letter fitting nowhere now that
-   there's no Swap; the planned fix is letting a round finish with a
-   letter or two left over for a lower prize.
+1. **Daily with no Swap:** keep watching for a Daily that leaves one
+   letter fitting nowhere; the planned fix is letting a round finish with
+   a letter or two left over for a lower prize.
 2. **spec-06:** building upgrades, village level, building plans,
    districts. Later: a Word book page, hints/assist mode, power-ups.
 3. **Dark palette** (the app is light-only; switch hidden).
