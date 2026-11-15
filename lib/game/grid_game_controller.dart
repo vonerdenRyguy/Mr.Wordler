@@ -24,6 +24,19 @@ class GridGameController extends StateNotifier<GridGameState> {
   final Random _random;
 
   static GridGameState _initialState(GridConfig config) {
+    final fixedRack = config.initialRack;
+    if (fixedRack != null) {
+      assert(fixedRack.length == config.rackSize, 'initialRack must hold rackSize letters');
+      // A fixed set of letters and nothing to draw from (the Daily).
+      return GridGameState(
+        config: config,
+        boardCells: List<String?>.filled(config.boardCellCount, null),
+        rackCells: List<String?>.from(fixedRack),
+        pool: const [],
+        dealtLetters: List<String>.from(fixedRack),
+      );
+    }
+
     final pool = LetterGenerator.generateLetters(
       config.totalPoolSize,
       seed: config.randomSeed,

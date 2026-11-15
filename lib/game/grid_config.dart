@@ -28,6 +28,11 @@ class GridConfig {
   // letters can't pile up. Off for every 10x10 mode.
   final bool balancedRefill;
 
+  // The Daily puzzle (spec-05): when set, the rack starts as exactly these
+  // letters, in this order, and there is no draw pool at all -- these are
+  // every letter the round has. Must hold `rackSize` letters.
+  final List<String>? initialRack;
+
   const GridConfig({
     required this.boardWidth,
     required this.boardHeight,
@@ -36,6 +41,7 @@ class GridConfig {
     this.randomSeed,
     this.refillRackOnPlace = false,
     this.balancedRefill = false,
+    this.initialRack,
   });
 
   int get boardCellCount => boardWidth * boardHeight;
