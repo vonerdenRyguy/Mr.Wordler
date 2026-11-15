@@ -77,6 +77,9 @@ class GameLayout extends ConsumerWidget {
     this.giveUp,
     this.onCheck,
     this.showActions = true,
+    this.showCheck = true,
+    this.rackColumns = 7,
+    this.rackWidthFactor = 1.0,
     this.header,
     this.leading,
     this.actionHint = 'Drag a letter onto Swap to trade it in',
@@ -92,6 +95,12 @@ class GameLayout extends ConsumerWidget {
   final VoidCallback? onCheck;
   // Theme Rush auto-checks and has no trade-in, so no action row.
   final bool showActions;
+  // A Sprout puzzle checks itself, so its Clue button takes the whole row.
+  final bool showCheck;
+  // Rack slots per row, and how much of the screen width the rack takes
+  // (smaller word levels have fewer, bigger tiles).
+  final int rackColumns;
+  final double rackWidthFactor;
   // The Daily's theme strip, between the top bar and the board.
   final Widget? header;
   // What sits left of Check. Null = the Swap drop target; the Daily puts
@@ -161,19 +170,26 @@ class GameLayout extends ConsumerWidget {
                 if (header != null) ...[header!, const SizedBox(height: WSize.gap2)],
                 const Expanded(child: Center(child: _WoodFramedBoard())),
                 const SizedBox(height: WSize.gap3),
-                const _SoilRack(),
+                Center(
+                  child: FractionallySizedBox(
+                    widthFactor: rackWidthFactor,
+                    child: _SoilRack(columns: rackColumns),
+                  ),
+                ),
                 if (showActions) ...[
                   const SizedBox(height: WSize.gap3),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(flex: 4, child: leading ?? const SwapDropTarget()),
-                      const SizedBox(width: WSize.gap3),
-                      Expanded(
-                        flex: 6,
-                        child:
-                            ChunkyButton(label: 'Check words', size: ChunkySize.big, expand: true, onPressed: onCheck),
-                      ),
+                      if (showCheck) ...[
+                        const SizedBox(width: WSize.gap3),
+                        Expanded(
+                          flex: 6,
+                          child: ChunkyButton(
+                              label: 'Check words', size: ChunkySize.big, expand: true, onPressed: onCheck),
+                        ),
+                      ],
                     ],
                   ),
                   Text(actionHint, style: WText.label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -249,7 +265,9 @@ class _WoodFramedBoard extends StatelessWidget {
 }
 
 class _SoilRack extends StatelessWidget {
-  const _SoilRack();
+  const _SoilRack({required this.columns});
+
+  final int columns;
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +279,7 @@ class _SoilRack extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
       ),
       // 3px per side = 6px gaps between slots.
-      child: const GridRackView(childAspectRatio: 1.0, bordered: false, cellPadding: 3),
+      child: GridRackView(crossAxisCount: columns, childAspectRatio: 1.0, bordered: false, cellPadding: 3),
     );
   }
 }

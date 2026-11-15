@@ -27,7 +27,10 @@ PropertyTier tierForDailyResult({
 // Coins for finishing the Daily with the secret word on the board
 // (spec-05). Clues are free and never lower the prize step; each one used
 // just makes this bonus a little smaller.
-int secretWordCoins(int cluesUsed) {
+// With [unlimitedClues] (Sprout, spec-06) clues are how the puzzle is
+// meant to be played, so the bonus is always the full one.
+int secretWordCoins(int cluesUsed, {bool unlimitedClues = false}) {
+  if (unlimitedClues) return 20;
   const coins = [20, 15, 10, 5];
   return coins[cluesUsed.clamp(0, 3)];
 }

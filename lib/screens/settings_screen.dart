@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../game/letter_tile.dart';
 import '../settings/settings_controller.dart';
+import '../settings/word_level.dart';
+import 'word_level_screen.dart';
 import '../ui/chunky_button.dart';
 import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
@@ -80,6 +82,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         Switch(value: settings.reduceMotion, onChanged: controller.setReduceMotion),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: WSize.gap3),
+                  ChunkyCard(
+                    onTap: () =>
+                        Navigator.of(context).push(MaterialPageRoute<bool>(builder: (_) => const WordLevelScreen())),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Word level', style: WText.heading.copyWith(fontSize: 22)),
+                              Text('${settings.wordLevel.info.name}: ${settings.wordLevel.info.summary}',
+                                  style: WText.body.copyWith(color: WColors.muted)),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: WColors.ink),
                       ],
                     ),
                   ),
@@ -180,6 +202,7 @@ Future<void> showHowToPlay(BuildContext context) {
     ('WELL', 'Magic words like WELL and FARM become buildings in your village.'),
     ('TAP', 'Tap any word in Village view to learn what it means.'),
     ('CLUE', "The Daily puzzle has a theme and a secret word. Tap Clue if you'd like help."),
+    ('EASY', 'Pick a word level in Settings to make the Daily puzzle smaller or bigger.'),
   ];
   return showModalBottomSheet<void>(
     context: context,

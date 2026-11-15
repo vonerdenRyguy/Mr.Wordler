@@ -15,6 +15,10 @@ class DailyResult {
   final String? secretWord; // uppercase
   final int cluesUsed;
 
+  // spec-06: the word level's display name ("Explorer"). Null on a result
+  // saved by an older build.
+  final String? levelName;
+
   const DailyResult({
     required this.dateKey,
     required this.completed,
@@ -24,6 +28,7 @@ class DailyResult {
     this.themeName,
     this.secretWord,
     this.cluesUsed = 0,
+    this.levelName,
   });
 
   Map<String, dynamic> toJson() => {
@@ -35,9 +40,11 @@ class DailyResult {
         'themeName': themeName,
         'secretWord': secretWord,
         'cluesUsed': cluesUsed,
+        'levelName': levelName,
       };
 
   factory DailyResult.fromJson(Map<String, dynamic> json) => DailyResult(
+        levelName: json['levelName'] as String?,
         dateKey: json['dateKey'] as String,
         completed: json['completed'] as bool? ?? false,
         timeSeconds: json['timeSeconds'] as int? ?? 0,
@@ -77,7 +84,7 @@ class DailyChallengeData {
     this.cluesUsed = 0,
   });
 
-  int cluesUsedOn(String dateKey) => cluesDateKey == dateKey ? cluesUsed.clamp(0, 3) : 0;
+  int cluesUsedOn(String dateKey) => cluesDateKey == dateKey ? cluesUsed : 0;
 
   factory DailyChallengeData.initial() => const DailyChallengeData(
         lastPlayedDateKey: null,

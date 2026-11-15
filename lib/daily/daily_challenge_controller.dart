@@ -47,6 +47,7 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
     String? themeName,
     String? secretWord,
     int cluesUsed = 0,
+    String? levelName,
   }) {
     final todayKey = dailyDateKey(now);
     final continuesStreak = completed && isConsecutiveDay(state.lastPlayedDateKey, now);
@@ -68,6 +69,7 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
         themeName: themeName,
         secretWord: secretWord,
         cluesUsed: cluesUsed,
+        levelName: levelName,
       ),
     );
     _save();
@@ -75,11 +77,12 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
 
   int cluesUsedToday(DateTime now) => state.cluesUsedOn(dailyDateKey(now));
 
-  // Uses one of today's three clues and returns how many are now used.
-  // Saved straight away, so leaving the round doesn't give it back.
-  int useClue(DateTime now) {
+  // Uses one of today's clues (at most [max]: 3 for the full puzzle, more
+  // at easier word levels) and returns how many are now used. Saved
+  // straight away, so leaving the round doesn't give it back.
+  int useClue(DateTime now, {int max = 3}) {
     final used = cluesUsedToday(now);
-    if (used >= 3) return used;
+    if (used >= max) return used;
     state = state.copyWith(cluesDateKey: dailyDateKey(now), cluesUsed: used + 1);
     _save();
     return used + 1;

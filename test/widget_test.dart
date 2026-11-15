@@ -116,7 +116,7 @@ void main() {
     final today = wordOfDayFor(DateTime.now(), words);
     expect(find.text(today.word), findsOneWidget);
     expect(find.text('+10 coins'), findsOneWidget);
-    final theme = find.text("Today's theme: ${dailyPuzzleFor(DateTime.now()).theme.name}");
+    final theme = find.text('Theme: ${dailyPuzzleFor(DateTime.now()).theme.name}');
     expect(theme, findsOneWidget);
     expect(screen.contains(tester.getRect(theme).bottomRight), isTrue);
   });

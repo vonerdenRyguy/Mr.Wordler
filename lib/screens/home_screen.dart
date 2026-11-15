@@ -11,8 +11,11 @@ import '../game/letter_tile.dart';
 import '../game/word_landing.dart' show wordCheckProvider;
 import '../portfolio/level_info.dart';
 import '../portfolio/portfolio_controller.dart';
+import '../settings/settings_controller.dart';
+import '../settings/word_level.dart';
 import '../ui/chunky_button.dart';
 import '../ui/chunky_card.dart';
+import '../ui/min_height_box.dart';
 import '../ui/tokens.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
@@ -28,6 +31,7 @@ import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
+import 'word_level_screen.dart';
 
 // The app's one entry screen: your level and coins, a picture of your own
 // village, today's puzzle and Time Attack. Fits one screen at normal text
@@ -67,7 +71,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     const size = InfiniteEstateScreen.boardSize;
-    final runs = await WordValidator().findValidRuns(saved.boardCells, size, size, isValid: ref.read(wordCheckProvider));
+    final runs =
+        await WordValidator().findValidRuns(saved.boardCells, size, size, isValid: ref.read(wordCheckProvider));
     final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
@@ -108,9 +113,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _loadVillage();
   }
 
+  // A brand-new player picks a word level before their first Daily.
+  // Anyone who has played before stays on Wordsmith (the puzzle as it
+  // was) until they change it in Settings.
+  Future<void> _openDaily(bool playedToday) async {
+    final isNewPlayer = ref.read(settingsProvider).chosenWordLevel == null &&
+        ref.read(dailyChallengeProvider).lastPlayedDateKey == null &&
+        ref.read(portfolioProvider).totalXp == 0;
+    if (isNewPlayer && !playedToday) {
+      final picked = await Navigator.of(context).push(MaterialPageRoute<bool>(builder: (_) => const WordLevelScreen()));
+      if (picked != true || !mounted) return;
+    }
+    await _open(const DailyChallengeScreen());
+  }
+
   @override
   Widget build(BuildContext context) {
     final portfolio = ref.watch(portfolioProvider);
+    final wordLevel = ref.watch(settingsProvider).wordLevel;
     final level = levelInfoForXp(portfolio.totalXp);
     final daily = ref.watch(dailyChallengeProvider);
     final now = DateTime.now();
@@ -144,7 +164,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       const SizedBox(height: 8),
                       const _TileTitle(),
                       const SizedBox(height: 8),
-                      _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
+                      Expanded(
+                        child: _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
+                      ),
                       const SizedBox(height: 8),
                       _WordOfDayCard(
                         word: wordOfDay,
@@ -175,9 +197,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         title: 'Daily puzzle',
                         status: (playedToday ? 'Done for today' : 'Not played yet') +
                             (daily.streak >= 2 ? ' · ${daily.streak}-day streak' : ''),
-                        note: "Today's theme: ${dailyPuzzleFor(now).theme.name}",
+                        note: 'Theme: ${dailyPuzzleFor(now).theme.name}',
+                        chip: wordLevel.info.name,
+                        chipColor: wordLevel.info.color,
                         action: playedToday ? 'See result' : 'Play',
-                        onTap: () => _open(const DailyChallengeScreen()),
+                        onTap: () => _openDaily(playedToday),
                       ),
                       const SizedBox(height: 8),
                       _ModeRowCard(
@@ -189,7 +213,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         action: 'Play',
                         onTap: () => _open(const TimeAttackStartPage()),
                       ),
-                      const Spacer(),
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -301,7 +324,8 @@ class _TopBar extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const _Badge(size: 28, color: WColors.sun, child: Icon(Icons.monetization_on, size: 18, color: WColors.ink)),
+                const _Badge(
+                    size: 28, color: WColors.sun, child: Icon(Icons.monetization_on, size: 18, color: WColors.ink)),
                 const SizedBox(width: 6),
                 Text('$coins', style: WText.button),
               ],
@@ -418,44 +442,48 @@ class _VillageCardState extends State<_VillageCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            height: 120,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (scene == null)
-                  Image.asset(
-                    'assets/images/village_preview.png',
-                    fit: BoxFit.cover,
-                    excludeFromSemantics: true,
-                    errorBuilder: (context, error, stack) => Container(color: WColors.leafTint),
-                  )
-                else
-                  // Your own village, as a still picture centered on your
-                  // newest building.
-                  IgnorePointer(
-                    child: LayoutBuilder(builder: (context, constraints) {
-                      _aim(village!.focus, constraints.biggest, scene.grid);
-                      return ColoredBox(
-                        color: WColors.grassField,
-                        child: IsoVillageView(scene: scene, transformController: _camera, interactive: false),
-                      );
-                    }),
-                  ),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: WColors.card,
-                      border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-                      borderRadius: BorderRadius.circular(WSize.radiusChip),
+          // At least 96 tall; it takes whatever height the rest of Home
+          // leaves, so Home always fills exactly one screen when it can.
+          Expanded(
+            child: MinHeightBox(
+              height: 96,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (scene == null)
+                    Image.asset(
+                      'assets/images/village_preview.png',
+                      fit: BoxFit.cover,
+                      excludeFromSemantics: true,
+                      errorBuilder: (context, error, stack) => Container(color: WColors.leafTint),
+                    )
+                  else
+                    // Your own village, as a still picture centered on your
+                    // newest building.
+                    IgnorePointer(
+                      child: LayoutBuilder(builder: (context, constraints) {
+                        _aim(village!.focus, constraints.biggest, scene.grid);
+                        return ColoredBox(
+                          color: WColors.grassField,
+                          child: IsoVillageView(scene: scene, transformController: _camera, interactive: false),
+                        );
+                      }),
                     ),
-                    child: Text(chip, style: WText.label.copyWith(color: WColors.ink)),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: WColors.card,
+                        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                        borderRadius: BorderRadius.circular(WSize.radiusChip),
+                      ),
+                      child: Text(chip, style: WText.label.copyWith(color: WColors.ink)),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Container(height: WSize.outline, color: WColors.ink),
@@ -473,7 +501,8 @@ class _VillageCardState extends State<_VillageCard> {
                       maxLines: 1, style: WText.body.copyWith(color: WColors.muted)),
                 ),
                 const SizedBox(height: WSize.gap2),
-                ChunkyButton(label: 'Visit your village', size: ChunkySize.big, expand: true, onPressed: widget.onVisit),
+                ChunkyButton(
+                    label: 'Visit your village', size: ChunkySize.big, expand: true, onPressed: widget.onVisit),
               ],
             ),
           ),
@@ -525,7 +554,8 @@ class _WordOfDayCard extends StatelessWidget {
                           const Icon(Icons.check, size: 16, color: WColors.ink),
                           const SizedBox(width: 2),
                         ],
-                        Text(claimed ? 'Done' : '+$kWordOfDayCoins coins', style: WText.label.copyWith(color: WColors.ink)),
+                        Text(claimed ? 'Done' : '+$kWordOfDayCoins coins',
+                            style: WText.label.copyWith(color: WColors.ink)),
                       ],
                     ),
                   ),
@@ -555,9 +585,15 @@ class _ModeRowCard extends StatelessWidget {
     required this.title,
     required this.status,
     this.note,
+    this.chip,
+    this.chipColor,
     required this.action,
     required this.onTap,
   });
+
+  // A small pill after the title (the Daily's word level).
+  final String? chip;
+  final Color? chipColor;
 
   final String letter;
   final Color color;
@@ -585,7 +621,34 @@ class _ModeRowCard extends StatelessWidget {
               children: [
                 Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.heading.copyWith(fontSize: 21)),
                 Text(status, style: WText.bodyBold.copyWith(fontSize: 15)),
-                if (note != null) Text(note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.label),
+                if (note != null || chip != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    // On a narrow card with big text this line shrinks a
+                    // little to stay whole, rather than being cut off.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (chip != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: chipColor ?? WColors.sun,
+                                border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                                borderRadius: BorderRadius.circular(WSize.radiusChip),
+                              ),
+                              child: Text(chip!, maxLines: 1, style: WText.label.copyWith(color: WColors.ink)),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          if (note != null) Text(note!, maxLines: 1, style: WText.label),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

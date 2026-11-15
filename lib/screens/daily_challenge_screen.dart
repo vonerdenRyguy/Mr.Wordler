@@ -9,8 +9,12 @@ import '../daily/daily_seed.dart';
 import '../daily/daily_tier.dart';
 import '../daily/share_card.dart';
 import '../dictionary/definition_service.dart';
+import '../dictionary/word_speaker.dart';
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
+import '../game/letter_tile.dart';
+import '../settings/settings_controller.dart';
+import '../settings/word_level.dart';
 import '../game/word_landing_banner.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../portfolio/property_tier.dart';
@@ -33,10 +37,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Clue button helps find the secret word. One attempt per day: completing
 // or giving up locks today out; simply leaving does not.
 class DailyChallengeScreen extends ConsumerStatefulWidget {
-  const DailyChallengeScreen({super.key, @visibleForTesting this.today});
+  const DailyChallengeScreen({super.key, @visibleForTesting this.today, @visibleForTesting this.level});
 
   // Overridable only for tests, so a test can pick the day's puzzle.
   final DateTime? today;
+  // Null = the player's saved word level.
+  final WordLevel? level;
 
   @override
   ConsumerState<DailyChallengeScreen> createState() => _DailyChallengeScreenState();
@@ -51,7 +57,9 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
   void initState() {
     super.initState();
     _today = widget.today ?? DateTime.now();
-    _puzzle = dailyPuzzleFor(_today);
+    // The level is fixed for the round: changing it in Settings applies to
+    // the next puzzle opened.
+    _puzzle = dailyPuzzleFor(_today, widget.level ?? ref.read(settingsProvider).wordLevel);
     // ConsumerState's `ref` (unlike ProviderScope.containerOf(context)) is
     // safe to read in initState.
     _alreadyPlayed = ref.read(dailyChallengeProvider.notifier).hasPlayedToday(_today);
@@ -62,13 +70,14 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
   Widget build(BuildContext context) {
     if (_alreadyPlayed) return const _AlreadyPlayedView();
     final secret = _puzzle.secretWord;
+    final info = _puzzle.level.info;
     return ProviderScope(
       overrides: [
         gridConfigProvider.overrideWithValue(
           GridConfig(
-            boardWidth: 10,
-            boardHeight: 10,
-            rackSize: kDailyLetterCount,
+            boardWidth: info.boardSize,
+            boardHeight: info.boardSize,
+            rackSize: info.letters,
             initialRack: _puzzle.letters,
           ),
         ),
@@ -77,6 +86,25 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
       child: _DailyChallengeBody(puzzle: _puzzle, today: _today),
     );
   }
+}
+
+/// What pressing Check does in a Daily round.
+enum DailyCheck {
+  /// Every word is real and joined up, and few enough letters are left.
+  win,
+
+  /// The words are fine, but more letters must be placed first (only at a
+  /// level that allows leftovers, where "how many more" is worth saying).
+  placeMore,
+
+  /// Show the usual list of words found.
+  notYet,
+}
+
+DailyCheck dailyCheckOutcome({required bool boardOk, required int lettersLeft, required int leftoverAllowed}) {
+  if (!boardOk) return DailyCheck.notYet;
+  if (lettersLeft <= leftoverAllowed) return DailyCheck.win;
+  return leftoverAllowed > 0 ? DailyCheck.placeMore : DailyCheck.notYet;
 }
 
 String _formatSeconds(int totalSeconds) {
@@ -191,10 +219,19 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
   // set if the word is broken up again (the player knows it now); the bonus
   // itself needs the word on the board at the final Check.
   bool _secretFound = false;
-  // Clue 2 had no meaning to show (offline), so it gave the last letter.
-  bool _lastLetterShown = false;
+  // The meaning clue had nothing to show (offline), so it gave a letter
+  // instead (see _fallbackIndex).
+  bool _fallbackShown = false;
 
   String get _secret => widget.puzzle.secretWord;
+  WordLevelInfo get _info => widget.puzzle.level.info;
+
+  // Sprout: one clue per letter of the hidden word.
+  int get _maxClues => _info.unlimitedClues ? _secret.length : _info.clues.length;
+
+  // The letter a meaning clue falls back to: the last one, or the third
+  // where the level already has a last-letter clue.
+  int get _fallbackIndex => _info.clues.contains(ClueKind.lastLetter) ? 2 : _secret.length - 1;
 
   @override
   void initState() {
@@ -242,17 +279,18 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
           themeName: widget.puzzle.theme.name,
           secretWord: _secret,
           cluesUsed: _cluesUsed,
+          levelName: _info.name,
         );
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
-  // The meaning for clue 2, with the word itself hidden, or null when
-  // there's nothing to show (offline, or no entry).
+  // The meaning for the meaning clue, with the word itself hidden, or null
+  // when there's nothing to show (offline, or no entry).
   Future<String?> _loadClueMeaning() async {
-    final meaning = await ref.read(definitionServiceProvider).getDefinition(_secret);
+    final meaning = widget.puzzle.meaning ?? await ref.read(definitionServiceProvider).getDefinition(_secret);
     if (meaning == null || meaning.isEmpty) {
-      if (mounted) setState(() => _lastLetterShown = true);
+      if (mounted) setState(() => _fallbackShown = true);
       return null;
     }
     return hideWordInMeaning(meaning, _secret);
@@ -261,9 +299,18 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
   Future<void> _onClue() async {
     if (_roundEnded || _secretFound) return;
     final used = _cluesUsed;
-    if (used >= 3) return;
+    if (used >= _maxClues) return;
 
-    if (used == 2) {
+    if (_info.unlimitedClues) {
+      // Sprout: each clue just shows the next letter in the strip.
+      ref.read(dailyChallengeProvider.notifier).useClue(widget.today, max: _maxClues);
+      HapticFeedback.selectionClick();
+      setState(() {});
+      return;
+    }
+
+    final kind = _info.clues[used];
+    if (kind == ClueKind.wholeWord) {
       var show = false;
       await showWordlerDialog<void>(
         context,
@@ -277,18 +324,35 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
       if (!show || !mounted) return;
     }
 
-    final clue = ref.read(dailyChallengeProvider.notifier).useClue(widget.today);
+    ref.read(dailyChallengeProvider.notifier).useClue(widget.today, max: _maxClues);
     setState(() {});
     final gotIt = [WordlerDialogAction('Got it', () {})];
-    switch (clue) {
-      case 1:
+    final fallback = _fallbackIndex == _secret.length - 1
+        ? 'It ends with ${_secret[_fallbackIndex]}.'
+        : 'The third letter is ${_secret[_fallbackIndex]}.';
+    switch (kind) {
+      case ClueKind.firstLetter:
         await showWordlerDialog<void>(
           context,
           title: 'First letter',
           bodyText: 'It starts with ${_secret[0]}.',
           actions: gotIt,
         );
-      case 2:
+      case ClueKind.lastLetter:
+        await showWordlerDialog<void>(
+          context,
+          title: 'Last letter',
+          bodyText: 'It ends with ${_secret[_secret.length - 1]}.',
+          actions: gotIt,
+        );
+      case ClueKind.secondLetter:
+        await showWordlerDialog<void>(
+          context,
+          title: 'Second letter',
+          bodyText: 'The second letter is ${_secret[1]}.',
+          actions: gotIt,
+        );
+      case ClueKind.meaning:
         final meaning = _loadClueMeaning();
         await showWordlerDialog<void>(
           context,
@@ -299,12 +363,12 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
               if (snapshot.connectionState != ConnectionState.done) {
                 return Text('Looking it up...', style: WText.body.copyWith(color: WColors.muted));
               }
-              return Text(snapshot.data ?? 'It ends with ${_secret[_secret.length - 1]}.', style: WText.body);
+              return Text(snapshot.data ?? fallback, style: WText.body);
             },
           ),
           actions: gotIt,
         );
-      default:
+      case ClueKind.wholeWord:
         await showWordlerDialog<void>(
           context,
           title: 'The secret word',
@@ -320,23 +384,44 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
     if (_roundEnded) return;
     if (!mounted) return;
 
-    final isWin = ref.read(gridGameControllerProvider).isPoolEmptied;
-    if (!(isWin && result.areValid && result.areConnected)) {
+    final lettersLeft = ref.read(gridGameControllerProvider).rackCells.where((c) => c != null).length;
+    final allowed = _info.leftoverAllowed;
+    final outcome = dailyCheckOutcome(
+      boardOk: result.areValid && result.areConnected,
+      lettersLeft: lettersLeft,
+      leftoverAllowed: allowed,
+    );
+    if (outcome == DailyCheck.placeMore) {
+      // Explorer: good words so far, just not enough letters placed yet.
+      final more = lettersLeft - allowed;
+      showWordlerDialog<void>(
+        context,
+        title: 'Good words!',
+        bodyText: 'Place $more more letter${more == 1 ? '' : 's'} to finish.',
+        actions: [WordlerDialogAction('OK', () {})],
+      );
+      return;
+    }
+    if (outcome == DailyCheck.notYet) {
       showCheckResultDialog(context, result);
       return;
     }
+    _finish(secretFound: result.words.map((w) => w.toUpperCase()).contains(_secret));
+  }
 
+  // The round is won: save it, pay out, and show the result.
+  void _finish({required bool secretFound}) {
+    if (_roundEnded) return;
     _roundEnded = true;
     _stopwatchManager.stop();
     final timeSeconds = _elapsedSeconds;
     final cluesUsed = _cluesUsed;
-    final secretFound = result.words.map((w) => w.toUpperCase()).contains(_secret);
     final tier = tierForDailyResult(
       completed: true,
       time: Duration(seconds: timeSeconds),
       bonusWordFound: secretFound,
     );
-    final coins = secretFound ? secretWordCoins(cluesUsed) : 0;
+    final coins = secretFound ? secretWordCoins(cluesUsed, unlimitedClues: _info.unlimitedClues) : 0;
 
     ref.read(dailyChallengeProvider.notifier).recordAttempt(
           now: widget.today,
@@ -347,6 +432,7 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
           themeName: widget.puzzle.theme.name,
           secretWord: _secret,
           cluesUsed: cluesUsed,
+          levelName: _info.name,
         );
 
     final portfolioController = ref.read(portfolioProvider.notifier);
@@ -356,6 +442,10 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
     if (coins > 0) portfolioController.addCurrency(coins);
 
     if (!mounted) return;
+    if (_info.finishOnSecretWord) {
+      _showSproutResult(coins);
+      return;
+    }
     final definitions = ref.read(definitionServiceProvider);
     showWordlerDialog<void>(
       context,
@@ -416,6 +506,59 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
     );
   }
 
+  // The Sprout result: the word in big tiles, what it means, and a button
+  // to hear it. The learning moment, so there is nothing else on it.
+  void _showSproutResult(int coins) {
+    final speaker = ref.read(wordSpeakerProvider);
+    final meaning = widget.puzzle.meaning;
+    showWordlerDialog<void>(
+      context,
+      title: 'You found it!',
+      barrierDismissible: false,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            label: _secret,
+            excludeSemantics: true,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final l in _secret.split(''))
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: SizedBox(width: 52, height: 52, child: LetterTile(letter: l, faceColor: WColors.sun)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (meaning != null) ...[
+            const SizedBox(height: WSize.gap3),
+            const Text('WHAT IT MEANS', style: WText.label, textAlign: TextAlign.center),
+            Text(meaning, style: WText.body.copyWith(fontSize: 18), textAlign: TextAlign.center),
+          ],
+          const SizedBox(height: WSize.gap3),
+          ChunkyButton(
+            label: 'Hear the word',
+            icon: Icons.volume_up,
+            kind: ChunkyKind.secondary,
+            expand: true,
+            onPressed: () => speaker.speak(_secret),
+          ),
+          const SizedBox(height: WSize.gap3),
+          Text('+$coins coins', style: WText.bodyBold.copyWith(color: WColors.grass), textAlign: TextAlign.center),
+        ],
+      ),
+      actions: [
+        WordlerDialogAction('Done', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+      ],
+    );
+  }
+
   // Leaving doesn't record an attempt, so the player can come back later
   // today and start again with the same letters (and the same clues used).
   void _confirmLeave() {
@@ -435,20 +578,41 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
   Widget build(BuildContext context) {
     final cluesUsed = ref.watch(dailyChallengeProvider).cluesUsedOn(dailyDateKey(widget.today));
 
+    final info = _info;
+    final size = info.boardSize;
     ref.listen<List<String?>>(gridGameControllerProvider.select((s) => s.boardCells), (prev, next) {
-      if (_secretFound || !boardContainsWord(next, 10, 10, _secret)) return;
+      if (_secretFound || !boardContainsWord(next, size, size, _secret)) return;
       setState(() => _secretFound = true);
+      if (info.finishOnSecretWord) {
+        // Sprout: that's the whole puzzle. A short pause lets the word
+        // glow on the board first.
+        Future<void>.delayed(const Duration(milliseconds: 900), () {
+          if (mounted) _finish(secretFound: true);
+        });
+      }
     });
 
+    final used = min(cluesUsed, _maxClues);
+    final all = [for (int i = 0; i < _secret.length; i++) i];
     final revealed = <int>{
-      if (cluesUsed >= 1) 0,
-      if (_lastLetterShown) _secret.length - 1,
-      if (cluesUsed >= 3 || _secretFound)
-        for (int i = 0; i < _secret.length; i++) i,
+      if (_secretFound) ...all,
+      if (info.unlimitedClues)
+        for (int i = 0; i < used; i++) i,
+      for (int i = 0; i < used && !info.unlimitedClues; i++)
+        ...switch (info.clues[i]) {
+          ClueKind.firstLetter => [0],
+          ClueKind.lastLetter => [_secret.length - 1],
+          ClueKind.secondLetter => [1],
+          ClueKind.meaning => [if (_fallbackShown) _fallbackIndex],
+          ClueKind.wholeWord => all,
+        },
     };
+    final cluesLeft = _maxClues - used;
     final clueStatus = _secretFound
         ? 'Found'
-        : switch (min(cluesUsed, 3)) { 0 => '3 left', 1 => '2 left', 2 => '1 left', _ => 'No more' };
+        : cluesLeft == 0
+            ? 'No more'
+            : (info.unlimitedClues ? 'Next letter' : '$cluesLeft left');
 
     // The back gesture asks first, the same as the Leave button.
     return PopScope(
@@ -458,9 +622,17 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
       },
       child: GameLayout(
         onLeave: _confirmLeave,
-        pill: GamePill(label: 'Time', value: _stopwatchManager.elapsedTime, color: WModeColors.daily),
-        giveUp: _giveUp,
+        // No clock on screen at Sprout and Explorer; the time is still saved.
+        pill: info.showClock
+            ? GamePill(label: 'Time', value: _stopwatchManager.elapsedTime, color: WModeColors.daily)
+            : GamePill(label: '', value: info.name, color: info.color),
+        showLettersLeft: !info.finishOnSecretWord,
+        // Sprout has clues without limit, so nothing to give up on.
+        giveUp: info.finishOnSecretWord ? null : _giveUp,
         onCheck: _onCheckPressed,
+        showCheck: !info.finishOnSecretWord,
+        rackColumns: switch (info.letters) { <= 8 => 4, <= 12 => 6, <= 16 => 8, _ => 7 },
+        rackWidthFactor: info.letters <= 8 ? 0.75 : 1.0,
         header: SecretWordStrip(
           themeName: widget.puzzle.theme.name,
           secretWord: _secret,
@@ -469,9 +641,13 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
         ),
         leading: ClueButton(
           status: clueStatus,
-          onPressed: (_secretFound || cluesUsed >= 3) ? null : _onClue,
+          onPressed: (_secretFound || cluesLeft == 0) ? null : _onClue,
         ),
-        actionHint: 'Find the secret word for a bonus.',
+        actionHint: info.finishOnSecretWord
+            ? 'Spell the hidden word to finish.'
+            : info.leftoverAllowed > 0
+                ? 'You can finish with ${info.leftoverAllowed} letters left over.'
+                : 'Find the secret word for a bonus.',
       ),
     );
   }

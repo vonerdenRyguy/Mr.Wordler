@@ -1,18 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Player settings: text size and reduce motion. Saved in
+import 'word_level.dart';
+
+// Player settings: text size, reduce motion and word level. Saved in
 // shared_preferences under their own keys. (Dark mode stays in
 // ThemeNotifier, untouched.)
 
 const kAppVersion = '0.0.1'; // keep in step with pubspec.yaml
 
 class SettingsData {
-  const SettingsData({this.textSizeStep = 0, this.reduceMotion = false});
+  const SettingsData({this.textSizeStep = 0, this.reduceMotion = false, this.chosenWordLevel});
 
   /// 0 = Normal, 1 = Large, 2 = Extra large.
   final int textSizeStep;
   final bool reduceMotion;
+
+  /// The word level the player picked (spec-06); null until they pick one.
+  final WordLevel? chosenWordLevel;
+
+  /// The level in use: Wordsmith (the puzzle as it always was) until the
+  /// player picks another.
+  WordLevel get wordLevel => chosenWordLevel ?? WordLevel.wordsmith;
 
   static const textSizeLabels = ['Normal', 'Large', 'Extra large'];
   static const _textScales = [1.0, 1.15, 1.3];
@@ -20,9 +29,10 @@ class SettingsData {
   /// What the phone's text scale is multiplied by.
   double get textScale => _textScales[textSizeStep];
 
-  SettingsData copyWith({int? textSizeStep, bool? reduceMotion}) => SettingsData(
+  SettingsData copyWith({int? textSizeStep, bool? reduceMotion, WordLevel? chosenWordLevel}) => SettingsData(
         textSizeStep: textSizeStep ?? this.textSizeStep,
         reduceMotion: reduceMotion ?? this.reduceMotion,
+        chosenWordLevel: chosenWordLevel ?? this.chosenWordLevel,
       );
 }
 
@@ -33,6 +43,7 @@ class SettingsController extends StateNotifier<SettingsData> {
 
   static const textSizeKey = 'textSizeStep';
   static const reduceMotionKey = 'reduceMotion';
+  static const wordLevelKey = 'wordLevel';
 
   late final Future<void> _ready;
 
@@ -45,7 +56,15 @@ class SettingsController extends StateNotifier<SettingsData> {
     state = SettingsData(
       textSizeStep: (prefs.getInt(textSizeKey) ?? 0).clamp(0, 2),
       reduceMotion: prefs.getBool(reduceMotionKey) ?? false,
+      // Keep a level picked while this was loading.
+      chosenWordLevel: state.chosenWordLevel ?? wordLevelFromName(prefs.getString(wordLevelKey)),
     );
+  }
+
+  Future<void> setWordLevel(WordLevel level) async {
+    state = state.copyWith(chosenWordLevel: level);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(wordLevelKey, level.name);
   }
 
   Future<void> setTextSizeStep(int step) async {
