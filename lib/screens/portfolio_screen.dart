@@ -107,13 +107,13 @@ class _TierGuideCard extends StatelessWidget {
     ),
     (
       tier: PropertyTier.house,
-      how: 'Complete the Daily puzzle in under 3 minutes, or find the hidden '
-          'bonus word.',
+      how: 'Complete the Daily puzzle in under 3 minutes, or find the '
+          'secret word.',
     ),
     (
       tier: PropertyTier.mansion,
       how: 'Complete the Daily puzzle quickly (under 6 minutes) AND find the '
-          'hidden bonus word in the same run.',
+          'secret word in the same run.',
     ),
   ];
 

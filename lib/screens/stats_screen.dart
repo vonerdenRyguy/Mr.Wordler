@@ -40,7 +40,7 @@ class StatsScreen extends ConsumerWidget {
               _StatRow('Completions', '${daily.completions}'),
               _StatRow('Average time',
                   daily.completions == 0 ? '--' : _formatSeconds(daily.averageCompletionSeconds.round())),
-              _StatRow('Bonus words found', '${daily.bonusWordsFound}'),
+              _StatRow('Secret words found', '${daily.bonusWordsFound}'),
             ],
           ),
           const SizedBox(height: WSize.gap3),
