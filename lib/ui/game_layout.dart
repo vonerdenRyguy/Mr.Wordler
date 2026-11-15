@@ -77,6 +77,9 @@ class GameLayout extends ConsumerWidget {
     this.giveUp,
     this.onCheck,
     this.showActions = true,
+    this.header,
+    this.leading,
+    this.actionHint = 'Drag a letter onto Swap to trade it in',
   });
 
   final VoidCallback onLeave;
@@ -89,6 +92,12 @@ class GameLayout extends ConsumerWidget {
   final VoidCallback? onCheck;
   // Theme Rush auto-checks and has no trade-in, so no action row.
   final bool showActions;
+  // The Daily's theme strip, between the top bar and the board.
+  final Widget? header;
+  // What sits left of Check. Null = the Swap drop target; the Daily puts
+  // its Clue button here instead (it has no Swap).
+  final Widget? leading;
+  final String actionHint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -149,6 +158,7 @@ class GameLayout extends ConsumerWidget {
                   );
                 }),
                 const SizedBox(height: WSize.gap2),
+                if (header != null) ...[header!, const SizedBox(height: WSize.gap2)],
                 const Expanded(child: Center(child: _WoodFramedBoard())),
                 const SizedBox(height: WSize.gap3),
                 const _SoilRack(),
@@ -157,7 +167,7 @@ class GameLayout extends ConsumerWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Expanded(flex: 4, child: SwapDropTarget()),
+                      Expanded(flex: 4, child: leading ?? const SwapDropTarget()),
                       const SizedBox(width: WSize.gap3),
                       Expanded(
                         flex: 6,
@@ -166,7 +176,7 @@ class GameLayout extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const Text('Drag a letter onto Swap to trade it in', style: WText.label, textAlign: TextAlign.center),
+                  Text(actionHint, style: WText.label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ],
             ),
@@ -324,6 +334,61 @@ class SwapDropTarget extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// The Daily's Clue button, in Swap's place: a lightbulb, "Clue", and a
+/// small line saying how many are left. Null [onPressed] = faded, disabled.
+class ClueButton extends StatelessWidget {
+  const ClueButton({super.key, required this.status, required this.onPressed});
+
+  final String status;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final color = enabled ? WColors.ink : WColors.muted;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: 'Clue, $status',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: Container(
+            margin: EdgeInsets.only(bottom: enabled ? WSize.lip : 0, top: enabled ? 0 : WSize.lip),
+            constraints: const BoxConstraints(minHeight: 56 - WSize.lip),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: enabled ? WColors.card : WColors.boardCell,
+              border: Border.all(color: color, width: WSize.outline),
+              borderRadius: BorderRadius.circular(WSize.radiusButton),
+              boxShadow: enabled ? wLip(WSize.lip) : null,
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lightbulb, color: color),
+                  const SizedBox(width: 4),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Clue', style: WText.button.copyWith(fontSize: 18, color: color)),
+                      Text(status, style: WText.button.copyWith(fontSize: 14, color: color)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

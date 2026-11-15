@@ -81,3 +81,23 @@ List<String> dailyLettersFor(String secretWord, int seed) {
   letters.shuffle(random);
   return letters;
 }
+
+/// True if [word] is spelled on the board as a whole across or down run
+/// (not just as part of a longer run). The secret word is known to be a
+/// real word, so this needs no dictionary.
+bool boardContainsWord(List<String?> boardCells, int width, int height, String word) {
+  final target = word.toUpperCase();
+  bool lineHas(Iterable<String?> line) => line.map((c) => c ?? ' ').join().split(' ').contains(target);
+  for (int r = 0; r < height; r++) {
+    if (lineHas([for (int c = 0; c < width; c++) boardCells[r * width + c]])) return true;
+  }
+  for (int c = 0; c < width; c++) {
+    if (lineHas([for (int r = 0; r < height; r++) boardCells[r * width + c]])) return true;
+  }
+  return false;
+}
+
+/// A meaning with the secret word itself taken out, so a clue can't just
+/// say the answer.
+String hideWordInMeaning(String meaning, String word) =>
+    meaning.replaceAll(RegExp('\\b${RegExp.escape(word)}\\b', caseSensitive: false), 'this');

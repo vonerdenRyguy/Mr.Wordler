@@ -178,19 +178,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    // A small stand-in dictionary, injected via DailyChallengeScreen's
-    // test-only dictionaryLoader. The real ~1.5MB words.txt can't be used
-    // here: flutter_test's mocked asset channel hangs on messages roughly
-    // above 45-90KB (verified directly; not a production issue -- see
-    // pickBonusWord's doc comment). Whether this list happens to contain a
-    // word formable from today's actual dealt letters doesn't matter for
-    // this test; a null bonus word is a normal, handled case.
-    Future<String> tinyDictionary() async => 'cat\ndog\nrat\nsun\nrun\ntree\nstar\nrose\nnote\ngate\n';
-
-    // A minimal two-route harness (root screen -> Daily Challenge) instead
-    // of the full app, since Home's navigation always
-    // constructs a real DailyChallengeScreen with no way to inject the
-    // test dictionary loader from outside.
+    // A minimal two-route harness (root screen -> Daily puzzle) instead of
+    // the full app, so the test can come back and reopen it.
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
@@ -200,7 +189,7 @@ void main() {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => DailyChallengeScreen(dictionaryLoader: tinyDictionary),
+                    builder: (_) => const DailyChallengeScreen(),
                   ),
                 ),
                 child: const Text('open daily'),

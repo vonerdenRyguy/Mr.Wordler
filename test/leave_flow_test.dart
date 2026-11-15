@@ -80,7 +80,6 @@ void main() {
 
   testWidgets("leaving the Daily doesn't record an attempt", (tester) async {
     phoneSize(tester);
-    Future<String> tinyDictionary() async => 'cat\ndog\nrat\nsun\n';
     await tester.pumpWidget(ProviderScope(
       child: MaterialApp(
         home: Scaffold(
@@ -88,7 +87,7 @@ void main() {
             builder: (context) => ElevatedButton(
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => DailyChallengeScreen(dictionaryLoader: tinyDictionary)),
+                MaterialPageRoute(builder: (_) => const DailyChallengeScreen()),
               ),
               child: const Text('open daily'),
             ),
@@ -119,9 +118,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    Future<String> tinyDictionary() async => 'cat\n';
     await tester.pumpWidget(ProviderScope(
-      child: MaterialApp(home: DailyChallengeScreen(dictionaryLoader: tinyDictionary)),
+      child: MaterialApp(home: const DailyChallengeScreen()),
     ));
     for (int i = 0; i < 60 && find.text('Check words').evaluate().isEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 300));

@@ -4,6 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'word_landing.dart';
 
+/// An extra note the banner adds after a word, e.g. "HORSE · Secret word!".
+/// Returns null for an ordinary word (the default for every word). A mode
+/// overrides this in its own ProviderScope.
+final landingNoteProvider = Provider<String? Function(String word)>((ref) => (_) => null);
+
 const _bannerMs = 1400;
 const _inMs = 200;
 const _outMs = 300;
@@ -43,7 +48,11 @@ class _WordLandingBannerState extends ConsumerState<WordLandingBanner> with Sing
     ref.listen<TileLanding?>(tileLandingProvider, (prev, next) {
       if (next == null || next.words.isEmpty || next.seq == _lastSeq) return;
       _lastSeq = next.seq;
-      setState(() => _text = next.words.map((w) => w.word).join(' · '));
+      final noteFor = ref.read(landingNoteProvider);
+      setState(() => _text = next.words.map((w) {
+            final note = noteFor(w.word);
+            return note == null ? w.word : '${w.word} · $note';
+          }).join(' · '));
       HapticFeedback.lightImpact();
       _controller.forward(from: 0);
     });

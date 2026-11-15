@@ -3,15 +3,15 @@ import '../portfolio/property_tier.dart';
 String _tierEmoji(PropertyTier tier) {
   switch (tier) {
     case PropertyTier.mansion:
-      return '🏰';
+      return '\u{1F3F0}';
     case PropertyTier.house:
-      return '🏠';
+      return '\u{1F3E0}';
     case PropertyTier.cottage:
-      return '🛖';
+      return '\u{1F6D6}';
     case PropertyTier.vacantLot:
-      return '🌱';
+      return '\u{1F331}';
     case PropertyTier.empty:
-      return '❌';
+      return '\u{274C}';
   }
 }
 
@@ -22,9 +22,9 @@ String _formatSeconds(int totalSeconds) {
 }
 
 // Wordle-style copy/paste-able result summary. Deliberately never
-// includes the actual bonus word text -- only whether it was found --
-// so sharing a result doesn't spoil the puzzle for people who haven't
-// played yet.
+// includes the secret word itself -- only the theme and whether it was
+// found -- so sharing a result doesn't spoil the puzzle for people who
+// haven't played yet.
 String buildDailyShareText({
   required String dateKey,
   required bool completed,
@@ -32,20 +32,23 @@ String buildDailyShareText({
   required int streak,
   required PropertyTier tier,
   required bool bonusWordFound,
+  String? themeName,
+  int cluesUsed = 0,
 }) {
   final buffer = StringBuffer()
-    ..writeln('Mr. Wordler — Daily puzzle')
+    ..writeln('Mr. Wordler \u{2014} Daily puzzle')
     ..writeln(dateKey);
+  if (themeName != null) buffer.writeln('Theme: $themeName');
 
+  final days = '\u{1F525} $streak day${streak == 1 ? '' : 's'}';
   if (!completed) {
-    buffer.write('❌ Gave up today   🔥 $streak day${streak == 1 ? '' : 's'}');
+    buffer.write('\u{274C} Gave up today   $days');
     return buffer.toString();
   }
 
-  buffer.writeln(
-      '⏱️ ${_formatSeconds(timeSeconds)}   🔥 $streak day${streak == 1 ? '' : 's'}   ${_tierEmoji(tier)} ${tier.label}');
+  buffer.writeln('\u{23F1}\u{FE0F} ${_formatSeconds(timeSeconds)}   $days   ${_tierEmoji(tier)} ${tier.label}');
   if (bonusWordFound) {
-    buffer.write('✨ Bonus word found!');
+    buffer.write('\u{2728} Secret word found!${cluesUsed == 0 ? ' (no clues)' : ''}');
   }
   return buffer.toString().trim();
 }
