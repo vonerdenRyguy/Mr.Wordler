@@ -26,9 +26,11 @@ Flutter-generated output (already gitignored), not source.
 - OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
   re-run `flutter test`.
 
-## Current state (as of 2026-10-03)
+## Current state (as of 2026-11-14)
 
-Built from specs 01-04 (each merged after an on-device check):
+Built from specs 01-05. Specs 01-03 are merged after an on-device check;
+**spec-04 and spec-05 are built but not yet checked on the phone or
+merged** (spec-05's branch sits on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
   (`lib/game/balanced_draw.dart`), Swap, and village save
   `saveVersion` 2 (v1 21-letter racks migrate once on load).
@@ -55,6 +57,32 @@ Built from specs 01-04 (each merged after an on-device check):
     Estate Challenge" is now **"Daily puzzle"** everywhere it's shown.
   - **Settings:** Text size (Normal/Large/Extra large) and Reduce motion
     (`lib/settings/settings_controller.dart`), How to play.
+- **spec-05** (branch `spec-05-word-of-the-day`, cut from spec-04's
+  branch, awaiting on-device check). The spec was drafted by Claude Code
+  from spec-04's outline, not from the design canvas; its `Decisions I
+  guessed` table lists the ten choices Ryan approved as written.
+  - **Themed Daily** (`lib/daily/daily_puzzle.dart`, `daily_themes.dart`):
+    each UTC day has a theme (8 themes x 16 words, in order) and a secret
+    word from it. The 21 letters are the secret word plus a balanced fill,
+    dealt through `GridConfig.initialRack` with **no draw pool and no
+    Swap**. The Daily no longer reads the dictionary to start
+    (`bonus_word_picker.dart` is gone).
+  - **Clue** button in Swap's place (`ClueButton` in `game_layout.dart`):
+    3 free clues a day (first letter; the meaning, or the last letter when
+    offline; the whole word), saved per day in `dailyChallengeData` so
+    leaving doesn't hand them back. `SecretWordStrip` above the board
+    shows the theme and one slot per letter.
+  - **Secret word bonus:** prize step up one (as before) plus 20/15/10/5
+    coins for 0-3 clues (`secretWordCoins`), only if the word is on the
+    board at the winning Check. Player-facing text says `secret word`;
+    saved JSON keeps the old `bonusWordFound` / `bonusWordsFound` names.
+  - **Word of the day** (`lib/daily/word_of_the_day.dart`, 120 bundled
+    words with meanings in `assets/words/word_of_the_day.json`): a card
+    on Home (the village picture is now 150px to make room), and +10
+    coins once a day for having the word spelled in your village
+    (`word_of_the_day_controller.dart`, key `wordOfDayData`). The reward
+    shows as a SnackBar, not the word-landing banner, so it also works for
+    a word that was already on the board.
 
 ## Key architectural decisions
 
@@ -85,6 +113,9 @@ Built from specs 01-04 (each merged after an on-device check):
   no timers, no punishing fail states, gentle positive feedback only.
   Tile letters never grow with text size (`TextScaler.noScaling`); the
   whole rack must always fit.
+- **The word-landing banner can carry a note** (`landingNoteProvider`,
+  default none): the Daily overrides it so the secret word lands as
+  `HORSE · Secret word!`.
 - **Verification policy:** risky changes go on a feature branch with
   analyze + test before every commit and an on-device check before merge.
 
@@ -112,6 +143,7 @@ Built from specs 01-04 (each merged after an on-device check):
 assets/
   fonts/             Lilita One, Atkinson Hyperlegible (+ OFL licenses)
   images/            village_preview.png (Home picture with no village yet)
+  words/             word_of_the_day.json (120 words + plain meanings)
   village/           buildings/*.png (sprites), cards/*.png (tap-card art),
                      buildings.json (sprite anchors: the pixel that sits on
                      the ground at the word's middle cell)
@@ -127,8 +159,8 @@ lib/
     grid_board_widget.dart    GridBoardView/GridRackView/GridTileWidget + GridTheme
   ui/                Design tokens + shared chunky widgets
   screens/
-    home_screen.dart          Level/coins, live village picture, Daily puzzle,
-                              Time Attack, Portfolio/Stats
+    home_screen.dart          Level/coins, live village picture, Word of the
+                              day, Daily puzzle, Time Attack, Portfolio/Stats
     mode_start_pages.dart     Time Attack's start page
     time_attack_screen.dart, daily_challenge_screen.dart
     infinite_estate_screen.dart  The village (Words + Village views)
@@ -149,7 +181,10 @@ lib/
     village_save.dart, village_save_migration.dart
   settings/          settings_controller.dart (textSizeStep, reduceMotion)
   portfolio/         Neighborhoods/property tiers/currency/XP
-  daily/             Daily puzzle (seeded letters, bonus word, streak)
+  daily/             Daily puzzle: daily_themes, daily_puzzle (theme, secret
+                     word, 21 letters), clues + streak (daily_challenge_*),
+                     daily_tier (prize step, secretWordCoins), share_card;
+                     word_of_the_day + its once-a-day claim controller
   stats/             Mode stats (Infinite high score; old Theme Rush times kept)
   dictionary/        Tap-for-definition (dictionaryapi.dev, cached locally)
   components/        Timer, word validator (findValidRuns), letter generator
@@ -158,22 +193,25 @@ lib/
 
 SharedPreferences keys: `infiniteEstateVillageSave`, `portfolioData`,
 `dailyChallengeData`, `modeStatsData`, `leaderboardEntries` (unused since
-spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`,
+spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (spec-05),
 `definitionCache_*`.
 
 ## Testing
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 110 tests as of spec-04. `widget_test.dart` loads the
+- `flutter test` — 140 tests as of spec-05 (110 as of spec-04). `widget_test.dart` loads the
   real fonts (`loadAppFonts`) so layout-fit checks match the phone.
 - Prefer the real phone for visual checks; `adb exec-out screencap -p`
   grabs a screenshot.
 
 ## Known open items / next steps
 
-1. **spec-05:** Word of the day; themed Daily (theme, secret word, Clue
-   button, no Swap in Daily, bonus).
+1. **On-device checks owed:** spec-04's manual check list, then
+   spec-05's (section 8 of each spec), before either merges. For spec-05,
+   watch for a Daily that leaves one letter fitting nowhere now that
+   there's no Swap; the planned fix is letting a round finish with a
+   letter or two left over for a lower prize.
 2. **spec-06:** building upgrades, village level, building plans,
    districts. Later: a Word book page, hints/assist mode, power-ups.
 3. **Dark palette** (the app is light-only; switch hidden).

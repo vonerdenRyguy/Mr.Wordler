@@ -172,13 +172,14 @@ class _ThreeWayToggle extends StatelessWidget {
   }
 }
 
-/// The 4-step "How to play" sheet.
+/// The 5-step "How to play" sheet.
 Future<void> showHowToPlay(BuildContext context) {
   const steps = [
     ('CAT', 'Drag letters from your rack onto the board.'),
     ('WORD', 'Make real words across or down. Every word must touch another.'),
     ('WELL', 'Magic words like WELL and FARM become buildings in your village.'),
     ('TAP', 'Tap any word in Village view to learn what it means.'),
+    ('CLUE', "The Daily puzzle has a theme and a secret word. Tap Clue if you'd like help."),
   ];
   return showModalBottomSheet<void>(
     context: context,
