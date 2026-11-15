@@ -94,9 +94,9 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     (`word_of_the_day_controller.dart`, key `wordOfDayData`). The reward
     shows as a SnackBar, not the word-landing banner, so it also works for
     a word that was already on the board.
-- **spec-06 word levels** (branch `spec-06-word-levels`, **built
-  2026-11-14, not yet checked on the phone or merged**; it also carries
-  the Portfolio text fix from `tidy-portfolio-text`). Step 1 of the
+- **spec-06 word levels** (branch `spec-06-word-levels`, merged to
+  master 2026-11-15 after Ryan's phone check; it also carries the
+  Portfolio text fix from `tidy-portfolio-text`). Step 1 of the
   family game (see "Product direction").
   - `lib/settings/word_level.dart`: `WordLevel` sprout / explorer /
     builder / wordsmith, each with a `WordLevelInfo` (letters 8/12/16/21,
@@ -112,7 +112,9 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   - `WordLevelScreen` (Settings > Word level; also shown before a brand
     new player's first Daily, from `HomeScreen._openDaily`).
   - "Hear the word" on the Sprout result uses `flutter_tts` through
-    `wordSpeakerProvider` (`lib/dictionary/word_speaker.dart`).
+    `wordSpeakerProvider` (`lib/dictionary/word_speaker.dart`). Pinned to
+    4.0.2: newer versions need Kotlin 2 / compileSdk 36, which this
+    project's Gradle setup (AGP 7.3, Kotlin 1.9.24) can't build.
   - Home's village picture is `Expanded` around a `MinHeightBox`
     (`lib/ui/min_height_box.dart`), so Home fills exactly one screen
     whenever its content fits and only scrolls at very large text.
@@ -125,7 +127,7 @@ Each person keeps their own plot; a shared world grows from things the
 family does together. Approved build order (each a spec, drawn on the
 design canvas first and approved there before any code):
 
-1. Word levels (spec-06, built).
+1. Word levels (spec-06, merged).
 2. A whole family on one phone: several players, each with a plot and a
    level; a daily family word solved by passing the phone. No server.
 3. Accounts and a family code (needs a backend; child-privacy decisions
@@ -262,10 +264,9 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 ## Known open items / next steps
 
-1. **spec-06 phone check owed** (the list is at the end of
-   Desktop\MrWordlerScreenshots\specs\spec-06-word-levels.md); merge
-   only on Ryan's OK. "Hear the word" has only been tested with a fake
-   voice, never on a real phone.
+1. **Explorer and Builder on the phone:** only Sprout could be played on
+   the day spec-06 was checked (one Daily a day); look at the other two
+   levels on a later day.
 1. **Daily with no Swap:** keep watching for a Daily that leaves one
    letter fitting nowhere; the planned fix is letting a round finish with
    a letter or two left over for a lower prize.
