@@ -15,6 +15,14 @@ String dailyDateKey(DateTime date) {
   return '${utc.year}-${two(utc.month)}-${two(utc.day)}';
 }
 
+// Whole days since 2026-01-01 (UTC). The Daily's themes and the Word of
+// the day both walk through their lists in order with this, so they change
+// at the same moment as the date key above.
+int dayNumber(DateTime date) {
+  final utc = date.toUtc();
+  return DateTime.utc(utc.year, utc.month, utc.day).difference(DateTime.utc(2026, 1, 1)).inDays;
+}
+
 // True if `previousDateKey` (from dailyDateKey) is the calendar day
 // immediately before `date` (in UTC) -- used to decide whether playing
 // today continues a streak or resets it.
