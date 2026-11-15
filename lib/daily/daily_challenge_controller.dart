@@ -44,6 +44,9 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
     required int timeSeconds,
     required bool bonusWordFound,
     required PropertyTier tierAwarded,
+    String? themeName,
+    String? secretWord,
+    int cluesUsed = 0,
   }) {
     final todayKey = dailyDateKey(now);
     final continuesStreak = completed && isConsecutiveDay(state.lastPlayedDateKey, now);
@@ -62,9 +65,24 @@ class DailyChallengeController extends StateNotifier<DailyChallengeData> {
         timeSeconds: timeSeconds,
         bonusWordFound: bonusWordFound,
         tierAwarded: tierAwarded,
+        themeName: themeName,
+        secretWord: secretWord,
+        cluesUsed: cluesUsed,
       ),
     );
     _save();
+  }
+
+  int cluesUsedToday(DateTime now) => state.cluesUsedOn(dailyDateKey(now));
+
+  // Uses one of today's three clues and returns how many are now used.
+  // Saved straight away, so leaving the round doesn't give it back.
+  int useClue(DateTime now) {
+    final used = cluesUsedToday(now);
+    if (used >= 3) return used;
+    state = state.copyWith(cluesDateKey: dailyDateKey(now), cluesUsed: used + 1);
+    _save();
+    return used + 1;
   }
 }
 

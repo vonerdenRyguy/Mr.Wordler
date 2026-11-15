@@ -23,3 +23,11 @@ PropertyTier tierForDailyResult({
   final upgradedIndex = (base.index + 1).clamp(0, PropertyTier.values.length - 1);
   return PropertyTier.values[upgradedIndex];
 }
+
+// Coins for finishing the Daily with the secret word on the board
+// (spec-05). Clues are free and never lower the prize step; each one used
+// just makes this bonus a little smaller.
+int secretWordCoins(int cluesUsed) {
+  const coins = [20, 15, 10, 5];
+  return coins[cluesUsed.clamp(0, 3)];
+}

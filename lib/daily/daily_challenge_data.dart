@@ -10,12 +10,20 @@ class DailyResult {
   final bool bonusWordFound;
   final PropertyTier tierAwarded;
 
+  // spec-05. Null/0 on a result saved by an older build.
+  final String? themeName;
+  final String? secretWord; // uppercase
+  final int cluesUsed;
+
   const DailyResult({
     required this.dateKey,
     required this.completed,
     required this.timeSeconds,
     required this.bonusWordFound,
     required this.tierAwarded,
+    this.themeName,
+    this.secretWord,
+    this.cluesUsed = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -24,6 +32,9 @@ class DailyResult {
         'timeSeconds': timeSeconds,
         'bonusWordFound': bonusWordFound,
         'tierAwarded': tierAwarded.storageKey,
+        'themeName': themeName,
+        'secretWord': secretWord,
+        'cluesUsed': cluesUsed,
       };
 
   factory DailyResult.fromJson(Map<String, dynamic> json) => DailyResult(
@@ -32,6 +43,9 @@ class DailyResult {
         timeSeconds: json['timeSeconds'] as int? ?? 0,
         bonusWordFound: json['bonusWordFound'] as bool? ?? false,
         tierAwarded: PropertyTierDisplay.fromStorageKey(json['tierAwarded'] as String?),
+        themeName: json['themeName'] as String?,
+        secretWord: json['secretWord'] as String?,
+        cluesUsed: json['cluesUsed'] as int? ?? 0,
       );
 }
 
@@ -46,6 +60,12 @@ class DailyChallengeData {
   final int bonusWordsFound;
   final DailyResult? lastResult;
 
+  // Clues used on the day cluesDateKey (spec-05), kept so leaving and
+  // reopening today's puzzle doesn't hand the clues back. Read through
+  // cluesUsedOn, which treats any other day as 0.
+  final String? cluesDateKey;
+  final int cluesUsed;
+
   const DailyChallengeData({
     required this.lastPlayedDateKey,
     required this.streak,
@@ -53,7 +73,11 @@ class DailyChallengeData {
     required this.totalCompletionSeconds,
     required this.bonusWordsFound,
     required this.lastResult,
+    this.cluesDateKey,
+    this.cluesUsed = 0,
   });
+
+  int cluesUsedOn(String dateKey) => cluesDateKey == dateKey ? cluesUsed.clamp(0, 3) : 0;
 
   factory DailyChallengeData.initial() => const DailyChallengeData(
         lastPlayedDateKey: null,
@@ -74,6 +98,8 @@ class DailyChallengeData {
     int? totalCompletionSeconds,
     int? bonusWordsFound,
     DailyResult? lastResult,
+    String? cluesDateKey,
+    int? cluesUsed,
   }) {
     return DailyChallengeData(
       lastPlayedDateKey: lastPlayedDateKey ?? this.lastPlayedDateKey,
@@ -82,6 +108,8 @@ class DailyChallengeData {
       totalCompletionSeconds: totalCompletionSeconds ?? this.totalCompletionSeconds,
       bonusWordsFound: bonusWordsFound ?? this.bonusWordsFound,
       lastResult: lastResult ?? this.lastResult,
+      cluesDateKey: cluesDateKey ?? this.cluesDateKey,
+      cluesUsed: cluesUsed ?? this.cluesUsed,
     );
   }
 
@@ -92,6 +120,8 @@ class DailyChallengeData {
         'totalCompletionSeconds': totalCompletionSeconds,
         'bonusWordsFound': bonusWordsFound,
         'lastResult': lastResult?.toJson(),
+        'cluesDateKey': cluesDateKey,
+        'cluesUsed': cluesUsed,
       };
 
   factory DailyChallengeData.fromJson(Map<String, dynamic> json) => DailyChallengeData(
@@ -103,5 +133,7 @@ class DailyChallengeData {
         lastResult: json['lastResult'] != null
             ? DailyResult.fromJson(json['lastResult'] as Map<String, dynamic>)
             : null,
+        cluesDateKey: json['cluesDateKey'] as String?,
+        cluesUsed: json['cluesUsed'] as int? ?? 0,
       );
 }
