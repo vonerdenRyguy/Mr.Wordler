@@ -94,6 +94,50 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     (`word_of_the_day_controller.dart`, key `wordOfDayData`). The reward
     shows as a SnackBar, not the word-landing banner, so it also works for
     a word that was already on the board.
+- **spec-06 word levels** (branch `spec-06-word-levels`, **built
+  2026-11-14, not yet checked on the phone or merged**; it also carries
+  the Portfolio text fix from `tidy-portfolio-text`). Step 1 of the
+  family game (see "Product direction").
+  - `lib/settings/word_level.dart`: `WordLevel` sprout / explorer /
+    builder / wordsmith, each with a `WordLevelInfo` (letters 8/12/16/21,
+    board 6/8/10/10, clue ladder, leftover letters allowed, clock or not).
+    Saved as `wordLevel` by `SettingsController`; unset = Wordsmith.
+  - `dailyPuzzleFor(date, level)`: same theme for everyone; Wordsmith is
+    byte-for-byte the old puzzle; Sprout words (3-4 letters, with
+    meanings) are in `lib/daily/daily_easy_words.dart`.
+  - The Daily round reads everything from the level: Sprout has no
+    Check/Give up and ends when the hidden word is spelled
+    (`finishOnSecretWord`), Explorer wins with 2 letters left
+    (`dailyCheckOutcome`), neither shows a clock.
+  - `WordLevelScreen` (Settings > Word level; also shown before a brand
+    new player's first Daily, from `HomeScreen._openDaily`).
+  - "Hear the word" on the Sprout result uses `flutter_tts` through
+    `wordSpeakerProvider` (`lib/dictionary/word_speaker.dart`).
+  - Home's village picture is `Expanded` around a `MinHeightBox`
+    (`lib/ui/min_height_box.dart`), so Home fills exactly one screen
+    whenever its content fits and only scrolls at very large text.
+
+## Product direction (set by Ryan, 2026-11-14)
+
+Mr. Wordler is becoming a **cooperative word game for families**, aimed
+especially at kids and older players; a friends-group mode comes later.
+Each person keeps their own plot; a shared world grows from things the
+family does together. Approved build order (each a spec, drawn on the
+design canvas first and approved there before any code):
+
+1. Word levels (spec-06, built).
+2. A whole family on one phone: several players, each with a plot and a
+   level; a daily family word solved by passing the phone. No server.
+3. Accounts and a family code (needs a backend; child-privacy decisions
+   are Ryan's).
+4. Family word and family map online.
+5. Helping: letter gifts, requests, ready-made cheers (no open chat).
+6. Town Square, weekly family vote, family level and fog.
+7. Playing together: Word bridge (turn-based first), Word buddies.
+
+The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
+(https://claude.ai/artifact/C4fYPKs7owUmfUDfM1VK7L): rows for the family
+concept, each spec's proposal, and dated real-phone screenshots.
 
 ## Key architectural decisions
 
@@ -211,13 +255,17 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 140 tests as of spec-05 (110 as of spec-04). `widget_test.dart` loads the
+- `flutter test` — 150 tests as of spec-06 (140 as of spec-05). `widget_test.dart` loads the
   real fonts (`loadAppFonts`) so layout-fit checks match the phone.
 - Prefer the real phone for visual checks; `adb exec-out screencap -p`
   grabs a screenshot.
 
 ## Known open items / next steps
 
+1. **spec-06 phone check owed** (the list is at the end of
+   Desktop\MrWordlerScreenshots\specs\spec-06-word-levels.md); merge
+   only on Ryan's OK. "Hear the word" has only been tested with a fake
+   voice, never on a real phone.
 1. **Daily with no Swap:** keep watching for a Daily that leaves one
    letter fitting nowhere; the planned fix is letting a round finish with
    a letter or two left over for a lower prize.
