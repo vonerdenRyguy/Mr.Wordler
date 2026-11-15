@@ -99,7 +99,7 @@ class _TierGuideCard extends StatelessWidget {
     (
       tier: PropertyTier.vacantLot,
       how: 'Complete the Daily puzzle (any time), or spend coins earned from '
-          'Time Attack / Theme Rush / Infinite Estate to fill an empty slot directly.',
+          'Time Attack or your village to fill an empty slot directly.',
     ),
     (
       tier: PropertyTier.cottage,
