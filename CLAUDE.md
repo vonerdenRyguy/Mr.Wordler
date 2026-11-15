@@ -119,6 +119,34 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     (`lib/ui/min_height_box.dart`), so Home fills exactly one screen
     whenever its content fits and only scrolls at very large text.
 
+- **spec-07 a family on one phone** (branch `spec-07-family-one-phone`,
+  **built 2026-11-15, not yet checked on the phone or merged**). Step 2
+  of the family game.
+  - `lib/players/players.dart`: up to 6 `Player`s (id, name, color),
+    `playersProvider`, and `PlayerKeys.prefix`. **Every per-player save
+    key is `PlayerKeys.of('key')`**: portfolioData, modeStatsData,
+    dailyChallengeData, wordOfDayData, infiniteEstateVillageSave,
+    wordLevel. The first player's prefix is empty, so the pre-spec-07
+    save *is* player one (no migration); others are `p2_`, `p3_`...
+    Each controller reads the prefix once when created, and its provider
+    watches `currentPlayerIdProvider` so it is rebuilt on a switch. A
+    new per-player save must do both. Text size, Reduce motion, dark
+    mode and the definition cache stay shared.
+  - `lib/players/family_word.dart`: the family word (key
+    `familyWordData`, shared by the phone). `recordPlayed` (called from
+    the Daily's `_finish`) uncovers a player's share; `guess` finds it
+    early (20 coins each, else 10); coins are `owed` per player and paid
+    by `claimFamilyCoins` (`family_widgets.dart`) when they next hold
+    the phone, after `PortfolioController.ready`.
+  - `main.dart` `AppRoot`: `WhoIsPlayingScreen` when there are 2+
+    players and `playerPickedProvider` is false, else `HomeScreen`
+    keyed by player id.
+  - Screens: `lib/screens/players_screens.dart` (Who's playing, Add /
+    change player, Pass the phone) and `family_screens.dart` (Family
+    word, The family, Visit a village: look only).
+  - One player alone sees nothing new except Settings > "Players on this
+    phone".
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -128,8 +156,9 @@ family does together. Approved build order (each a spec, drawn on the
 design canvas first and approved there before any code):
 
 1. Word levels (spec-06, merged).
-2. A whole family on one phone: several players, each with a plot and a
-   level; a daily family word solved by passing the phone. No server.
+2. A whole family on one phone (spec-07, built): several players, each
+   with a plot and a level; a daily family word solved by passing the
+   phone. No server.
 3. Accounts and a family code (needs a backend; child-privacy decisions
    are Ryan's).
 4. Family word and family map online.
@@ -257,13 +286,17 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 150 tests as of spec-06 (140 as of spec-05). `widget_test.dart` loads the
+- `flutter test` — 158 tests as of spec-07 (150 as of spec-06). `widget_test.dart` loads the
   real fonts (`loadAppFonts`) so layout-fit checks match the phone.
 - Prefer the real phone for visual checks; `adb exec-out screencap -p`
   grabs a screenshot.
 
 ## Known open items / next steps
 
+1. **spec-07 phone check owed** (the list is at the end of
+   `Desktop\MrWordlerScreenshots\specs\spec-07-family-on-one-phone.md`);
+   merge only on Ryan's OK. Not built yet: removing a player, and tapping
+   a word for its meaning while visiting a village.
 1. **Explorer and Builder on the phone:** only Sprout could be played on
    the day spec-06 was checked (one Daily a day); look at the other two
    levels on a later day.
