@@ -38,9 +38,9 @@ Flutter-generated output (already gitignored), not source.
 - OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
   re-run `flutter test`.
 
-## Current state (as of 2026-11-14)
+## Current state (as of 2026-11-16)
 
-Built from specs 01-05, **all merged to master**. Specs 04 and 05 were
+Built from specs 01-08, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
 (spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
@@ -147,6 +147,43 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   - One player alone sees nothing new except Settings > "Players on this
     phone".
 
+- **spec-08 accounts and a family code** (branch `spec-08-family-online`,
+  merged to master 2026-11-16 after Ryan's phone check). Step 3 of the
+  family game; the first step with a server.
+  - **Firebase** project `mr-wordler` (Ryan's Google account, free Spark
+    plan): Authentication (Google, email link, anonymous) and Firestore
+    (nam5). `firebase/firestore.rules` is what's published;
+    `firebase/SETUP.md` lists every console step. Packages: firebase_core
+    3.10.0, firebase_auth 5.4.0, cloud_firestore 5.6.0, google_sign_in
+    6.2.1, app_links 6.3.0. minSdk is 23.
+  - `android/app/google-services.json` is **gitignored**; download it
+    from Project settings > Your apps (the browser pane can't save
+    downloads). Without it the app builds and Family online says it isn't
+    switched on (`firebaseReady`).
+  - **Hosting** serves `firebase/hosting/`: `.well-known/assetlinks.json`
+    (debug key's SHA-256) is what makes emailed sign-in links open the
+    app; `finishSignIn/` is a fallback page. Deploy is Ryan's to run
+    (`npx firebase-tools login`, then `deploy --only hosting` in
+    `firebase/`); Claude Code's shell isn't allowed to.
+    `pm get-app-links com.example.namer_app` shows "verified" when right.
+  - `lib/online/`: `FamilyBackend` (interface + codes, in
+    `family_online_models.dart`), `FirebaseFamilyBackend` (each player has
+    a named FirebaseApp, the first uses the default one),
+    `FakeFamilyBackend` for tests, and `FamilyOnlineController`
+    (`familyOnlineProvider`, saved per player as `familyOnlineData`).
+    Signing in reads the account's saved family (`savedFamilyId`).
+  - Rules of the game: birth month and year first (only the year is
+    kept); under 13 signs in anonymously and never gives an email; only a
+    grown-up starts a family; **every** new member asks and a grown-up in
+    the family says yes; a code preview shows only the grown-ups' names.
+    Codes are a word + 4 digits from 2-9 (BEAR 4821).
+  - Screens: `lib/screens/family_online_screens.dart`, reached from
+    Settings > Family online and the family page. A finished Daily marks
+    the player as played (`markPlayed`).
+  - Before going public: privacy policy, a lawyer's look at the under-13
+    consent step, a release key (its SHA-1/256 into Firebase and
+    assetlinks.json), a real package name.
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -159,8 +196,8 @@ design canvas first and approved there before any code):
 2. A whole family on one phone (spec-07, merged): several players, each
    with a plot and a level; a daily family word solved by passing the
    phone. No server.
-3. Accounts and a family code (needs a backend; child-privacy decisions
-   are Ryan's).
+3. Accounts and a family code (spec-08, merged; Firebase).
+   Child-privacy decisions are Ryan's.
 4. Family word and family map online.
 5. Helping: letter gifts, requests, ready-made cheers (no open chat).
 6. Town Square, weekly family vote, family level and fog.
@@ -280,13 +317,15 @@ lib/
 SharedPreferences keys: `infiniteEstateVillageSave`, `portfolioData`,
 `dailyChallengeData`, `modeStatsData`, `leaderboardEntries` (unused since
 spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (spec-05),
+`familyWordData` (spec-07), `familyOnlineData` (spec-08, per player),
 `definitionCache_*`.
 
 ## Testing
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 158 tests as of spec-07 (150 as of spec-06). `widget_test.dart` loads the
+- `flutter test` — 170 tests as of spec-08 (158 as of spec-07).
+  `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
   real fonts (`loadAppFonts`) so layout-fit checks match the phone.
 - Prefer the real phone for visual checks; `adb exec-out screencap -p`
   grabs a screenshot.
