@@ -185,7 +185,7 @@ void main() {
 
       expect(await controller.signInWithGoogle(birthYear: 1958, group: AgeGroup.adult), isTrue);
       expect(container.read(familyOnlineProvider).stage, OnlineStage.noFamily);
-      expect(server.profiles.values.single, {'birthYear': 1958, 'group': 'adult', 'familyId': null});
+      expect(server.profiles.values.single, {'birthYear': 1958, 'group': 'adult'});
 
       await controller.createFamily(name: 'The Rivera family', me: _nana);
       await _settle();
@@ -211,6 +211,55 @@ void main() {
       expect(s.stage, OnlineStage.member);
       expect(s.group, AgeGroup.adult);
       expect(s.family!.members.single.name, 'Nana');
+    });
+
+    test('a grown-up who signs out, tries a child sign-in, then signs back in gets their family back', () async {
+      final container = make();
+      addTearDown(container.dispose);
+      final controller = container.read(familyOnlineProvider.notifier);
+      await controller.ready;
+      await controller.signInWithGoogle(birthYear: 1958, group: AgeGroup.adult);
+      await controller.createFamily(name: 'The Rivera family', me: _nana);
+      await _settle();
+      final family = container.read(familyOnlineProvider).family!;
+
+      await controller.signOut();
+      await controller.signInAsChild(birthYear: 2018);
+      final preview = (await controller.findFamily(family.code))!;
+      await controller.requestToJoin(family: preview, code: family.code, me: _leo);
+      await _settle();
+      await controller.cancelRequest();
+      await controller.signOut();
+
+      await controller.signInWithGoogle(birthYear: 1958, group: AgeGroup.adult);
+      await _settle();
+      final s = container.read(familyOnlineProvider);
+      expect(s.stage, OnlineStage.member);
+      expect(s.family!.id, family.id);
+      expect(s.me!.adult, isTrue);
+      expect(s.family!.requests, isEmpty);
+    });
+
+    test('signing back in after being removed clears the old family', () async {
+      final (nana, family) = await _nanaStarts(server);
+      final container = make();
+      addTearDown(container.dispose);
+      final controller = container.read(familyOnlineProvider.notifier);
+      await controller.ready;
+      backends.values.single.googleEmail = 'sam@example.com';
+      await controller.signInWithGoogle(birthYear: 1990, group: AgeGroup.adult);
+      final preview = (await controller.findFamily(family.code))!;
+      await controller.requestToJoin(family: preview, code: family.code, me: _leo);
+      await nana.approve(family.id, (await _latest(nana, family.id))!.requests.single);
+      await _settle();
+      expect(container.read(familyOnlineProvider).stage, OnlineStage.member);
+
+      await controller.signOut();
+      await nana.removeMember(family.id, (await _latest(nana, family.id))!.members.firstWhere((m) => m.name == 'Leo').uid);
+      await controller.signInWithGoogle(birthYear: 1990, group: AgeGroup.adult);
+      await _settle();
+      expect(container.read(familyOnlineProvider).stage, OnlineStage.noFamily);
+      expect(server.profiles.values.last['familyId'], isNull);
     });
 
     test('a child waits, is turned down, asks again and gets in', () async {

@@ -25,6 +25,7 @@ class FakeFamilyServer {
   final Map<String, _FakeFamily> _families = {};
   final Map<String, String> _codes = {}; // code -> family id
   final Map<String, Map<String, Object?>> profiles = {};
+  final Map<String, String> _uidByEmail = {}; // the same Google or email account signs back in as itself
   final _changes = StreamController<void>.broadcast();
   int _next = 1;
 
@@ -94,7 +95,8 @@ class FakeFamilyBackend implements FamilyBackend {
     server._check();
     final email = googleEmail;
     if (email == null) return null;
-    return _account = OnlineAccount(uid: server.newId('u'), method: SignInMethod.google, email: email);
+    final uid = server._uidByEmail.putIfAbsent(email, () => server.newId('u'));
+    return _account = OnlineAccount(uid: uid, method: SignInMethod.google, email: email);
   }
 
   @override
@@ -110,7 +112,8 @@ class FakeFamilyBackend implements FamilyBackend {
   Future<OnlineAccount> finishEmailLink({required String email, required String link}) async {
     server._check();
     if (!isEmailLink(link)) throw ArgumentError('not a sign-in link');
-    return _account = OnlineAccount(uid: server.newId('u'), method: SignInMethod.email, email: email);
+    final uid = server._uidByEmail.putIfAbsent(email, () => server.newId('u'));
+    return _account = OnlineAccount(uid: uid, method: SignInMethod.email, email: email);
   }
 
   @override
@@ -123,12 +126,18 @@ class FakeFamilyBackend implements FamilyBackend {
   Future<void> signOut() async => _account = null;
 
   @override
-  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId}) async {
+  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId, bool clearFamily = false}) async {
     server._check();
     final p = server.profiles.putIfAbsent(_uid, () => {});
     if (birthYear != null) p['birthYear'] = birthYear;
     if (group != null) p['group'] = group.name;
-    p['familyId'] = familyId;
+    if (familyId != null || clearFamily) p['familyId'] = familyId;
+  }
+
+  @override
+  Future<String?> savedFamilyId() async {
+    server._check();
+    return server.profiles[_uid]?['familyId'] as String?;
   }
 
   @override
@@ -139,6 +148,7 @@ class FakeFamilyBackend implements FamilyBackend {
     f.members[_uid] = OnlineMember(uid: _uid, name: me.name, colorIndex: me.colorIndex, level: me.level, adult: true);
     server._families[f.id] = f;
     server._codes[f.code] = f.id;
+    server.profiles.putIfAbsent(_uid, () => {})['familyId'] = f.id;
     server._changed();
     return server._snapshot(f.id, _uid)!;
   }
@@ -185,27 +195,31 @@ class FakeFamilyBackend implements FamilyBackend {
     server._changed();
   }
 
-  RequestStatus _requestStatus(String familyId) {
+  RequestStatus _requestStatus(String familyId, String uid) {
     final f = server._families[familyId];
     if (f == null) return RequestStatus.declined;
-    if (f.members.containsKey(_uid)) return RequestStatus.accepted;
-    if (f.requests.containsKey(_uid)) return RequestStatus.waiting;
+    if (f.members.containsKey(uid)) return RequestStatus.accepted;
+    if (f.requests.containsKey(uid)) return RequestStatus.waiting;
     return RequestStatus.declined;
   }
 
+  // Both watchers keep the account they started with, like Firestore's
+  // listeners, so a sign-out while one is open doesn't break it.
   @override
   Stream<RequestStatus> watchRequest(String familyId) async* {
-    yield _requestStatus(familyId);
+    final uid = _uid;
+    yield _requestStatus(familyId, uid);
     await for (final _ in server._changes.stream) {
-      yield _requestStatus(familyId);
+      yield _requestStatus(familyId, uid);
     }
   }
 
   @override
   Stream<OnlineFamily?> watchFamily(String familyId) async* {
-    yield server._snapshot(familyId, _uid);
+    final uid = _uid;
+    yield server._snapshot(familyId, uid);
     await for (final _ in server._changes.stream) {
-      yield server._snapshot(familyId, _uid);
+      yield server._snapshot(familyId, uid);
     }
   }
 
@@ -303,7 +317,10 @@ class FakeFamilyBackend implements FamilyBackend {
   }
 
   @override
-  Future<void> leave(String familyId) => removeMember(familyId, _uid);
+  Future<void> leave(String familyId) async {
+    await removeMember(familyId, _uid);
+    server.profiles[_uid]?['familyId'] = null;
+  }
 
   @override
   Future<void> deleteAccount(String? familyId) async {
@@ -313,6 +330,7 @@ class FakeFamilyBackend implements FamilyBackend {
       if (server._families[familyId]?.members.containsKey(_uid) ?? false) await leave(familyId);
     }
     server.profiles.remove(_uid);
+    server._uidByEmail.removeWhere((_, uid) => uid == _uid);
     _account = null;
   }
 }

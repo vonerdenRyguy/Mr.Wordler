@@ -163,8 +163,13 @@ abstract class FamilyBackend {
   Future<void> signOut();
 
   /// Saves the account's own birth year, age group and family (only this
-  /// account can read it back).
-  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId});
+  /// account can read it back). The family is left as it is unless
+  /// [familyId] is given or [clearFamily] is set.
+  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId, bool clearFamily = false});
+
+  /// The family this account last joined, read back from its own profile:
+  /// how a grown-up who signs out and back in finds their family again.
+  Future<String?> savedFamilyId();
 
   /// Starts a family with this (grown-up) account as its first member.
   Future<OnlineFamily> createFamily({required String name, required MemberInfo me});

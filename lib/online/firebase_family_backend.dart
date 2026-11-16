@@ -126,11 +126,18 @@ class FirebaseFamilyBackend implements FamilyBackend {
   Future<void> signOut() => _auth.signOut();
 
   @override
-  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId}) => _profile(_uid).set({
+  Future<void> saveProfile({int? birthYear, AgeGroup? group, String? familyId, bool clearFamily = false}) =>
+      _profile(_uid).set({
         if (birthYear != null) 'birthYear': birthYear,
         if (group != null) 'group': group.name,
-        'familyId': familyId,
+        if (familyId != null || clearFamily) 'familyId': familyId,
       }, SetOptions(merge: true));
+
+  @override
+  Future<String?> savedFamilyId() async {
+    final snap = await _profile(_uid).get();
+    return snap.data()?['familyId'] as String?;
+  }
 
   Future<String> _freeCode() async {
     for (int i = 0; i < 20; i++) {
@@ -405,6 +412,17 @@ class FirebaseFamilyBackend implements FamilyBackend {
   Future<void> deleteAccount(String? familyId) async {
     final user = _auth.currentUser;
     if (user == null) return;
+    // Firebase only deletes an account that signed in a few minutes ago.
+    // Check that first, so a cancelled Google sheet can't leave the family
+    // closed and the profile gone with the account still there.
+    final lastSignIn = user.metadata.lastSignInTime;
+    final recent = lastSignIn != null && DateTime.now().difference(lastSignIn) < const Duration(minutes: 4);
+    if (!recent && !user.isAnonymous) {
+      if (!user.providerData.any((p) => p.providerId == 'google.com')) throw const RecentSignInNeeded();
+      final credential = await _googleCredential();
+      if (credential == null) throw const RecentSignInNeeded();
+      await user.reauthenticateWithCredential(credential);
+    }
     if (familyId != null) {
       try {
         await _request(familyId, user.uid).delete();

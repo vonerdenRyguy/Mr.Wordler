@@ -198,6 +198,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
         _familySub = null;
         state = state.copyWith(stage: OnlineStage.noFamily, clearFamily: true);
         _save();
+        _backend?.saveProfile(clearFamily: true).catchError((Object _) {});
         return;
       }
       state = state.copyWith(stage: OnlineStage.member, familyId: familyId, family: family);
@@ -235,6 +236,12 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       clearEmail: true,
     );
     await _backend!.saveProfile(birthYear: birthYear, group: group);
+    // Signing back in: pick up the family this account is already in.
+    String? familyId;
+    try {
+      familyId = await _backend!.savedFamilyId();
+    } catch (_) {}
+    if (familyId != null && mounted) _watchFamily(familyId);
     await _save();
   }
 
@@ -351,7 +358,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   Future<void> leave() async {
     final fid = state.familyId;
     if (fid == null) return;
-    await _familySub?.cancel();
+    unawaited(_familySub?.cancel());
     _familySub = null;
     await _backend!.leave(fid);
     state = state.copyWith(stage: OnlineStage.noFamily, clearFamily: true);
@@ -359,8 +366,8 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   }
 
   Future<void> signOut() async {
-    await _familySub?.cancel();
-    await _requestSub?.cancel();
+    unawaited(_familySub?.cancel());
+    unawaited(_requestSub?.cancel());
     _familySub = null;
     _requestSub = null;
     await _backend!.signOut();
@@ -371,11 +378,12 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   }
 
   Future<void> deleteAccount() async {
-    await _familySub?.cancel();
-    await _requestSub?.cancel();
+    // If this throws (a fresh sign-in is needed), nothing has changed yet.
+    await _backend!.deleteAccount(state.familyId ?? state.waitingFor?.familyId);
+    unawaited(_familySub?.cancel());
+    unawaited(_requestSub?.cancel());
     _familySub = null;
     _requestSub = null;
-    await _backend!.deleteAccount(state.familyId ?? state.waitingFor?.familyId);
     await _backend!.signOut();
     _pendingEmail = null;
     state = const FamilyOnlineState(stage: OnlineStage.signedOut);
