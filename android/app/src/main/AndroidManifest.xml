@@ -24,6 +24,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Family online (spec-08): emailed sign-in links open the app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="${firebaseProjectId}.firebaseapp.com" android:pathPrefix="/__/auth/"/>
+                <data android:scheme="https" android:host="${firebaseProjectId}.firebaseapp.com" android:pathPrefix="/finishSignIn"/>
+                <data android:scheme="https" android:host="${firebaseProjectId}.web.app" android:pathPrefix="/__/auth/"/>
+            </intent-filter>
+            <!-- Links go to app_links, not Flutter's own router. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

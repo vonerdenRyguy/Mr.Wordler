@@ -1,0 +1,98 @@
+rules_version = '2';
+
+// Mr. Wordler: family online (spec-08).
+//
+// What lives here, and who can see it:
+//   users/{uid}                    the account's own birth year and family. Only that account.
+//   codes/{CODE}                   family code -> family id, family name and the grown-ups'
+//                                  first names. Any signed-in account that knows the code
+//                                  (looked up one at a time; it can't be listed).
+//   families/{fid}                 the family's name and code. Members only.
+//   families/{fid}/members/{uid}   first name, color, word level, adult or not, the day they
+//                                  last played. Members only.
+//   families/{fid}/requests/{uid}  a child asking to join. The child and the family's grown-ups.
+//
+// Nothing about a child is readable by anyone outside the family, and a
+// new member (child or grown-up) only gets in when a grown-up already in the
+// family says yes. A family code alone is not enough.
+
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function fullAccount() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function memberPath(fid, uid) { return /databases/$(db)/documents/families/$(fid)/members/$(uid); }
+    function familyPath(fid) { return /databases/$(db)/documents/families/$(fid); }
+    function isMember(fid) { return signedIn() && exists(memberPath(fid, me())); }
+    function isAdult(fid) { return isMember(fid) && get(memberPath(fid, me())).data.adult == true; }
+    // The family as it will be once this write (or batch) is done.
+    function familyAfter(fid) { return getAfter(familyPath(fid)).data; }
+    function memberFields() {
+      return request.resource.data.keys().hasOnly(['name', 'colorIndex', 'level', 'adult', 'playedDay', 'joinCode', 'joinedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 12
+        && request.resource.data.colorIndex is int
+        && request.resource.data.level is string;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+    }
+
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      // Made with a new family, or when a grown-up asks for a new code.
+      allow create: if fullAccount()
+        && getAfter(memberPath(request.resource.data.familyId, me())).data.adult == true
+        && familyAfter(request.resource.data.familyId).code == code;
+      // The family's name and its grown-ups' names change over time.
+      allow update: if isAdult(resource.data.familyId)
+        && request.resource.data.familyId == resource.data.familyId;
+      allow delete: if isAdult(resource.data.familyId)
+        || (signedIn() && !existsAfter(familyPath(resource.data.familyId)));
+    }
+
+    match /families/{fid} {
+      allow read: if isMember(fid);
+      allow create: if fullAccount()
+        && request.resource.data.createdBy == me()
+        && getAfter(memberPath(fid, me())).data.adult == true;
+      allow update: if isAdult(fid);
+      // A grown-up, or the very last member leaving.
+      allow delete: if isAdult(fid);
+
+      match /members/{uid} {
+        allow read: if isMember(fid);
+        allow create: if memberFields() && (
+          // The grown-up who starts the family, in the same write as the family.
+          (fullAccount() && me() == uid
+            && request.resource.data.adult == true
+            && !exists(familyPath(fid))
+            && familyAfter(fid).createdBy == me())
+          ||
+          // Everyone else: a grown-up in the family says yes to their request.
+          // Only someone who said they are 18 or over can become a grown-up.
+          (isAdult(fid)
+            && exists(/databases/$(db)/documents/families/$(fid)/requests/$(uid))
+            && (request.resource.data.adult == false
+                || get(/databases/$(db)/documents/families/$(fid)/requests/$(uid)).data.group == 'adult'))
+        );
+        // Your own name, color, level and the day you played. Nobody can
+        // make themselves a grown-up.
+        allow update: if memberFields() && me() == uid
+          && request.resource.data.adult == resource.data.adult;
+        allow delete: if signedIn() && (me() == uid || isAdult(fid));
+      }
+
+      match /requests/{uid} {
+        allow create: if signedIn() && me() == uid
+          && request.resource.data.joinCode == get(familyPath(fid)).data.code
+          && request.resource.data.keys().hasOnly(['name', 'colorIndex', 'level', 'birthYear', 'group', 'joinCode', 'at']);
+        allow read, delete: if signedIn() && (me() == uid || isAdult(fid));
+      }
+    }
+  }
+}

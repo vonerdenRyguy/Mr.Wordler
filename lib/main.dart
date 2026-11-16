@@ -1,8 +1,12 @@
+import 'package:app_links/app_links.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ChangeNotifierProvider is defined by both riverpod and provider; this
 // app uses provider's version for ThemeNotifier, so hide riverpod's.
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
+import 'package:namer_app/online/family_online_controller.dart';
+import 'package:namer_app/online/firebase_family_backend.dart';
 import 'package:namer_app/players/family_widgets.dart';
 import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
@@ -17,17 +21,46 @@ void main() async {
   SystemChrome.setSystemUIOverlayStyle(wordlerOverlayStyle);
   final themeNotifier = ThemeNotifier();
   await themeNotifier.loadFromPrefs();
+  // Family online (spec-08). A build made without google-services.json
+  // can't start Firebase; the app then works as before, offline.
+  try {
+    await Firebase.initializeApp();
+    firebaseReady = true;
+  } catch (e) {
+    debugPrint('Firebase not available: $e');
+  }
+  final container = ProviderContainer();
+  if (firebaseReady) _listenForSignInLinks(container);
   runApp(
     // ProviderScope hosts the Riverpod state used by the game-mode engine
     // and the Portfolio/XP meta-layer. ThemeNotifier stays on `provider`
     // (already working, out of scope to migrate) -- the two coexist fine.
-    ProviderScope(
+    UncontrolledProviderScope(
+      container: container,
       child: ChangeNotifierProvider.value(
         value: themeNotifier,
         child: const MyApp(),
       ),
     ),
   );
+}
+
+/// Emailed sign-in links open the app; hand each one to whoever is
+/// holding the phone (the player who asked for it).
+void _listenForSignInLinks(ProviderContainer container) {
+  final links = AppLinks();
+  Future<void> handle(Uri uri) async {
+    try {
+      await container.read(familyOnlineProvider.notifier).handleLink(uri.toString());
+    } catch (e) {
+      debugPrint('Sign-in link failed: $e');
+    }
+  }
+
+  links.getInitialLink().then((uri) {
+    if (uri != null) handle(uri);
+  });
+  links.uriLinkStream.listen(handle);
 }
 
 final wordlerTheme = buildWordlerTheme();

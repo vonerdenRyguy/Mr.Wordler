@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../game/letter_tile.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
+import 'family_online_screens.dart';
 import 'family_screens.dart';
 import 'word_level_screen.dart';
 import '../ui/chunky_button.dart';
@@ -119,6 +120,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: WSize.gap3),
+                  const FamilyOnlineRow(),
                   const SizedBox(height: WSize.gap3),
                   ChunkyCard(
                     onTap: () => showHowToPlay(context),

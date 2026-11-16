@@ -9,6 +9,7 @@ import '../daily/daily_seed.dart';
 import '../daily/daily_tier.dart';
 import '../daily/share_card.dart';
 import '../daily/word_of_the_day.dart';
+import '../online/family_online_controller.dart';
 import '../players/family_word.dart';
 import '../players/players.dart';
 import '../dictionary/definition_service.dart';
@@ -450,6 +451,10 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
         playerIds: [for (final p in players.players) p.id],
       );
     }
+
+    // With a family online, everyone sees this player has played today
+    // (spec-08). Does nothing when this player isn't in one.
+    ref.read(familyOnlineProvider.notifier).markPlayed(widget.today);
 
     final portfolioController = ref.read(portfolioProvider.notifier);
     final portfolioData = ref.read(portfolioProvider);

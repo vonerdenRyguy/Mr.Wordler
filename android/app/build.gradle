@@ -5,6 +5,17 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Family online (spec-08). Firebase is only switched on when
+// google-services.json is here (see firebase/SETUP.md); without it the app
+// builds and runs offline as before. Its project id names the address the
+// emailed sign-in links open the app from.
+def firebaseProjectId = "firebase-not-set-up"
+def googleServicesFile = file("google-services.json")
+if (googleServicesFile.exists()) {
+    apply plugin: "com.google.gms.google-services"
+    firebaseProjectId = new groovy.json.JsonSlurper().parse(googleServicesFile).project_info.project_id
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -38,10 +49,12 @@ android {
         applicationId = "com.example.namer_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdk = flutter.minSdkVersion
+        // Firebase Authentication needs Android 6 or newer.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
+        manifestPlaceholders += [firebaseProjectId: firebaseProjectId]
     }
 
     buildTypes {

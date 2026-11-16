@@ -24,6 +24,7 @@ import '../village/structures.dart';
 import '../village/village_art.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
+import 'family_online_screens.dart';
 import 'infinite_estate_screen.dart';
 import 'players_screens.dart';
 
@@ -393,6 +394,8 @@ class _FamilyScreenState extends ConsumerState<FamilyScreen> {
               expand: true,
               onPressed: () => _push(const AddPlayerScreen()),
             ),
+          const SizedBox(height: WSize.gap4),
+          const FamilyOnlineRow(),
         ],
       ),
     );
