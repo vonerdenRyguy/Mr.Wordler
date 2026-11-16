@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../daily/daily_seed.dart' show dailyDateKey;
+import '../players/family_word.dart' show familyRevealOrder, kFamilyWordCoins, kFamilyWordEarlyCoins;
 import '../players/players.dart';
 import 'family_online_models.dart';
 import 'firebase_family_backend.dart';
@@ -46,6 +47,7 @@ class FamilyOnlineState {
     this.waitingFor,
     this.declined = false,
     this.emailSentTo,
+    this.day,
   });
 
   final OnlineStage stage;
@@ -64,6 +66,9 @@ class FamilyOnlineState {
   /// An emailed sign-in link is on its way to this address.
   final String? emailSentTo;
 
+  /// Today's family word online (spec-09), once it has loaded.
+  final FamilyDay? day;
+
   bool get isAdult => group == AgeGroup.adult;
 
   OnlineMember? get me {
@@ -81,6 +86,7 @@ class FamilyOnlineState {
     FamilyPreview? waitingFor,
     bool? declined,
     String? emailSentTo,
+    FamilyDay? day,
     bool clearFamily = false,
     bool clearWaiting = false,
     bool clearAccount = false,
@@ -96,22 +102,34 @@ class FamilyOnlineState {
         waitingFor: clearWaiting ? null : (waitingFor ?? this.waitingFor),
         declined: declined ?? this.declined,
         emailSentTo: clearEmail ? null : (emailSentTo ?? this.emailSentTo),
+        day: clearFamily ? null : (day ?? this.day),
       );
 }
 
 class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
-  FamilyOnlineController({required Future<FamilyBackend?> backend, String? prefix})
+  FamilyOnlineController({required Future<FamilyBackend?> backend, String? prefix, DateTime Function()? clock})
       : _prefix = prefix ?? PlayerKeys.prefix,
+        _clock = clock ?? DateTime.now,
         super(const FamilyOnlineState()) {
     _ready = _start(backend);
   }
 
   static const prefsKey = 'familyOnlineData';
   final String _prefix;
+  final DateTime Function() _clock;
   FamilyBackend? _backend;
   StreamSubscription<OnlineFamily?>? _familySub;
   StreamSubscription<RequestStatus>? _requestSub;
+  StreamSubscription<FamilyDay>? _daySub;
+  String? _dayKey;
   late final Future<void> _ready;
+
+  /// Family-word days this player has collected coins for (spec-09).
+  List<String> _paidDays = const [];
+  Future<int>? _claiming;
+
+  /// Buildings waiting to be sent once the family has loaded.
+  Map<String, int>? _pendingBuildings;
 
   /// The email the link was sent to, kept until the link comes back.
   String? _pendingEmail;
@@ -142,6 +160,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     } catch (_) {}
     if (!mounted) return;
     _pendingEmail = saved['pendingEmail'] as String?;
+    _paidDays = [for (final d in (saved['paidWordDays'] as List? ?? const [])) d as String];
     final account = backend.account;
     if (account == null) {
       state = FamilyOnlineState(stage: OnlineStage.signedOut, emailSentTo: _pendingEmail);
@@ -181,8 +200,26 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
           'waitingAdultNames': s.waitingFor!.adultNames,
         },
         if (_pendingEmail != null) 'pendingEmail': _pendingEmail,
+        // So other players on this phone can tell this account is here.
+        if (s.account != null) 'uid': s.account!.uid,
+        if (_paidDays.isNotEmpty) 'paidWordDays': _paidDays,
       }),
     );
+  }
+
+  /// The online uid of each player on this phone who is signed in:
+  /// uid -> player id. Read from each player's own save.
+  static Future<Map<String, String>> localUids(List<Player> players) async {
+    final prefs = await SharedPreferences.getInstance();
+    final out = <String, String>{};
+    for (final p in players) {
+      try {
+        final raw = prefs.getString('${p.prefix}$prefsKey');
+        final uid = raw == null ? null : (jsonDecode(raw) as Map<String, dynamic>)['uid'] as String?;
+        if (uid != null) out[uid] = p.id;
+      } catch (_) {}
+    }
+    return out;
   }
 
   void _watchFamily(String familyId) {
@@ -196,14 +233,169 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
         // Removed from the family, or it was closed.
         _familySub?.cancel();
         _familySub = null;
+        _stopDay();
         state = state.copyWith(stage: OnlineStage.noFamily, clearFamily: true);
         _save();
         _backend?.saveProfile(clearFamily: true).catchError((Object _) {});
         return;
       }
+      final first = state.family == null || _daySub == null;
       state = state.copyWith(stage: OnlineStage.member, familyId: familyId, family: family);
+      if (first) {
+        watchToday();
+        // The account's uid goes into the save for the other players here.
+        _save();
+      }
+      final pending = _pendingBuildings;
+      if (pending != null) {
+        _pendingBuildings = null;
+        syncBuildings(pending);
+      }
     }, onError: (Object _) {});
   }
+
+  // ---- The family word and map (spec-09) ----
+
+  void _stopDay() {
+    unawaited(_daySub?.cancel());
+    _daySub = null;
+    _dayKey = null;
+  }
+
+  /// Follows today's family word. Cheap to call often: it only starts again
+  /// when the day has changed.
+  void watchToday() {
+    final fid = state.familyId;
+    if (state.stage != OnlineStage.member || fid == null || _backend == null) return;
+    final key = dailyDateKey(_clock());
+    if (_dayKey == key && _daySub != null) return;
+    _stopDay();
+    _dayKey = key;
+    state = state.copyWith(day: const FamilyDay());
+    _daySub = _backend!.watchDay(fid, key).listen((day) {
+      if (mounted && _dayKey == key) state = state.copyWith(day: day);
+    }, onError: (Object _) {});
+  }
+
+  bool get _inFamily => state.stage == OnlineStage.member && state.familyId != null && state.account != null;
+
+  String _yesterdayKey(DateTime now) => dailyDateKey(now.subtract(const Duration(days: 1)));
+
+  /// This player finished today's Daily: uncover their share of [word].
+  /// Returns the letter positions they found (empty if they already had,
+  /// the word is found, or the server couldn't be reached).
+  Future<List<int>> recordPlayed({required DateTime now, required String word}) async {
+    await _ready;
+    final family = state.family;
+    if (!_inFamily || family == null) return const [];
+    final me = state.account!.uid;
+    final key = dailyDateKey(now);
+    try {
+      final day = await _backend!.changeDay(
+        state.familyId!,
+        key,
+        yesterdayKey: _yesterdayKey(now),
+        change: (today, yesterday) => uncoverShare(
+          today,
+          uid: me,
+          revealOrder: familyRevealOrder(word, now),
+          memberUids: [for (final m in family.members) m.uid],
+          yesterday: yesterday,
+        ),
+      );
+      if (mounted && key == _dayKey) state = state.copyWith(day: day);
+      return day.found[me] ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// A guess at today's [word]. True if it was right and the family has
+  /// it now. Throws if the server can't be reached.
+  Future<bool> guess({required String text, required DateTime now, required String word}) async {
+    await _ready;
+    if (!_inFamily) return false;
+    if (text.trim().toUpperCase() != word.toUpperCase()) return false;
+    final me = state.account!.uid;
+    final key = dailyDateKey(now);
+    final day = await _backend!.changeDay(
+      state.familyId!,
+      key,
+      yesterdayKey: _yesterdayKey(now),
+      change: (today, yesterday) => solveByGuess(today, uid: me, yesterday: yesterday),
+    );
+    if (mounted && key == _dayKey) state = state.copyWith(day: day);
+    return true;
+  }
+
+  /// Coins for family words found today or yesterday that this player
+  /// hasn't collected yet (0 if none). The caller adds them to the
+  /// Portfolio. Safe to call often.
+  Future<int> claimWordCoins() {
+    final running = _claiming;
+    if (running != null) return running.then((_) => 0);
+    final next = _claim().whenComplete(() => _claiming = null);
+    _claiming = next;
+    return next;
+  }
+
+  Future<int> _claim() async {
+    await _ready;
+    if (!_inFamily) return 0;
+    final now = _clock();
+    var coins = 0;
+    final paid = [..._paidDays];
+    for (final key in [dailyDateKey(now), _yesterdayKey(now)]) {
+      if (paid.contains(key)) continue;
+      FamilyDay day;
+      final live = state.day;
+      if (key == _dayKey && live != null && live.solved) {
+        day = live;
+      } else {
+        try {
+          day = await _backend!.getDay(state.familyId!, key);
+        } catch (_) {
+          continue;
+        }
+      }
+      if (!day.solved) continue;
+      coins += day.solvedEarly ? kFamilyWordEarlyCoins : kFamilyWordCoins;
+      paid.add(key);
+    }
+    if (coins == 0 || !mounted) return 0;
+    _paidDays = paid.length > 4 ? paid.sublist(paid.length - 4) : paid;
+    await _save();
+    return coins;
+  }
+
+  /// Shares this player's buildings (magic word -> count) with the family.
+  /// Buildings that went up since the last time count as new today. Does
+  /// nothing outside a family, or when nothing changed.
+  Future<void> syncBuildings(Map<String, int> buildings) async {
+    await _ready;
+    if (!_inFamily) return;
+    final me = state.me;
+    if (me == null) {
+      _pendingBuildings = buildings;
+      return;
+    }
+    if (_sameCounts(me.buildings, buildings)) return;
+    final key = dailyDateKey(_clock());
+    // The very first time, nothing counts as new: it was all there before.
+    final firstTime = me.newOn == null && me.buildings.isEmpty;
+    final newly = firstTime
+        ? const <String>[]
+        : [for (final e in buildings.entries) if (e.value > (me.buildings[e.key] ?? 0)) e.key];
+    final newList = {...me.newOnDay(key), ...newly}.where(buildings.containsKey).toList();
+    try {
+      await _backend!.updateBuildings(state.familyId!, buildings: buildings, newBuildings: newList, newOn: key);
+    } catch (_) {
+      // Offline: sent next time.
+    }
+  }
+
+  static bool _sameCounts(Map<String, int> a, Map<String, int> b) =>
+      a.length == b.length && a.entries.every((e) => b[e.key] == e.value);
 
   void _watchRequest(FamilyPreview family) {
     _requestSub?.cancel();
@@ -360,6 +552,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     if (fid == null) return;
     unawaited(_familySub?.cancel());
     _familySub = null;
+    _stopDay();
     await _backend!.leave(fid);
     state = state.copyWith(stage: OnlineStage.noFamily, clearFamily: true);
     await _save();
@@ -370,6 +563,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     unawaited(_requestSub?.cancel());
     _familySub = null;
     _requestSub = null;
+    _stopDay();
     await _backend!.signOut();
     _pendingEmail = null;
     state = const FamilyOnlineState(stage: OnlineStage.signedOut);
@@ -384,6 +578,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     unawaited(_requestSub?.cancel());
     _familySub = null;
     _requestSub = null;
+    _stopDay();
     await _backend!.signOut();
     _pendingEmail = null;
     state = const FamilyOnlineState(stage: OnlineStage.signedOut);
@@ -395,6 +590,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   void dispose() {
     _familySub?.cancel();
     _requestSub?.cancel();
+    _daySub?.cancel();
     super.dispose();
   }
 }

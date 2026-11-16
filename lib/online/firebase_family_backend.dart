@@ -241,6 +241,12 @@ class FirebaseFamilyBackend implements FamilyBackend {
       level: wordLevelFromName(data['level'] as String?) ?? WordLevel.wordsmith,
       adult: data['adult'] as bool? ?? false,
       playedDay: data['playedDay'] as String?,
+      buildings: {
+        for (final e in (data['buildings'] as Map? ?? const {}).entries)
+          e.key as String: (e.value as num?)?.toInt() ?? 0,
+      },
+      newBuildings: [for (final w in (data['newBuildings'] as List? ?? const [])) w as String],
+      newOn: data['newOn'] as String?,
     );
   }
 
@@ -350,6 +356,47 @@ class FirebaseFamilyBackend implements FamilyBackend {
   Future<void> setPlayedDay(String familyId, String dayKey) =>
       _member(familyId, _uid).update({'playedDay': dayKey});
 
+  // ---- The family word and map (spec-09) ----
+
+  DocumentReference<Map<String, dynamic>> _day(String fid, String dayKey) =>
+      _family(fid).collection('days').doc(dayKey);
+
+  @override
+  Stream<FamilyDay> watchDay(String familyId, String dayKey) =>
+      _day(familyId, dayKey).snapshots().map((s) => FamilyDay.fromData(s.data()));
+
+  @override
+  Future<FamilyDay> getDay(String familyId, String dayKey) async =>
+      FamilyDay.fromData((await _day(familyId, dayKey).get()).data());
+
+  @override
+  Future<FamilyDay> changeDay(
+    String familyId,
+    String dayKey, {
+    required String yesterdayKey,
+    required FamilyDay Function(FamilyDay today, FamilyDay yesterday) change,
+  }) =>
+      _db.runTransaction((tx) async {
+        final today = await tx.get(_day(familyId, dayKey));
+        final yesterday = await tx.get(_day(familyId, yesterdayKey));
+        final after = change(FamilyDay.fromData(today.data()), FamilyDay.fromData(yesterday.data()));
+        tx.set(_day(familyId, dayKey), after.toData());
+        return after;
+      });
+
+  @override
+  Future<void> updateBuildings(
+    String familyId, {
+    required Map<String, int> buildings,
+    required List<String> newBuildings,
+    required String newOn,
+  }) =>
+      _member(familyId, _uid).update({
+        'buildings': buildings,
+        'newBuildings': newBuildings,
+        'newOn': newOn,
+      });
+
   Future<List<String>> _adultNames(String familyId) async {
     final members = await _family(familyId).collection('members').get();
     return [for (final d in members.docs) if (_toMember(d).adult) _toMember(d).name];
@@ -391,7 +438,11 @@ class FirebaseFamilyBackend implements FamilyBackend {
     if (leaving == null) return;
     final batch = _db.batch()..delete(_member(familyId, uid));
     if (members.docs.length == 1) {
-      // The last one out closes the family.
+      // The last one out closes the family, and its family-word days go too.
+      final days = await _family(familyId).collection('days').get();
+      for (final d in days.docs.take(400)) {
+        batch.delete(d.reference);
+      }
       batch.delete(_family(familyId));
       if (code != null) batch.delete(_code(code));
     } else if (leaving.adult && code != null) {

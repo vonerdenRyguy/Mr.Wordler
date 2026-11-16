@@ -9,6 +9,8 @@ import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
 import '../game/letter_tile.dart';
 import '../game/word_landing.dart' show wordCheckProvider;
+import '../online/family_online_controller.dart';
+import '../online/family_online_models.dart';
 import '../portfolio/level_info.dart';
 import '../players/family_widgets.dart';
 import '../players/family_word.dart';
@@ -31,6 +33,7 @@ import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
 import 'family_screens.dart';
+import 'family_word_online_screens.dart';
 import 'infinite_estate_screen.dart';
 import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
@@ -85,6 +88,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
+    // An online family sees which buildings you have (spec-09).
+    final counts = <String, int>{};
+    for (final s in structures) {
+      counts[s.def.word] = (counts[s.def.word] ?? 0) + 1;
+    }
+    ref.read(familyOnlineProvider.notifier).syncBuildings(counts);
     final scene = VillageScene(
       grid: const IsoGrid(boardWidth: size, boardHeight: size),
       boardCells: saved.boardCells,
@@ -154,7 +163,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final players = ref.watch(playersProvider);
     ref.watch(familyWordProvider);
     final familyData = ref.read(familyWordProvider.notifier).today(now);
-    final familyWord = (!players.isFamily || words == null || words.isEmpty) ? null : familyWordFor(now, words);
+    // In an online family, the card shows the online family's word (spec-09).
+    final online = ref.watch(familyOnlineProvider);
+    final onlineFamily = online.stage == OnlineStage.member ? online.family : null;
+    final familyWord =
+        ((!players.isFamily && onlineFamily == null) || words == null || words.isEmpty) ? null : familyWordFor(now, words);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: wordlerOverlayStyle,
@@ -189,8 +202,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       if (familyWord != null)
                         _FamilyWordCard(
                           word: familyWord.word,
-                          data: familyData,
+                          data: onlineFamily != null ? familyWordDataOf(online.day ?? const FamilyDay()) : familyData,
                           players: players,
+                          online: onlineFamily,
                           playedToday: playedToday,
                           onTap: () => _open(const FamilyWordScreen()),
                         )
@@ -659,6 +673,7 @@ class _FamilyWordCard extends StatelessWidget {
     required this.players,
     required this.playedToday,
     required this.onTap,
+    this.online,
   });
 
   final String word;
@@ -667,13 +682,17 @@ class _FamilyWordCard extends StatelessWidget {
   final bool playedToday;
   final VoidCallback onTap;
 
+  /// The online family, when the word is theirs (spec-09).
+  final OnlineFamily? online;
+
   @override
   Widget build(BuildContext context) {
+    final family = online;
     final line = data.solved
         ? 'Found together!'
         : playedToday
-            ? 'Pass the phone on to find more letters.'
-            : 'Finish your Daily to find a letter.';
+            ? (family != null ? 'Waiting for the family to play.' : 'Pass the phone on to find more letters.')
+            : 'Finish your Daily to find your letters.';
     return ChunkyCard(
       color: WColors.sunTint,
       onTap: onTap,
@@ -697,7 +716,18 @@ class _FamilyWordCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          FamilyWordSlots(word: word, data: data, players: players, tileSize: 30),
+          FamilyWordSlots(
+            word: word,
+            data: data,
+            players: players,
+            tileSize: 30,
+            colorOf: family == null
+                ? null
+                : (uid) {
+                    final m = family.member(uid);
+                    return m == null ? null : memberColor(m);
+                  },
+          ),
           const SizedBox(height: 2),
           Text(line, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.body.copyWith(fontSize: 15)),
         ],

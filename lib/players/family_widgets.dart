@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../game/letter_tile.dart';
+import '../online/family_online_controller.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../ui/tokens.dart';
 import 'family_word.dart';
@@ -24,12 +25,17 @@ class FamilyWordSlots extends StatelessWidget {
     required this.data,
     required this.players,
     this.tileSize = 40,
+    this.colorOf,
   });
 
   final String word;
   final FamilyWordData data;
   final PlayersState players;
   final double tileSize;
+
+  /// The stripe color for a finder's id; by default the player on this
+  /// phone with that id. The online family word passes member uids.
+  final Color? Function(String id)? colorOf;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +61,7 @@ class FamilyWordSlots extends StatelessWidget {
                       ? LetterTile(
                           letter: word[i],
                           faceColor: data.solved ? WColors.sun : null,
-                          stripe: players.byId(data.finderOf(i) ?? '')?.color,
+                          stripe: (colorOf ?? (id) => players.byId(id)?.color)(data.finderOf(i) ?? ''),
                         )
                       : CustomPaint(painter: _DashedBoxPainter()),
                 ),
@@ -92,13 +98,16 @@ class _DashedBoxPainter extends CustomPainter {
 Future<void> claimFamilyCoins(WidgetRef ref, BuildContext context) async {
   final playerId = ref.read(playersProvider).currentId;
   final family = ref.read(familyWordProvider.notifier);
+  final online = ref.read(familyOnlineProvider.notifier);
   final portfolio = ref.read(portfolioProvider.notifier);
   await family.ready;
   await portfolio.ready;
+  // The online family's word (spec-09), for this player's own account.
+  final onlineCoins = await online.claimWordCoins();
   if (!context.mounted || ref.read(playersProvider).currentId != playerId) return;
   // The provider may have been rebuilt for a new player while we waited.
   if (ref.read(portfolioProvider.notifier) != portfolio) return;
-  final coins = family.claimOwed(playerId);
+  final coins = family.claimOwed(playerId) + onlineCoins;
   if (coins == 0) return;
   portfolio.addCurrency(coins);
   ScaffoldMessenger.of(context)
