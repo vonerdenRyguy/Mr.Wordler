@@ -22,6 +22,8 @@ import 'package:namer_app/game/tile_location.dart';
 import 'package:namer_app/game/word_landing.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/util/theme_notifier.dart';
+
+import 'home_test_helpers.dart';
 import 'package:provider/provider.dart' as provider;
 import 'package:namer_app/portfolio/portfolio_controller.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
@@ -265,6 +267,7 @@ void main() {
 
   Future<void> pumpApp(WidgetTester tester) async {
     _phone(tester);
+    await skipHomeIntro();
     await tester.pumpWidget(ProviderScope(
       overrides: [definitionServiceProvider.overrideWithValue(_NoDefinitions())],
       child: provider.ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),

@@ -18,7 +18,8 @@ Future<void> pumpFor(WidgetTester tester, {int frames = 10}) async {
 
 void main() {
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    // Home's first-time intro card has been seen.
+    SharedPreferences.setMockInitialValues({'homeIntroSeen': true});
   });
 
   void phoneSize(WidgetTester tester) {

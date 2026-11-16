@@ -11,11 +11,28 @@ import 'word_level.dart';
 const kAppVersion = '0.0.1'; // keep in step with pubspec.yaml
 
 class SettingsData {
-  const SettingsData({this.textSizeStep = 0, this.reduceMotion = false, this.chosenWordLevel});
+  const SettingsData({
+    this.textSizeStep = 0,
+    this.reduceMotion = false,
+    this.chosenWordLevel,
+    this.showTips = true,
+    this.homeIntroSeen = true,
+    this.loaded = false,
+  });
 
   /// 0 = Normal, 1 = Large, 2 = Extra large.
   final int textSizeStep;
   final bool reduceMotion;
+
+  /// Mr. W's tips on Home (spec-11). Per phone.
+  final bool showTips;
+
+  /// Whether this phone has seen the "swipe to look around" card
+  /// (spec-11). True until the saved value is read, so it never flashes.
+  final bool homeIntroSeen;
+
+  /// True once the saved settings have been read.
+  final bool loaded;
 
   /// The word level the player picked (spec-06); null until they pick one.
   final WordLevel? chosenWordLevel;
@@ -30,10 +47,20 @@ class SettingsData {
   /// What the phone's text scale is multiplied by.
   double get textScale => _textScales[textSizeStep];
 
-  SettingsData copyWith({int? textSizeStep, bool? reduceMotion, WordLevel? chosenWordLevel}) => SettingsData(
+  SettingsData copyWith({
+    int? textSizeStep,
+    bool? reduceMotion,
+    WordLevel? chosenWordLevel,
+    bool? showTips,
+    bool? homeIntroSeen,
+  }) =>
+      SettingsData(
         textSizeStep: textSizeStep ?? this.textSizeStep,
         reduceMotion: reduceMotion ?? this.reduceMotion,
         chosenWordLevel: chosenWordLevel ?? this.chosenWordLevel,
+        showTips: showTips ?? this.showTips,
+        homeIntroSeen: homeIntroSeen ?? this.homeIntroSeen,
+        loaded: loaded,
       );
 }
 
@@ -45,6 +72,8 @@ class SettingsController extends StateNotifier<SettingsData> {
   static const textSizeKey = 'textSizeStep';
   static const reduceMotionKey = 'reduceMotion';
   static const wordLevelKey = 'wordLevel';
+  static const showTipsKey = 'showTips';
+  static const homeIntroSeenKey = 'homeIntroSeen';
 
   // The word level is per player (spec-07); text size and Reduce motion
   // belong to the phone.
@@ -63,7 +92,22 @@ class SettingsController extends StateNotifier<SettingsData> {
       reduceMotion: prefs.getBool(reduceMotionKey) ?? false,
       // Keep a level picked while this was loading.
       chosenWordLevel: state.chosenWordLevel ?? wordLevelFromName(prefs.getString(_wordLevelKey)),
+      showTips: prefs.getBool(showTipsKey) ?? true,
+      homeIntroSeen: prefs.getBool(homeIntroSeenKey) ?? false,
+      loaded: true,
     );
+  }
+
+  Future<void> setShowTips(bool value) async {
+    state = state.copyWith(showTips: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(showTipsKey, value);
+  }
+
+  Future<void> markHomeIntroSeen() async {
+    state = state.copyWith(homeIntroSeen: true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(homeIntroSeenKey, true);
   }
 
   Future<void> setWordLevel(WordLevel level) async {

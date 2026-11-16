@@ -16,7 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    // Home's first-time intro card has been seen.
+    SharedPreferences.setMockInitialValues({'homeIntroSeen': true});
   });
 
   testWidgets('the Words side starts selected, and tapping Village moves it', (tester) async {
