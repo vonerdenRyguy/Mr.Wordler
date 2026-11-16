@@ -33,6 +33,7 @@ void main() {
     'WELL'.split('').asMap().forEach((i, l) => board[_idx(_mid, _mid - 2 + i)] = l);
     'CAT'.split('').asMap().forEach((i, l) => board[_idx(_mid + 3, _mid - 2 + i)] = l);
     SharedPreferences.setMockInitialValues({
+      'homeIntroSeen': true,
       'infiniteEstateVillageSave': jsonEncode({
         'boardCells': board,
         'rackCells': List<String>.filled(10, 'E'),

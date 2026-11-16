@@ -26,6 +26,8 @@ import 'package:namer_app/settings/word_level.dart';
 import 'package:namer_app/ui/game_layout.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 
+import 'home_test_helpers.dart';
+
 class _NoDefinitions extends DefinitionService {
   @override
   Future<String?> getDefinition(String word) async => null;
@@ -192,6 +194,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    await skipHomeIntro();
     await tester.pumpWidget(ProviderScope(
       overrides: [
         definitionServiceProvider.overrideWithValue(_NoDefinitions()),
@@ -207,9 +210,12 @@ void main() {
     await pumpApp(tester);
     expect(tester.takeException(), isNull);
     expect(find.text("Who's playing?"), findsNothing);
-    expect(find.text('WORD OF THE DAY'), findsOneWidget);
     expect(find.text('FAMILY WORD'), findsNothing);
-    expect(find.text('Family'), findsNothing);
+    // The Family page only offers to start a family.
+    await goToHomePage(tester, 'Family');
+    await tester.pumpAndSettle();
+    expect(find.text('Play with your family'), findsOneWidget);
+    expect(find.text('FAMILY WORD'), findsNothing);
   });
 
   testWidgets('with two players the app asks who is playing, and Home is theirs', (tester) async {
@@ -233,10 +239,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text("Who's playing?"), findsNothing);
     expect(find.text('Leo'), findsOneWidget);
-    expect(find.text('FAMILY WORD'), findsOneWidget);
-    expect(find.text('WORD OF THE DAY'), findsNothing);
     expect(find.text('Sprout'), findsOneWidget);
     expect(find.text('9'), findsOneWidget);
+    await goToHomePage(tester, 'Family');
+    await tester.pumpAndSettle();
+    expect(find.text('FAMILY WORD'), findsOneWidget);
+    expect(find.text('The family'), findsOneWidget);
+    expect(find.text('Pass the phone'), findsOneWidget);
 
     // Switch, and pick the other player: their coins and level.
     await tester.tap(find.text('Switch'));
@@ -259,6 +268,8 @@ void main() {
     });
     await pumpApp(tester);
     await tester.tap(find.text('Leo'));
+    await tester.pumpAndSettle();
+    await goToHomePage(tester, 'Family');
     await tester.pumpAndSettle();
     final container = ProviderScope.containerOf(tester.element(find.text('FAMILY WORD')));
     final now = DateTime.now();

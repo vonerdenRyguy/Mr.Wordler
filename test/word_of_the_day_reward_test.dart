@@ -15,6 +15,8 @@ import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'home_test_helpers.dart' show skipHomeIntro;
+
 const _size = 500;
 const _mid = _size ~/ 2;
 
@@ -39,6 +41,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    await skipHomeIntro();
     await tester.pumpWidget(ProviderScope(
       overrides: [
         wordCheckProvider.overrideWithValue((w) async => w.toUpperCase() == wordOnBoard),
@@ -72,9 +75,15 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('Visit your village'), findsOneWidget);
+    // The Me page's word card now says Done. (Swipe: the reward's
+    // SnackBar is still over the tab bar.)
+    await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+    await tester.pumpAndSettle();
     expect(find.text('Done'), findsOneWidget);
     expect(find.text('+10 coins'), findsNothing);
     final coinsBefore = container.read(portfolioProvider).currency;
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,

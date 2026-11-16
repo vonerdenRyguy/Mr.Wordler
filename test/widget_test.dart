@@ -17,12 +17,15 @@ import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 
+import 'home_test_helpers.dart';
+
 // Mirrors main()'s actual widget nesting (ProviderScope wraps
 // ChangeNotifierProvider wraps MyApp) so tests exercise the same provider
 // setup the real app runs with -- HomeScreen/PortfolioScreen read
 // the global portfolioProvider directly and need an ancestor ProviderScope
 // to do that, the same as they would in production.
 Future<void> pumpApp(WidgetTester tester) async {
+  await skipHomeIntro();
   await tester.pumpWidget(
     ProviderScope(
       child: ChangeNotifierProvider(
@@ -87,8 +90,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('Home fits one screen: village, Daily puzzle, Time Attack, Portfolio, Stats',
-      (WidgetTester tester) async {
+  testWidgets('Home: Play, Me and Family each fit one screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -96,29 +98,42 @@ void main() {
     await pumpApp(tester);
     await tester.pumpAndSettle();
 
-    expect(tester.takeException(), isNull);
-    expect(find.bySemanticsLabel('Mr. Wordler'), findsOneWidget);
     const screen = Rect.fromLTWH(0, 0, 390, 844);
-    for (final label in ['Visit your village', 'WORD OF THE DAY', 'Daily puzzle', 'Time Attack', 'Portfolio', 'Stats']) {
-      expect(find.text(label), findsOneWidget, reason: label);
-      final box = tester.getRect(find.text(label));
-      expect(screen.contains(box.topLeft) && screen.contains(box.bottomRight), isTrue,
-          reason: '$label is fully on screen without scrolling');
+    void onScreen(List<String> labels) {
+      for (final label in labels) {
+        expect(find.text(label), findsOneWidget, reason: label);
+        final box = tester.getRect(find.text(label));
+        expect(screen.contains(box.topLeft) && screen.contains(box.bottomRight), isTrue,
+            reason: '$label is fully on screen without scrolling');
+      }
     }
+
+    // Play opens first: the village, the Daily and Time Attack.
+    expect(tester.takeException(), isNull);
+    final theme = 'Theme: ${dailyPuzzleFor(DateTime.now()).theme.name}';
+    onScreen(['Visit your village', 'Daily puzzle', 'Time Attack', 'New village', theme, 'Me', 'Family']);
+    // "Play" is the tab and both games' buttons.
+    expect(screen.contains(tester.getRect(find.text('Play').last).bottomRight), isTrue);
     expect(find.text('Free Play'), findsNothing);
     expect(find.text('Theme Rush'), findsNothing);
-    expect(find.text('New village'), findsOneWidget);
     // No "0-day streak".
     expect(find.textContaining('streak'), findsNothing);
+    // No scroll bar anywhere.
+    expect(find.byType(Scrollbar), findsNothing);
 
-    // spec-05: today's word with its reward chip, and the Daily's theme.
+    // Me: today's word with its reward chip, and four squares.
     final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
     final today = wordOfDayFor(DateTime.now(), words);
-    expect(find.text(today.word), findsOneWidget);
-    expect(find.text('+10 coins'), findsOneWidget);
-    final theme = find.text('Theme: ${dailyPuzzleFor(DateTime.now()).theme.name}');
-    expect(theme, findsOneWidget);
-    expect(screen.contains(tester.getRect(theme).bottomRight), isTrue);
+    await goToHomePage(tester, 'Me');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    onScreen(['WORD OF THE DAY', today.word, '+10 coins', 'Word journal', 'My properties', 'My stats', 'Word level']);
+
+    // Family, with no family yet: two ways to start one.
+    await goToHomePage(tester, 'Family');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    onScreen(['Play with your family', 'On this phone', 'On different phones']);
   });
 
   testWidgets('tapping the Word of the day card opens its sheet', (WidgetTester tester) async {
@@ -131,6 +146,7 @@ void main() {
 
     final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
     final today = wordOfDayFor(DateTime.now(), words);
+    await goToHomePage(tester, 'Me');
     await tester.tap(find.text('WORD OF THE DAY'));
     await tester.pumpAndSettle();
 
@@ -170,7 +186,8 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Portfolio'));
+    await goToHomePage(tester, 'Me');
+    await tester.tap(find.text('My properties'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -468,7 +485,8 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Stats'));
+    await goToHomePage(tester, 'Me');
+    await tester.tap(find.text('My stats'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

@@ -88,6 +88,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: WSize.gap3),
+                  // Mr. W's tips on Home (spec-11).
+                  ChunkyCard(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Show tips', style: WText.heading.copyWith(fontSize: 22)),
+                              Text('Mr. W helps when you might be stuck.',
+                                  style: WText.body.copyWith(color: WColors.muted)),
+                            ],
+                          ),
+                        ),
+                        Switch(value: settings.showTips, onChanged: controller.setShowTips),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: WSize.gap3),
                   ChunkyCard(
                     onTap: () =>
                         Navigator.of(context).push(MaterialPageRoute<bool>(builder: (_) => const WordLevelScreen())),
