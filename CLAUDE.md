@@ -40,7 +40,7 @@ Flutter-generated output (already gitignored), not source.
 
 ## Current state (as of 2026-11-16)
 
-Built from specs 01-08, **all merged to master**. Specs 04 and 05 were
+Built from specs 01-10, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
 (spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
@@ -184,6 +184,46 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     consent step, a release key (its SHA-1/256 into Firebase and
     assetlinks.json), a real package name.
 
+- **spec-09 family word and family map online** (branch
+  `spec-09-family-word-online`, merged to master 2026-11-16 after the
+  Pixel check; Child 1 finishing the word on the Samsung waits for a
+  later day). Step 4 of the family game.
+  - In an online family everyone plays the online family's word (the
+    spec-07 word for the UTC day). Finishing the Daily uncovers your
+    share of the hidden letters; the last to play uncovers the rest, so
+    order never matters. A guess can find it early (+20 coins each, else
+    +10), collected on each person's own phone. Family streak.
+  - Server: `families/{fid}/days/{dayKey}` (`found`, `solved`,
+    `solvedEarly`, `solvedBy`, `streak`), changed only in the
+    `changeDay` transaction (`uncoverShare`, `solveByGuess`). Member docs
+    gain `buildings`, `newBuildings`, `newOn`.
+  - The family map shares **buildings only**: one plot per member around
+    a Town Square marked "coming later"; tap a plot for its buildings and
+    "new today". Buildings are sent when Home loads your village
+    (`syncBuildings`; a brand-new village sends once even when empty).
+  - Screens: `lib/screens/family_word_online_screens.dart`.
+- **spec-10 helping each other** (branch `spec-10-helping`, cut from
+  spec-09's, merged 2026-11-16 after a check on the Pixel and the
+  Samsung). Step 5 of the family game.
+  - **Letter gifts:** 3 a day per giver (`kGiftsPerDay`), free. They land
+    in the receiver's village rack as bonus tiles past the 10
+    (`addGiftLetter`), at most 5 a visit, with a gold stripe that follows
+    the letter (`GridRackView.stripes`). A box says who sent them, with
+    "Say thank you" (the `thanks` sticker).
+  - **Asking:** one letter a day on your own plot (member `wants` /
+    `wantsOn`); anyone can answer, and a gift of that letter that day
+    answers it.
+  - **Cheers:** 12 big stickers with a word each (`kStickers`), no typed
+    text anywhere. The "From your family" card on Home and its page
+    list gifts, cheers and open requests.
+  - Server: `families/{fid}/notes/{id}` (kind gift/cheer, from, to, day,
+    letter or sticker, about); create-only, deleted by sender or
+    receiver; the controller watches today and yesterday and cleans up
+    older ones. Claimed gift ids are kept per player in
+    `familyOnlineData.claimedGifts`. Rules in `firebase/firestore.rules`
+    (published 2026-11-16).
+  - Code: `lib/online/helping.dart`, `lib/screens/helping_screens.dart`.
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -198,8 +238,9 @@ design canvas first and approved there before any code):
    phone. No server.
 3. Accounts and a family code (spec-08, merged; Firebase).
    Child-privacy decisions are Ryan's.
-4. Family word and family map online.
-5. Helping: letter gifts, requests, ready-made cheers (no open chat).
+4. Family word and family map online (spec-09, merged).
+5. Helping: letter gifts, requests, ready-made cheers, no open chat
+   (spec-10, merged).
 6. Town Square, weekly family vote, family level and fog.
 7. Playing together: Word bridge (turn-based first), Word buddies.
 
@@ -317,14 +358,17 @@ lib/
 SharedPreferences keys: `infiniteEstateVillageSave`, `portfolioData`,
 `dailyChallengeData`, `modeStatsData`, `leaderboardEntries` (unused since
 spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (spec-05),
-`familyWordData` (spec-07), `familyOnlineData` (spec-08, per player),
+`familyWordData` (spec-07), `familyOnlineData` (spec-08, per player;
+spec-10 adds `claimedGifts` inside it),
 `definitionCache_*`.
 
 ## Testing
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 170 tests as of spec-08 (158 as of spec-07).
+- `flutter test` — 193 tests as of spec-10 (170 as of spec-08).
+  `test/family_word_online_test.dart` and `test/helping_test.dart` play
+  out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
   real fonts (`loadAppFonts`) so layout-fit checks match the phone.
 - Prefer the real phone for visual checks; `adb exec-out screencap -p`
@@ -332,6 +376,14 @@ spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (s
 
 ## Known open items / next steps
 
+1. **Still to see on a phone:** spec-09 steps 2-4 (Child 1 finishes the
+   family word on the Samsung; +10 coins each; Child 1's +20 for an
+   early guess) and step 8 (the shared list when someone asks to join);
+   the spec-10 gift box for several letters on the Samsung (it was
+   interrupted by another app on 2026-11-16; a widget test covers it).
+1. **Second test phone:** a Pixel 7 (`2B141FDH2006VR`) on a secondary
+   user profile: install with `adb -s 2B141FDH2006VR install -r --user
+   10 ...` and read prefs with `run-as com.example.namer_app --user 10`.
 1. **Left out of spec-07:** removing a player, and tapping a word for its
    meaning while visiting a village.
 1. **Explorer and Builder on the phone:** only Sprout could be played on
