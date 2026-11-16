@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mr. Wordler sign-in</title>
+<style>
+  body { margin: 0; padding: 32px 20px; background: #f6ecd6; color: #3a2a1a;
+         font: 18px/1.5 system-ui, sans-serif; text-align: center; }
+  h1 { font-size: 28px; margin: 24px 0 8px; }
+  a.btn { display: inline-block; margin-top: 24px; padding: 16px 28px; border-radius: 16px;
+          background: #2e7d32; color: #fff; font-weight: 700; text-decoration: none; }
+</style>
+</head>
+<body>
+  <h1>Sign in to Mr. Wordler</h1>
+  <p>Open this link on the phone that has Mr. Wordler.</p>
+  <a class="btn" id="open" href="#">Open Mr. Wordler</a>
+  <script>
+    // Hand this exact link to the app, which finishes the sign-in.
+    var here = location.href.replace(/^https:\/\//, '');
+    var intent = 'intent://' + here + '#Intent;scheme=https;package=com.example.namer_app;end';
+    document.getElementById('open').href = intent;
+    if (/Android/i.test(navigator.userAgent)) location.replace(intent);
+  </script>
+</body>
+</html>

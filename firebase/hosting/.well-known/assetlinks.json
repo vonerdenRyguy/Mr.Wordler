@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.namer_app",
+      "sha256_cert_fingerprints": [
+        "FB:0A:87:5B:89:10:FF:7E:DF:B8:17:C9:A8:C4:90:E7:EF:99:63:14:0E:63:94:E1:E2:C2:36:ED:EA:88:49:18"
+      ]
+    }
+  }
+]
