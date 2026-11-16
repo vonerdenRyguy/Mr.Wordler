@@ -7,8 +7,9 @@ import '../settings/word_level.dart';
 // one; FakeFamilyBackend is an in-memory stand-in for tests.
 //
 // What goes online is only the shared bits: first name, color, word level,
-// grown-up or not, and the day someone last played. Villages, coins and
-// puzzles stay on each phone.
+// grown-up or not, and the day someone last played; since spec-09 also the
+// family word's letters and each member's list of buildings. Villages'
+// words, coins and puzzles stay on each phone.
 
 /// How old someone is, which decides how they get in.
 enum AgeGroup {
@@ -72,6 +73,9 @@ class OnlineMember {
     required this.level,
     required this.adult,
     this.playedDay,
+    this.buildings = const {},
+    this.newBuildings = const [],
+    this.newOn,
   });
 
   final String uid;
@@ -85,8 +89,139 @@ class OnlineMember {
   /// The UTC day (dailyDateKey) this member last finished a Daily.
   final String? playedDay;
 
+  /// The buildings in this member's village: magic word -> how many
+  /// (spec-09). Only this summary is shared, never the village itself.
+  final Map<String, int> buildings;
+
+  /// Buildings raised on the day [newOn].
+  final List<String> newBuildings;
+  final String? newOn;
+
   bool playedOn(String dayKey) => playedDay == dayKey;
+
+  OnlineMember copyWith({
+    String? name,
+    int? colorIndex,
+    WordLevel? level,
+    String? playedDay,
+    Map<String, int>? buildings,
+    List<String>? newBuildings,
+    String? newOn,
+  }) =>
+      OnlineMember(
+        uid: uid,
+        name: name ?? this.name,
+        colorIndex: colorIndex ?? this.colorIndex,
+        level: level ?? this.level,
+        adult: adult,
+        playedDay: playedDay ?? this.playedDay,
+        buildings: buildings ?? this.buildings,
+        newBuildings: newBuildings ?? this.newBuildings,
+        newOn: newOn ?? this.newOn,
+      );
+
+  int get buildingCount => buildings.values.fold(0, (a, b) => a + b);
+
+  List<String> newOnDay(String dayKey) => newOn == dayKey ? newBuildings : const [];
 }
+
+/// One day of the family word, online (spec-09). The word itself isn't
+/// stored: every phone works it out from the date.
+class FamilyDay {
+  const FamilyDay({
+    this.found = const {},
+    this.solved = false,
+    this.solvedEarly = false,
+    this.solvedBy,
+    this.streak = 0,
+  });
+
+  /// Letter positions uncovered, by the uid of the member who found them.
+  final Map<String, List<int>> found;
+  final bool solved;
+
+  /// Found by a guess before all the letters were out.
+  final bool solvedEarly;
+
+  /// Who guessed it, or who uncovered the last letters.
+  final String? solvedBy;
+
+  /// Days in a row (this one included) the family found the word.
+  final int streak;
+
+  Set<int> get revealed => {for (final list in found.values) ...list};
+
+  String? finderOf(int index) {
+    for (final e in found.entries) {
+      if (e.value.contains(index)) return e.key;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toData() => {
+        'found': found,
+        'solved': solved,
+        'solvedEarly': solvedEarly,
+        if (solvedBy != null) 'solvedBy': solvedBy,
+        'streak': streak,
+      };
+
+  factory FamilyDay.fromData(Map<String, dynamic>? data) {
+    if (data == null) return const FamilyDay();
+    return FamilyDay(
+      found: {
+        for (final e in (data['found'] as Map? ?? const {}).entries)
+          e.key as String: [for (final i in e.value as List) (i as num).toInt()],
+      },
+      solved: data['solved'] as bool? ?? false,
+      solvedEarly: data['solvedEarly'] as bool? ?? false,
+      solvedBy: data['solvedBy'] as String?,
+      streak: (data['streak'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// [uid] finishes their Daily: the day as it is afterwards. Their share is
+/// the hidden letters (in [revealOrder]) split between everyone in
+/// [memberUids] who hasn't played yet, rounded up, so the order people
+/// play in never matters and the last one uncovers the rest. [yesterday]
+/// carries the streak on.
+FamilyDay uncoverShare(
+  FamilyDay day, {
+  required String uid,
+  required List<int> revealOrder,
+  required List<String> memberUids,
+  FamilyDay? yesterday,
+}) {
+  if (day.solved || day.found.containsKey(uid)) return day;
+  final revealed = day.revealed;
+  final hidden = [for (final i in revealOrder) if (!revealed.contains(i)) i];
+  final everyone = {...memberUids, uid};
+  final stillToPlay = everyone.where((u) => !day.found.containsKey(u)).length;
+  final share = hidden.take((hidden.length / (stillToPlay < 1 ? 1 : stillToPlay)).ceil()).toList();
+  final found = {...day.found, uid: share};
+  final done = {for (final l in found.values) ...l}.length >= revealOrder.length;
+  return FamilyDay(
+    found: found,
+    solved: done,
+    solvedBy: done ? uid : null,
+    streak: done ? _streakAfter(yesterday) : 0,
+  );
+}
+
+/// A right guess: the day, found early (unchanged if already found).
+FamilyDay solveByGuess(FamilyDay day, {required String uid, FamilyDay? yesterday}) {
+  if (day.solved) return day;
+  return FamilyDay(
+    found: day.found,
+    solved: true,
+    solvedEarly: true,
+    solvedBy: uid,
+    streak: _streakAfter(yesterday),
+  );
+}
+
+int _streakAfter(FamilyDay? yesterday) => (yesterday != null && yesterday.solved ? yesterday.streak : 0) + 1;
 
 class JoinRequest {
   const JoinRequest({
@@ -201,6 +336,31 @@ abstract class FamilyBackend {
 
   /// Leaves the family (if any) and deletes the account and its profile.
   Future<void> deleteAccount(String? familyId);
+
+  // ---- The family word and map (spec-09) ----
+
+  /// One day of the family word as it changes (an empty day until someone
+  /// plays).
+  Stream<FamilyDay> watchDay(String familyId, String dayKey);
+  Future<FamilyDay> getDay(String familyId, String dayKey);
+
+  /// Applies [change] to the day [dayKey] in one step on the server (so two
+  /// phones finishing at once can't both take the same letters), reading
+  /// [yesterdayKey] for the streak. Returns the day as saved.
+  Future<FamilyDay> changeDay(
+    String familyId,
+    String dayKey, {
+    required String yesterdayKey,
+    required FamilyDay Function(FamilyDay today, FamilyDay yesterday) change,
+  });
+
+  /// Shares this account's buildings with the family.
+  Future<void> updateBuildings(
+    String familyId, {
+    required Map<String, int> buildings,
+    required List<String> newBuildings,
+    required String newOn,
+  });
 }
 
 // ---- Family codes ----------------------------------------------------------

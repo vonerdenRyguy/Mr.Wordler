@@ -16,6 +16,7 @@ class _FakeFamily {
   String code;
   final Map<String, OnlineMember> members = {};
   final Map<String, JoinRequest> requests = {};
+  final Map<String, FamilyDay> days = {};
 }
 
 class FakeFamilyServer {
@@ -254,14 +255,7 @@ class FakeFamilyBackend implements FamilyBackend {
     final f = _family(familyId);
     final m = f.members[_uid];
     if (m == null) return;
-    f.members[_uid] = OnlineMember(
-      uid: m.uid,
-      name: me.name,
-      colorIndex: me.colorIndex,
-      level: me.level,
-      adult: m.adult,
-      playedDay: m.playedDay,
-    );
+    f.members[_uid] = m.copyWith(name: me.name, colorIndex: me.colorIndex, level: me.level);
     server._changed();
   }
 
@@ -271,14 +265,75 @@ class FakeFamilyBackend implements FamilyBackend {
     final f = _family(familyId);
     final m = f.members[_uid];
     if (m == null) return;
-    f.members[_uid] = OnlineMember(
-      uid: m.uid,
-      name: m.name,
-      colorIndex: m.colorIndex,
-      level: m.level,
-      adult: m.adult,
-      playedDay: dayKey,
-    );
+    f.members[_uid] = m.copyWith(playedDay: dayKey);
+    server._changed();
+  }
+
+  // ---- spec-09 ----
+
+  @override
+  Stream<FamilyDay> watchDay(String familyId, String dayKey) async* {
+    final uid = _uid;
+    FamilyDay? read() {
+      final f = server._families[familyId];
+      if (f == null || !f.members.containsKey(uid)) return null;
+      return f.days[dayKey] ?? const FamilyDay();
+    }
+
+    final first = read();
+    if (first == null) return;
+    yield first;
+    await for (final _ in server._changes.stream) {
+      final d = read();
+      if (d == null) return;
+      yield d;
+    }
+  }
+
+  @override
+  Future<FamilyDay> getDay(String familyId, String dayKey) async {
+    server._check();
+    final f = _family(familyId);
+    if (!f.members.containsKey(_uid)) throw StateError('members only');
+    return f.days[dayKey] ?? const FamilyDay();
+  }
+
+  @override
+  Future<FamilyDay> changeDay(
+    String familyId,
+    String dayKey, {
+    required String yesterdayKey,
+    required FamilyDay Function(FamilyDay today, FamilyDay yesterday) change,
+  }) async {
+    server._check();
+    final f = _family(familyId);
+    if (!f.members.containsKey(_uid)) throw StateError('members only');
+    final before = f.days[dayKey] ?? const FamilyDay();
+    final after = change(before, f.days[yesterdayKey] ?? const FamilyDay());
+    // As the rules: only your own letters, and a found word stays found.
+    for (final e in after.found.entries) {
+      if (e.key != _uid && !_sameList(before.found[e.key], e.value)) throw StateError('only your own letters');
+    }
+    if (before.solved && !after.solved) throw StateError('a found word stays found');
+    f.days[dayKey] = after;
+    server._changed();
+    return after;
+  }
+
+  bool _sameList(List<int>? a, List<int> b) => a != null && a.length == b.length && [for (int i = 0; i < b.length; i++) a[i] == b[i]].every((x) => x);
+
+  @override
+  Future<void> updateBuildings(
+    String familyId, {
+    required Map<String, int> buildings,
+    required List<String> newBuildings,
+    required String newOn,
+  }) async {
+    server._check();
+    final f = _family(familyId);
+    final m = f.members[_uid];
+    if (m == null) return;
+    f.members[_uid] = m.copyWith(buildings: buildings, newBuildings: newBuildings, newOn: newOn);
     server._changed();
   }
 

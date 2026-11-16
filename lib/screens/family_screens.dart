@@ -24,7 +24,9 @@ import '../village/structures.dart';
 import '../village/village_art.dart';
 import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
+import '../online/family_online_controller.dart';
 import 'family_online_screens.dart';
+import 'family_word_online_screens.dart';
 import 'infinite_estate_screen.dart';
 import 'players_screens.dart';
 
@@ -100,6 +102,10 @@ class _FamilyWordScreenState extends ConsumerState<FamilyWordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // In an online family, the family word is the online one (spec-09).
+    if (ref.watch(familyOnlineProvider.select((s) => s.stage)) == OnlineStage.member) {
+      return const OnlineFamilyWordScreen();
+    }
     final players = ref.watch(playersProvider);
     ref.watch(familyWordProvider);
     ref.watch(dailyChallengeProvider);

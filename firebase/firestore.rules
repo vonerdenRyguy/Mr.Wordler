@@ -10,6 +10,10 @@ rules_version = '2';
 //   families/{fid}                 the family's name and code. Members only.
 //   families/{fid}/members/{uid}   first name, color, word level, adult or not, the day they
 //                                  last played. Members only.
+//                                  Since spec-09 also their buildings (word -> count) and which
+//                                  are new today; never the village's words or letters.
+//   families/{fid}/days/{day}      the family word that day: who uncovered which letter
+//                                  positions, and whether it was found. Members only.
 //   families/{fid}/requests/{uid}  a child asking to join. The child and the family's grown-ups.
 //
 // Nothing about a child is readable by anyone outside the family, and a
@@ -31,10 +35,21 @@ service cloud.firestore {
     // The family as it will be once this write (or batch) is done.
     function familyAfter(fid) { return getAfter(familyPath(fid)).data; }
     function memberFields() {
-      return request.resource.data.keys().hasOnly(['name', 'colorIndex', 'level', 'adult', 'playedDay', 'joinCode', 'joinedAt'])
+      return request.resource.data.keys().hasOnly(['name', 'colorIndex', 'level', 'adult', 'playedDay', 'joinCode', 'joinedAt',
+                                                   'buildings', 'newBuildings', 'newOn'])
         && request.resource.data.name is string && request.resource.data.name.size() <= 12
         && request.resource.data.colorIndex is int
-        && request.resource.data.level is string;
+        && request.resource.data.level is string
+        && (!('buildings' in request.resource.data) || (request.resource.data.buildings is map
+                                                        && request.resource.data.buildings.size() <= 20))
+        && (!('newBuildings' in request.resource.data) || (request.resource.data.newBuildings is list
+                                                           && request.resource.data.newBuildings.size() <= 20));
+    }
+    function dayFields() {
+      return request.resource.data.keys().hasOnly(['found', 'solved', 'solvedEarly', 'solvedBy', 'streak'])
+        && request.resource.data.found is map
+        && request.resource.data.solved is bool
+        && request.resource.data.streak is int;
     }
 
     match /users/{uid} {
@@ -85,6 +100,19 @@ service cloud.firestore {
         allow update: if memberFields() && me() == uid
           && request.resource.data.adult == resource.data.adult;
         allow delete: if signedIn() && (me() == uid || isAdult(fid));
+      }
+
+      // The family word, one document a day (spec-09). Members only; each
+      // member adds only their own letters, and a found word stays found.
+      match /days/{day} {
+        allow read: if isMember(fid);
+        allow create: if isMember(fid) && dayFields()
+          && request.resource.data.found.keys().hasOnly([me()]);
+        allow update: if isMember(fid) && dayFields()
+          && request.resource.data.found.diff(resource.data.found).affectedKeys().hasOnly([me()])
+          && !(resource.data.solved == true && request.resource.data.solved == false);
+        // Only while closing the family, by its last member.
+        allow delete: if isMember(fid);
       }
 
       match /requests/{uid} {

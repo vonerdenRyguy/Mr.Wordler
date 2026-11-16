@@ -16,6 +16,7 @@ import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
+import 'family_word_online_screens.dart' show FamilyMapScreen;
 
 // Family online (spec-08): sign in, start or join a family with a code,
 // a grown-up's yes for every new member, and the account page. Reached from
@@ -172,10 +173,14 @@ class _IntroView extends ConsumerWidget {
                       _Tick('Your first name and color'),
                       _Tick('Your word level'),
                       _Tick('Whether you have played today'),
+                      _Tick('Your buildings, and how many of each'),
+                      _Tick('The family-word letters you uncover, and a right guess'),
                       SizedBox(height: WSize.gap3),
                       Text('STAYS ON THIS PHONE', style: WText.label),
                       SizedBox(height: WSize.gap2),
-                      _Tick('Your village, coins and puzzles', shared: false),
+                      _Tick("Your village's words and letters", shared: false),
+                      _Tick('Your coins, puzzles and clues', shared: false),
+                      _Tick('Wrong guesses', shared: false),
                     ],
                   ),
                 ),
@@ -1092,6 +1097,12 @@ class _AccountViewState extends ConsumerState<AccountView> {
             ),
           ),
           const SizedBox(height: WSize.gap3),
+          ChunkyButton(
+            label: 'The family map',
+            expand: true,
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const FamilyMapScreen())),
+          ),
+          const SizedBox(height: WSize.gap3),
           SendCodeButton(family: family),
           if (me.adult) ...[
             const SizedBox(height: WSize.gap3),
@@ -1195,6 +1206,7 @@ class ApproveCard extends StatelessWidget {
           const SizedBox(height: WSize.gap2),
           _Tick("${r.name}'s first name, color and level"),
           _Tick('Whether ${r.name} has played today'),
+          _Tick("${r.name}'s buildings and family-word letters"),
           if (r.group == AgeGroup.adult) const _Tick('They can say yes to new members too'),
           const SizedBox(height: WSize.gap2),
           Text(

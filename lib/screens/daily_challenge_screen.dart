@@ -441,9 +441,17 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
 
     // With a family on this phone, a finished Daily uncovers this player's
     // share of today's family word (spec-07).
+    // In an online family, it uncovers their share of the online family's
+    // word instead (spec-09).
     final players = ref.read(playersProvider);
     final familyWords = ref.read(wordsOfTheDayProvider).valueOrNull;
-    if (players.isFamily && familyWords != null && familyWords.isNotEmpty) {
+    final online = ref.read(familyOnlineProvider);
+    if (online.stage == OnlineStage.member && familyWords != null && familyWords.isNotEmpty) {
+      ref.read(familyOnlineProvider.notifier).recordPlayed(
+            now: widget.today,
+            word: familyWordFor(widget.today, familyWords).word,
+          );
+    } else if (players.isFamily && familyWords != null && familyWords.isNotEmpty) {
       ref.read(familyWordProvider.notifier).recordPlayed(
         playerId: players.currentId,
         now: widget.today,
