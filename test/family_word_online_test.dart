@@ -287,7 +287,7 @@ void main() {
       await tester.pumpWidget(app(nana, const FamilyMapScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Town Square'), findsOneWidget);
+      expect(find.text('Town\nSquare'), findsOneWidget);
       expect(find.text('Sam'), findsOneWidget);
       expect(find.text('3'), findsOneWidget); // Sam's buildings
       expect(find.text('Your plot: 0 buildings'), findsOneWidget);

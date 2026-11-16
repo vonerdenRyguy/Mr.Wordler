@@ -489,8 +489,9 @@ class _MapLayout extends StatelessWidget {
             child: const _Diamond(
               fill: WColors.paper,
               dashed: true,
+              fitInside: true,
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('Town Square', textAlign: TextAlign.center, style: WText.buttonSmall),
+                Text('Town\nSquare', textAlign: TextAlign.center, style: WText.buttonSmall),
                 Text('coming later', textAlign: TextAlign.center, style: WText.label),
               ]),
             ),
@@ -531,12 +532,21 @@ class _RoadsPainter extends CustomPainter {
 }
 
 class _Diamond extends StatelessWidget {
-  const _Diamond({required this.fill, required this.child, this.dashed = false, this.thick = false});
+  const _Diamond({
+    required this.fill,
+    required this.child,
+    this.dashed = false,
+    this.thick = false,
+    this.fitInside = false,
+  });
 
   final Color fill;
   final Widget child;
   final bool dashed;
   final bool thick;
+
+  /// Shrinks the child to fit wholly inside the diamond (for words).
+  final bool fitInside;
 
   @override
   Widget build(BuildContext context) {
@@ -557,7 +567,15 @@ class _Diamond extends StatelessWidget {
             ),
           ),
         ),
-        Padding(padding: const EdgeInsets.all(8), child: FittedBox(fit: BoxFit.scaleDown, child: child)),
+        if (fitInside)
+          // Text stays inside the diamond: the largest upright square in it.
+          FractionallySizedBox(
+            widthFactor: 0.52,
+            heightFactor: 0.52,
+            child: FittedBox(fit: BoxFit.scaleDown, child: child),
+          )
+        else
+          Padding(padding: const EdgeInsets.all(8), child: FittedBox(fit: BoxFit.scaleDown, child: child)),
       ],
     );
   }
