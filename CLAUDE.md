@@ -40,7 +40,7 @@ Flutter-generated output (already gitignored), not source.
 
 ## Current state (as of 2026-11-16)
 
-Built from specs 01-10, **all merged to master**. Specs 04 and 05 were
+Built from specs 01-11, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
 (spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
@@ -223,6 +223,28 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     `familyOnlineData.claimedGifts`. Rules in `firebase/firestore.rules`
     (published 2026-11-16).
   - Code: `lib/online/helping.dart`, `lib/screens/helping_screens.dart`.
+- **spec-11 Home as swipe pages** (branch `spec-11-home-pages`, merged
+  2026-11-16 after a check on both phones). Ryan asked for a less
+  cluttered Home, like Clash Royale's swipeable tabs.
+  - `HomeScreen` is a `PageView` of **Me | Play | Family**, opening on
+    Play, with `PageDots` and a slim `HomeTabBar` (`lib/ui/home_nav.dart`;
+    swiping is the main way around). Play: village picture, Daily card
+    (calendar tile, theme, level chip), Time Attack card. Me: level ring,
+    word of the day, four squares (Word journal, My properties, My stats,
+    Word level). Family: banner, family word, "From your family", two
+    squares (online: Family map + Cheer someone; one phone: The family +
+    Pass the phone); no family yet: "On this phone" / "On different
+    phones". The Family tab's red number counts new help items.
+  - Boxes fill the page with `_grow(flex, min)`: an `Expanded` around a
+    `MinHeightBox` whose min grows with text size, so big text scrolls
+    (never a scroll bar) instead of squeezing. Must fit one screen on the
+    Samsung at 1.15 (tested at 411x891).
+  - **Mr. W's tips** (`lib/screens/home_tips.dart`, `homeTipFor`): at most
+    one per page, only when useful; the X hides it for the day
+    (`hiddenTips`); Settings > Show tips (`showTips`). First-time "Swipe
+    to look around" card (`homeIntroSeen`). All three keys are per phone.
+    Tests that pump `MyApp` call `skipHomeIntro()` /
+    `goToHomePage()` from `test/home_test_helpers.dart`.
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -323,8 +345,8 @@ lib/
     grid_board_widget.dart    GridBoardView/GridRackView/GridTileWidget + GridTheme
   ui/                Design tokens + shared chunky widgets
   screens/
-    home_screen.dart          Level/coins, live village picture, Word of the
-                              day, Daily puzzle, Time Attack, Portfolio/Stats
+    home_screen.dart          Swipe pages Me | Play | Family (spec-11)
+    home_tips.dart            Mr. W's tips + hidden-for-today
     mode_start_pages.dart     Time Attack's start page
     time_attack_screen.dart, daily_challenge_screen.dart
     infinite_estate_screen.dart  The village (Words + Village views)
@@ -359,14 +381,15 @@ SharedPreferences keys: `infiniteEstateVillageSave`, `portfolioData`,
 `dailyChallengeData`, `modeStatsData`, `leaderboardEntries` (unused since
 spec-04, kept), `isDarkMode`, `textSizeStep`, `reduceMotion`, `wordOfDayData` (spec-05),
 `familyWordData` (spec-07), `familyOnlineData` (spec-08, per player;
-spec-10 adds `claimedGifts` inside it),
+spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
+`hiddenTips` (spec-11, per phone),
 `definitionCache_*`.
 
 ## Testing
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 193 tests as of spec-10 (170 as of spec-08).
+- `flutter test` — 202 tests as of spec-11 (193 as of spec-10).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
