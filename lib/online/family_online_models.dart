@@ -76,6 +76,8 @@ class OnlineMember {
     this.buildings = const {},
     this.newBuildings = const [],
     this.newOn,
+    this.wants,
+    this.wantsOn,
   });
 
   final String uid;
@@ -97,7 +99,14 @@ class OnlineMember {
   final List<String> newBuildings;
   final String? newOn;
 
+  /// The letter this member asked the family for (spec-10), on [wantsOn].
+  final String? wants;
+  final String? wantsOn;
+
   bool playedOn(String dayKey) => playedDay == dayKey;
+
+  /// Their request, if it's from [dayKey] (requests last one day).
+  String? wantsOnDay(String dayKey) => wantsOn == dayKey ? wants : null;
 
   OnlineMember copyWith({
     String? name,
@@ -107,6 +116,9 @@ class OnlineMember {
     Map<String, int>? buildings,
     List<String>? newBuildings,
     String? newOn,
+    String? wants,
+    String? wantsOn,
+    bool clearWants = false,
   }) =>
       OnlineMember(
         uid: uid,
@@ -118,6 +130,8 @@ class OnlineMember {
         buildings: buildings ?? this.buildings,
         newBuildings: newBuildings ?? this.newBuildings,
         newOn: newOn ?? this.newOn,
+        wants: clearWants ? null : (wants ?? this.wants),
+        wantsOn: clearWants ? null : (wantsOn ?? this.wantsOn),
       );
 
   int get buildingCount => buildings.values.fold(0, (a, b) => a + b);
@@ -361,6 +375,91 @@ abstract class FamilyBackend {
     required List<String> newBuildings,
     required String newOn,
   });
+
+  // ---- Helping (spec-10) ----
+
+  /// The family's gifts and cheers from [days] (today and yesterday), as
+  /// they change.
+  Stream<List<FamilyNote>> watchNotes(String familyId, List<String> days);
+
+  /// Sends a gift or cheer from this account. Returns it with its id.
+  Future<FamilyNote> sendNote(String familyId, FamilyNote note);
+
+  /// Deletes gifts and cheers sent to this account that aren't from
+  /// [keepDays], so old ones don't pile up.
+  Future<void> cleanUpNotes(String familyId, List<String> keepDays);
+
+  /// Asks the family for [letter] today, or takes the request back (null).
+  Future<void> setWants(String familyId, String? letter, String dayKey);
+}
+
+enum NoteKind { gift, cheer }
+
+/// A gift (a letter for someone's village rack) or a cheer (a sticker)
+/// from one family member to another (spec-10). Nothing is ever typed.
+class FamilyNote {
+  const FamilyNote({
+    this.id = '',
+    required this.kind,
+    required this.from,
+    required this.to,
+    required this.day,
+    this.letter,
+    this.sticker,
+    this.about,
+    this.at = 0,
+  });
+
+  final String id;
+  final NoteKind kind;
+  final String from;
+  final String to;
+
+  /// The UTC day it was sent (dailyDateKey).
+  final String day;
+
+  /// A gift's letter, A-Z.
+  final String? letter;
+
+  /// A cheer's sticker id (see kStickers).
+  final String? sticker;
+
+  /// What a cheer is for: a building's word, or "family word". Optional.
+  final String? about;
+
+  /// When it was sent, in milliseconds since 1970 (for newest first).
+  final int at;
+
+  Map<String, Object?> toData() => {
+        'kind': kind.name,
+        'from': from,
+        'to': to,
+        'day': day,
+        if (letter != null) 'letter': letter,
+        if (sticker != null) 'sticker': sticker,
+        if (about != null) 'about': about,
+        'at': at,
+      };
+
+  static FamilyNote? fromData(String id, Map<String, Object?> d) {
+    final kind = NoteKind.values.where((k) => k.name == d['kind']).firstOrNull;
+    final from = d['from'], to = d['to'], day = d['day'];
+    if (kind == null || from is! String || to is! String || day is! String) return null;
+    return FamilyNote(
+      id: id,
+      kind: kind,
+      from: from,
+      to: to,
+      day: day,
+      letter: d['letter'] as String?,
+      sticker: d['sticker'] as String?,
+      about: d['about'] as String?,
+      at: (d['at'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  FamilyNote withId(String id) => FamilyNote(
+      id: id, kind: kind, from: from, to: to, day: day, letter: letter, sticker: sticker, about: about, at: at);
 }
 
 // ---- Family codes ----------------------------------------------------------

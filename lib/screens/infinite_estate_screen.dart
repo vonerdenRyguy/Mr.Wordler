@@ -9,6 +9,8 @@ import '../game/grid_game_state.dart';
 import '../game/grid_providers.dart';
 import '../game/word_landing.dart' show wordCheckProvider;
 import '../game/word_runs.dart';
+import '../online/family_online_controller.dart';
+import 'helping_screens.dart' show showGiftsArrived;
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/bridge_transform.dart';
@@ -147,6 +149,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // deliberately not persisted -- it's about tracking intent within a
   // single visit, not a permanent record.
   final Set<int> _pinnedRackIndices = {};
+  // Rack slots holding a letter gift from the family this visit (spec-10),
+  // shown with a gold stripe. Like pins, not saved.
+  Set<int> _giftRackIndices = {};
 
   // Well structure ability: one free bonus letter draw per visit to the
   // village (not per session-open -- reopening the app doesn't reset it,
@@ -277,6 +282,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     // with (restored or fresh).
     await _refreshStructures();
     await _refreshScore();
+    await _takeGifts();
   }
 
   Future<void> _saveVillage() async {
@@ -311,12 +317,30 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // refill happens to draw the identical letter into the same slot, the
   // two are indistinguishable and the pin stays.
   void _updatePinsAfterRackChange(GridGameState previous, GridGameState next) {
+    // Gift stripes (spec-10) follow their letters the same way pins do.
+    if (_giftRackIndices.isNotEmpty) {
+      final gifts = _followLetters(_giftRackIndices, previous, next);
+      if (gifts.length != _giftRackIndices.length || !gifts.containsAll(_giftRackIndices)) {
+        setState(() => _giftRackIndices = gifts);
+      }
+    }
     if (_pinnedRackIndices.isEmpty) return;
+    final updated = _followLetters(_pinnedRackIndices, previous, next);
+    if (updated.length != _pinnedRackIndices.length || !updated.containsAll(_pinnedRackIndices)) {
+      setState(() {
+        _pinnedRackIndices
+          ..clear()
+          ..addAll(updated);
+      });
+    }
+  }
+
+  Set<int> _followLetters(Set<int> indices, GridGameState previous, GridGameState next) {
     final before = previous.rackCells;
     final after = next.rackCells;
     final boardChanged = previous.boardCells != next.boardCells;
     final updated = <int>{};
-    for (final i in _pinnedRackIndices) {
+    for (final i in indices) {
       final letter = i < before.length ? before[i] : null;
       if (letter == null) continue;
       if (i < after.length && after[i] == letter) {
@@ -333,13 +357,33 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         }
       }
     }
-    if (updated.length != _pinnedRackIndices.length || !updated.containsAll(_pinnedRackIndices)) {
-      setState(() {
-        _pinnedRackIndices
-          ..clear()
-          ..addAll(updated);
-      });
+    return updated;
+  }
+
+  // Letter gifts from the family (spec-10): any waiting ones land in the
+  // rack as bonus tiles, on top of the 10, once the village has loaded.
+  Future<void> _takeGifts() async {
+    final online = ref.read(familyOnlineProvider.notifier);
+    await online.ready;
+    // The family's notes arrive a moment after the family itself.
+    for (int i = 0; i < 20 && mounted; i++) {
+      if (ref.read(familyOnlineProvider).stage != OnlineStage.member) return;
+      if (online.waitingGiftsForMe.isNotEmpty) break;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
+    if (!mounted) return;
+    final gifts = await online.takeGifts();
+    if (!mounted || gifts.isEmpty) return;
+    final controller = ref.read(gridGameControllerProvider.notifier);
+    final added = <int>{};
+    for (final g in gifts) {
+      added.add(controller.addGiftLetter(g.letter!));
+    }
+    setState(() => _giftRackIndices = {..._giftRackIndices, ...added});
+    await _saveVillage();
+    if (!mounted) return;
+    HapticFeedback.lightImpact();
+    await showGiftsArrived(context, ref, gifts);
   }
 
   void _openJournal() {
@@ -995,6 +1039,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                       cellPadding: 2,
                                       pinnedIndices: _pinnedRackIndices,
                                       onTogglePin: _togglePin,
+                                      stripes: {for (final i in _giftRackIndices) i: WColors.sun},
                                     ),
                                   ),
                                 ),

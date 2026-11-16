@@ -260,6 +260,15 @@ class GridGameController extends StateNotifier<GridGameState> {
     return true;
   }
 
+  // Adds a given letter (a gift from the family, spec-10) as a new bonus
+  // slot at the end of the rack, on top of the base rack. It doesn't come
+  // from the pool. Returns the rack index it went to.
+  int addGiftLetter(String letter) {
+    final rack = List<String?>.from(state.rackCells)..add(letter);
+    state = state.copyWith(rackCells: rack, dealtLetters: [...state.dealtLetters, letter]);
+    return rack.length - 1;
+  }
+
   // Replaces the current board/rack/pool wholesale, e.g. to resume a
   // previously-saved session (Infinite Estate's persisted village).
   // Ignored (no-op) if the saved shapes don't match this controller's

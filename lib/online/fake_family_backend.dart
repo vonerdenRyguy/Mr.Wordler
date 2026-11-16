@@ -17,6 +17,7 @@ class _FakeFamily {
   final Map<String, OnlineMember> members = {};
   final Map<String, JoinRequest> requests = {};
   final Map<String, FamilyDay> days = {};
+  final Map<String, FamilyNote> notes = {};
 }
 
 class FakeFamilyServer {
@@ -334,6 +335,64 @@ class FakeFamilyBackend implements FamilyBackend {
     final m = f.members[_uid];
     if (m == null) return;
     f.members[_uid] = m.copyWith(buildings: buildings, newBuildings: newBuildings, newOn: newOn);
+    server._changed();
+  }
+
+  // ---- spec-10 ----
+
+  @override
+  Stream<List<FamilyNote>> watchNotes(String familyId, List<String> days) async* {
+    final uid = _uid;
+    List<FamilyNote>? read() {
+      final f = server._families[familyId];
+      if (f == null || !f.members.containsKey(uid)) return null;
+      return [for (final n in f.notes.values) if (days.contains(n.day)) n];
+    }
+
+    final first = read();
+    if (first == null) return;
+    yield first;
+    await for (final _ in server._changes.stream) {
+      final n = read();
+      if (n == null) return;
+      yield n;
+    }
+  }
+
+  @override
+  Future<FamilyNote> sendNote(String familyId, FamilyNote note) async {
+    server._check();
+    final f = _family(familyId);
+    // As the rules: members only, as yourself, to someone else in the family.
+    if (!f.members.containsKey(_uid)) throw StateError('members only');
+    if (note.from != _uid) throw StateError('only as yourself');
+    if (note.to == _uid || !f.members.containsKey(note.to)) throw StateError('only to someone in the family');
+    if (note.kind == NoteKind.gift && !RegExp(r'^[A-Z]$').hasMatch(note.letter ?? '')) throw StateError('one letter');
+    final saved = note.withId(server.newId('n'));
+    f.notes[saved.id] = saved;
+    server._changed();
+    return saved;
+  }
+
+  @override
+  Future<void> cleanUpNotes(String familyId, List<String> keepDays) async {
+    server._check();
+    final f = _family(familyId);
+    final uid = _uid;
+    f.notes.removeWhere((_, n) => n.to == uid && !keepDays.contains(n.day));
+    server._changed();
+  }
+
+  /// Every gift and cheer on the server, for tests.
+  List<FamilyNote> allNotes(String familyId) => [...?server._families[familyId]?.notes.values];
+
+  @override
+  Future<void> setWants(String familyId, String? letter, String dayKey) async {
+    server._check();
+    final f = _family(familyId);
+    final m = f.members[_uid];
+    if (m == null) return;
+    f.members[_uid] = letter == null ? m.copyWith(clearWants: true) : m.copyWith(wants: letter, wantsOn: dayKey);
     server._changed();
   }
 
