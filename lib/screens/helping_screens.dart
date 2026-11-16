@@ -438,7 +438,8 @@ class HelpItemRow extends ConsumerWidget {
       final letter = item.letter!;
       text = Text.rich(TextSpan(style: WText.body, children: [
         TextSpan(text: name, style: WText.bodyBold),
-        TextSpan(text: ' is looking for ${_article(letter)} '),
+        // A no-break space keeps "an R" together on one line.
+        TextSpan(text: ' is looking for ${_article(letter)} '),
         TextSpan(text: letter, style: WText.bodyBold),
       ]));
       final left = ref.read(familyOnlineProvider.notifier).giftsLeftToday;
@@ -570,15 +571,24 @@ Future<void> showGiftsArrived(BuildContext context, WidgetRef ref, List<FamilyNo
   if (gifts.isEmpty || family == null) return;
   final senders = <String>{for (final g in gifts) g.from};
   String nameOf(String uid) => family.member(uid)?.name ?? 'Someone';
-  final title = gifts.length == 1
+  final one = gifts.length == 1;
+  final title = one
       ? '${nameOf(gifts.first.from)} sent you ${_article(gifts.first.letter!)} ${gifts.first.letter}!'
-      : 'Your family sent you ${gifts.length} letters!';
-  final lines = gifts.length == 1 ? '' : '${[for (final g in gifts) '${g.letter} from ${nameOf(g.from)}'].join(', ')}. ';
+      : senders.length == 1
+          ? '${nameOf(senders.first)} sent you ${gifts.length} letters!'
+          : 'Your family sent you ${gifts.length} letters!';
+  final lines = one
+      ? ''
+      : senders.length == 1
+          ? '${[for (final g in gifts) g.letter].join(', ')}. '
+          : '${[for (final g in gifts) '${g.letter} from ${nameOf(g.from)}'].join(', ')}. ';
   await showWordlerDialog<void>(
     context,
     title: title,
     icon: const Text('\u{1F381}', style: TextStyle(fontSize: 34), textScaler: TextScaler.noScaling),
-    bodyText: "${lines}It's in your rack with a gold stripe, on top of your 10 letters.",
+    bodyText: one
+        ? "It's in your rack with a gold stripe, on top of your 10 letters."
+        : "${lines}They're in your rack with gold stripes, on top of your 10 letters.",
     actions: [
       WordlerDialogAction('Say thank you', () async {
         final c = ref.read(familyOnlineProvider.notifier);

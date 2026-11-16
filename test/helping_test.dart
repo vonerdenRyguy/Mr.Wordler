@@ -278,9 +278,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('sent you a '), findsOneWidget);
       expect(find.textContaining('High five!'), findsOneWidget);
-      expect(find.textContaining('is looking for an '), findsOneWidget);
+      expect(find.textContaining('is looking for an R'), findsOneWidget);
       expect(find.text('Send'), findsOneWidget);
       expect(find.textContaining('there is no chat'), findsOneWidget);
+    });
+
+    testWidgets('three gifts arrive: one box, Say thank you', (tester) async {
+      final (nana, sam, fid) = await setup();
+      final n = nana.account!.uid, s = sam.account!.uid;
+      for (final (i, l) in ['E', 'A', 'S'].indexed) {
+        await sam.sendNote(fid, _gift(s, n, l, today, at: i + 1));
+      }
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(app(
+        nana,
+        Consumer(
+          builder: (context, ref, _) {
+            // Home keeps the family loaded, as the app does.
+            ref.watch(familyOnlineProvider);
+            return Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () async {
+                    final gifts = await ref.read(familyOnlineProvider.notifier).takeGifts();
+                    if (context.mounted) await showGiftsArrived(context, ref, gifts);
+                  },
+                  child: const Text('Visit'),
+                ),
+              ),
+            );
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Visit'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sam sent you 3 letters!'), findsOneWidget);
+      expect(find.textContaining("They're in your rack"), findsOneWidget);
+      await tester.tap(find.text('Say thank you'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sam sent you 3 letters!'), findsNothing);
+      final thanks = [for (final x in sam.allNotes(fid)) if (x.kind == NoteKind.cheer) x];
+      expect(thanks.single.sticker, kThankYouSticker, reason: 'one thank-you per sender');
     });
   });
 }
