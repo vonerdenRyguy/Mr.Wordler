@@ -379,7 +379,9 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       _pendingBuildings = buildings;
       return;
     }
-    if (_sameCounts(me.buildings, buildings)) return;
+    // Sent once even when empty, so a brand new village's first building
+    // counts as new rather than as "already there".
+    if (_sameCounts(me.buildings, buildings) && me.newOn != null) return;
     final key = dailyDateKey(_clock());
     // The very first time, nothing counts as new: it was all there before.
     final firstTime = me.newOn == null && me.buildings.isEmpty;

@@ -205,6 +205,18 @@ void main() {
       expect(me.buildingCount, 4);
       expect(me.newOnDay(dailyDateKey(DateTime.now())), unorderedEquals(['WELL', 'FARM']));
 
+      // A brand new village: the empty first send counts, so the first
+      // building ever is new today.
+      final c2 = make();
+      addTearDown(c2.dispose);
+      final fresh = c2.read(familyOnlineProvider.notifier);
+      await family(c2);
+      await fresh.syncBuildings({});
+      await _settle();
+      await fresh.syncBuildings({'FARM': 1});
+      await _settle();
+      expect(c2.read(familyOnlineProvider).me!.newOnDay(dailyDateKey(DateTime.now())), ['FARM']);
+
       // Leo sees them; nothing else about the village is there to see.
       final seen = (await leo.watchFamily(fid).first)!.member(me.uid)!;
       expect(seen.buildings, {'WELL': 2, 'BARN': 1, 'FARM': 1});
