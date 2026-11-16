@@ -24,9 +24,13 @@ plenty for a family game.
      (passwordless sign-in)**. Leave plain passwords off if it lets you.
    - **Anonymous** (used only for children under 13, who never give an
      email; a grown-up's yes is what lets them in)
-5. **Turn on Hosting.** Build > Hosting > Get started, and click through
-   (no need to deploy anything). The emailed sign-in links open the app
-   through the project's own `web.app` address.
+5. **Turn on Hosting.** Build > Hosting > Get started, and click through.
+   Then publish `firebase/hosting/` from a terminal, in the `firebase`
+   folder: `npx firebase-tools login`, then
+   `npx firebase-tools deploy --only hosting`. Its
+   `.well-known/assetlinks.json` is what lets Android open emailed sign-in
+   links in the app; without it they land on "Site Not Found". (Done
+   2026-11-16. A release key's SHA-256 must be added to that file too.)
 6. **Create the database.** Build > Firestore Database > Create database
    > a US location > **Start in production mode**.
 7. **Paste the rules.** In Firestore > Rules, replace everything with the
