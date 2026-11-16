@@ -34,6 +34,7 @@ import '../village/village_save.dart';
 import 'daily_challenge_screen.dart';
 import 'family_screens.dart';
 import 'family_word_online_screens.dart';
+import 'helping_screens.dart';
 import 'infinite_estate_screen.dart';
 import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
@@ -199,6 +200,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         child: _VillageCard(village: _village, onVisit: () => _open(const InfiniteEstateScreen())),
                       ),
                       const SizedBox(height: 8),
+                      // Gifts, cheers and requests (spec-10).
+                      if (onlineFamily != null) const FromFamilyCard(),
                       if (familyWord != null)
                         _FamilyWordCard(
                           word: familyWord.word,

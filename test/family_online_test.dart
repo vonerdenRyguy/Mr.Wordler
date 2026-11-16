@@ -371,6 +371,17 @@ void main() {
       expect(find.text('Email me a sign-in link'), findsOneWidget);
     });
 
+    testWidgets('before signing in: what is shared, and that there is no chat', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 2000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(app(FakeFamilyServer(), FamilyOnlineScreen(key: UniqueKey())));
+      await tester.pumpAndSettle();
+      expect(find.text('Letters you give or ask for'), findsOneWidget);
+      expect(find.text('Cheers you send: a sticker and your name'), findsOneWidget);
+      expect(find.text('Typed messages: there is no chat'), findsOneWidget);
+      expect(find.text('Anything to or from people outside the family'), findsOneWidget);
+    });
+
     testWidgets('a grown-up sees who asked, and the family with who played', (tester) async {
       final server = FakeFamilyServer();
       final (nana, family) = await _nanaStarts(server);
@@ -392,6 +403,7 @@ void main() {
       expect(find.textContaining('Born 2018 · Under 13'), findsOneWidget);
       expect(find.text(showFamilyCode(family.code)), findsOneWidget);
       expect(find.text('Played'), findsOneWidget);
+      expect(find.textContaining('Letters and cheer stickers Leo sends'), findsOneWidget);
 
       await tester.tap(find.text('Yes, Leo can join'));
       await tester.pumpAndSettle();

@@ -20,6 +20,7 @@ import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
 import '../village/magic_word.dart';
 import 'daily_challenge_screen.dart';
+import 'helping_screens.dart';
 
 // The family word and the family map online (spec-09). Everyone in an online
 // family, on every phone, shares one word a day; each person's finished
@@ -693,6 +694,9 @@ class PlotScreen extends ConsumerWidget {
               ),
             ]),
           ),
+          const SizedBox(height: WSize.gap3),
+          // Helping each other (spec-10).
+          PlotHelp(member: m),
           const SizedBox(height: WSize.gap3),
           if (m.buildings.isEmpty)
             ChunkyCard(

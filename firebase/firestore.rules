@@ -12,8 +12,11 @@ rules_version = '2';
 //                                  last played. Members only.
 //                                  Since spec-09 also their buildings (word -> count) and which
 //                                  are new today; never the village's words or letters.
+//                                  Since spec-10 also a letter they asked the family for today.
 //   families/{fid}/days/{day}      the family word that day: who uncovered which letter
 //                                  positions, and whether it was found. Members only.
+//   families/{fid}/notes/{id}      gifts (one letter) and cheers (a sticker) between members.
+//                                  Members only; nothing typed.
 //   families/{fid}/requests/{uid}  a child asking to join. The child and the family's grown-ups.
 //
 // Nothing about a child is readable by anyone outside the family, and a
@@ -36,7 +39,8 @@ service cloud.firestore {
     function familyAfter(fid) { return getAfter(familyPath(fid)).data; }
     function memberFields() {
       return request.resource.data.keys().hasOnly(['name', 'colorIndex', 'level', 'adult', 'playedDay', 'joinCode', 'joinedAt',
-                                                   'buildings', 'newBuildings', 'newOn'])
+                                                   'buildings', 'newBuildings', 'newOn', 'wants', 'wantsOn'])
+        && (!('wants' in request.resource.data) || request.resource.data.wants.matches('^[A-Z]$'))
         && request.resource.data.name is string && request.resource.data.name.size() <= 12
         && request.resource.data.colorIndex is int
         && request.resource.data.level is string
@@ -113,6 +117,26 @@ service cloud.firestore {
           && !(resource.data.solved == true && request.resource.data.solved == false);
         // Only while closing the family, by its last member.
         allow delete: if isMember(fid);
+      }
+
+      // Gifts and cheers (spec-10): from one member to another, as yourself.
+      // A gift is one letter; a cheer is a sticker id. Nothing is typed.
+      match /notes/{id} {
+        allow read: if isMember(fid);
+        allow create: if isMember(fid)
+          && request.resource.data.keys().hasOnly(['kind', 'from', 'to', 'day', 'letter', 'sticker', 'about', 'at'])
+          && request.resource.data.from == me()
+          && request.resource.data.to is string && request.resource.data.to != me()
+          && exists(memberPath(fid, request.resource.data.to))
+          && request.resource.data.day is string && request.resource.data.day.size() <= 10
+          && ((request.resource.data.kind == 'gift' && request.resource.data.letter.matches('^[A-Z]$'))
+              || (request.resource.data.kind == 'cheer' && request.resource.data.sticker.matches('^[a-z]{1,12}$')))
+          && (!('about' in request.resource.data) || (request.resource.data.about is string
+                                                      && request.resource.data.about.size() <= 24));
+        allow update: if false;
+        // The receiver or sender tidies up; or the last member closing the family.
+        allow delete: if isMember(fid) && (resource.data.to == me() || resource.data.from == me()
+                                           || !existsAfter(familyPath(fid)));
       }
 
       match /requests/{uid} {

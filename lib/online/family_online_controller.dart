@@ -9,6 +9,7 @@ import '../players/family_word.dart' show familyRevealOrder, kFamilyWordCoins, k
 import '../players/players.dart';
 import 'family_online_models.dart';
 import 'firebase_family_backend.dart';
+import 'helping.dart';
 
 // Family online for the player holding the phone (spec-08): their sign-in,
 // their family, and a request to join that is waiting for a grown-up.
@@ -48,6 +49,7 @@ class FamilyOnlineState {
     this.declined = false,
     this.emailSentTo,
     this.day,
+    this.notes = const [],
   });
 
   final OnlineStage stage;
@@ -69,6 +71,9 @@ class FamilyOnlineState {
   /// Today's family word online (spec-09), once it has loaded.
   final FamilyDay? day;
 
+  /// Today's and yesterday's gifts and cheers in the family (spec-10).
+  final List<FamilyNote> notes;
+
   bool get isAdult => group == AgeGroup.adult;
 
   OnlineMember? get me {
@@ -87,6 +92,7 @@ class FamilyOnlineState {
     bool? declined,
     String? emailSentTo,
     FamilyDay? day,
+    List<FamilyNote>? notes,
     bool clearFamily = false,
     bool clearWaiting = false,
     bool clearAccount = false,
@@ -103,6 +109,7 @@ class FamilyOnlineState {
         declined: declined ?? this.declined,
         emailSentTo: clearEmail ? null : (emailSentTo ?? this.emailSentTo),
         day: clearFamily ? null : (day ?? this.day),
+        notes: clearFamily ? const [] : (notes ?? this.notes),
       );
 }
 
@@ -121,7 +128,11 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   StreamSubscription<OnlineFamily?>? _familySub;
   StreamSubscription<RequestStatus>? _requestSub;
   StreamSubscription<FamilyDay>? _daySub;
+  StreamSubscription<List<FamilyNote>>? _notesSub;
   String? _dayKey;
+
+  /// Gifts already added to this player's village rack (spec-10).
+  List<String> _claimedGifts = const [];
   late final Future<void> _ready;
 
   /// Family-word days this player has collected coins for (spec-09).
@@ -161,6 +172,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     if (!mounted) return;
     _pendingEmail = saved['pendingEmail'] as String?;
     _paidDays = [for (final d in (saved['paidWordDays'] as List? ?? const [])) d as String];
+    _claimedGifts = [for (final d in (saved['claimedGifts'] as List? ?? const [])) d as String];
     final account = backend.account;
     if (account == null) {
       state = FamilyOnlineState(stage: OnlineStage.signedOut, emailSentTo: _pendingEmail);
@@ -203,6 +215,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
         // So other players on this phone can tell this account is here.
         if (s.account != null) 'uid': s.account!.uid,
         if (_paidDays.isNotEmpty) 'paidWordDays': _paidDays,
+        if (_claimedGifts.isNotEmpty) 'claimedGifts': _claimedGifts,
       }),
     );
   }
@@ -259,6 +272,8 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   void _stopDay() {
     unawaited(_daySub?.cancel());
     _daySub = null;
+    unawaited(_notesSub?.cancel());
+    _notesSub = null;
     _dayKey = null;
   }
 
@@ -275,6 +290,109 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     _daySub = _backend!.watchDay(fid, key).listen((day) {
       if (mounted && _dayKey == key) state = state.copyWith(day: day);
     }, onError: (Object _) {});
+    // Gifts and cheers (spec-10): today's and yesterday's.
+    final days = [key, _yesterdayKey(_clock())];
+    _notesSub = _backend!.watchNotes(fid, days).listen((notes) {
+      if (mounted && _dayKey == key) state = state.copyWith(notes: notes);
+    }, onError: (Object _) {});
+    unawaited(_backend!.cleanUpNotes(fid, days).catchError((Object _) {}));
+  }
+
+  // ---- Helping (spec-10) ----
+
+  String get _today => dailyDateKey(_clock());
+
+  /// Letter gifts this player can still send today.
+  int get giftsLeftToday {
+    final me = state.account?.uid;
+    return me == null ? 0 : giftsLeft(state.notes, me, _today);
+  }
+
+  /// Sends [letter] to [toUid]'s village rack. False when none are left
+  /// today or it couldn't be sent (offline).
+  Future<bool> giveLetter(String toUid, String letter) async {
+    await _ready;
+    if (!_inFamily || giftsLeftToday <= 0) return false;
+    final note = FamilyNote(
+      kind: NoteKind.gift,
+      from: state.account!.uid,
+      to: toUid,
+      day: _today,
+      letter: letter.toUpperCase(),
+      at: _clock().millisecondsSinceEpoch,
+    );
+    try {
+      final sent = await _backend!.sendNote(state.familyId!, note);
+      // Counted straight away, before the server echoes it back.
+      if (mounted && !state.notes.any((n) => n.id == sent.id)) state = state.copyWith(notes: [...state.notes, sent]);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Sends a sticker to [toUid], optionally about a building or the
+  /// family word. False if it couldn't be sent.
+  Future<bool> cheer(String toUid, String stickerId, {String? about}) async {
+    await _ready;
+    if (!_inFamily) return false;
+    try {
+      await _backend!.sendNote(
+        state.familyId!,
+        FamilyNote(
+          kind: NoteKind.cheer,
+          from: state.account!.uid,
+          to: toUid,
+          day: _today,
+          sticker: stickerId,
+          about: about,
+          at: _clock().millisecondsSinceEpoch,
+        ),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Asks the family for [letter] today; null takes the request back.
+  Future<bool> askFor(String? letter) async {
+    await _ready;
+    if (!_inFamily) return false;
+    try {
+      await _backend!.setWants(state.familyId!, letter?.toUpperCase(), _today);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// This player's request that nobody has answered yet today.
+  String? get myOpenRequest {
+    final me = state.me;
+    return me == null ? null : openRequest(me, state.notes, _today);
+  }
+
+  /// Gifts sent to this player that aren't in their rack yet.
+  List<FamilyNote> get waitingGiftsForMe {
+    final me = state.account?.uid;
+    if (me == null || !_inFamily) return const [];
+    return waitingGifts(state.notes, me, _claimedGifts.toSet());
+  }
+
+  /// Takes up to [max] waiting gifts for the village rack and remembers
+  /// them, so each gift arrives once.
+  Future<List<FamilyNote>> takeGifts({int max = kGiftsPerVisit}) async {
+    await _ready;
+    final gifts = waitingGiftsForMe.take(max).toList();
+    if (gifts.isEmpty) return const [];
+    final keep = {for (final n in state.notes) n.id};
+    _claimedGifts = [
+      for (final id in _claimedGifts) if (keep.contains(id)) id,
+      for (final g in gifts) g.id,
+    ];
+    await _save();
+    return gifts;
   }
 
   bool get _inFamily => state.stage == OnlineStage.member && state.familyId != null && state.account != null;
@@ -593,6 +711,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     _familySub?.cancel();
     _requestSub?.cancel();
     _daySub?.cancel();
+    _notesSub?.cancel();
     super.dispose();
   }
 }

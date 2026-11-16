@@ -358,7 +358,11 @@ class GridRackView extends ConsumerWidget {
     this.childAspectRatio = 0.7,
     this.bordered = true,
     this.cellPadding = 4.0,
+    this.stripes = const {},
   });
+
+  // Rack index -> stripe color (Infinite Estate: a gift from the family).
+  final Map<int, Color> stripes;
 
   final int crossAxisCount;
   // False when the caller draws its own frame around the rack.
@@ -398,6 +402,7 @@ class GridRackView extends ConsumerWidget {
                   theme: theme,
                   isPinned: pinnedIndices.contains(index),
                   onTogglePin: onTogglePin,
+                  stripe: stripes[index],
                 ),
               ),
             );

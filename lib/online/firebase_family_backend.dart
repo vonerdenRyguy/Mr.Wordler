@@ -247,6 +247,8 @@ class FirebaseFamilyBackend implements FamilyBackend {
       },
       newBuildings: [for (final w in (data['newBuildings'] as List? ?? const [])) w as String],
       newOn: data['newOn'] as String?,
+      wants: data['wants'] as String?,
+      wantsOn: data['wantsOn'] as String?,
     );
   }
 
@@ -397,6 +399,43 @@ class FirebaseFamilyBackend implements FamilyBackend {
         'newOn': newOn,
       });
 
+  // ---- Helping (spec-10) ----
+
+  CollectionReference<Map<String, dynamic>> _notes(String fid) => _family(fid).collection('notes');
+
+  @override
+  Stream<List<FamilyNote>> watchNotes(String familyId, List<String> days) =>
+      _notes(familyId).where('day', whereIn: days).snapshots().map((s) => [
+            for (final d in s.docs)
+              if (FamilyNote.fromData(d.id, d.data()) case final note?) note,
+          ]);
+
+  @override
+  Future<FamilyNote> sendNote(String familyId, FamilyNote note) async {
+    final ref = _notes(familyId).doc();
+    await ref.set(note.toData());
+    return note.withId(ref.id);
+  }
+
+  @override
+  Future<void> cleanUpNotes(String familyId, List<String> keepDays) async {
+    final old = await _notes(familyId).where('to', isEqualTo: _uid).get();
+    final batch = _db.batch();
+    var n = 0;
+    for (final d in old.docs) {
+      if (keepDays.contains(d.data()['day']) || n >= 400) continue;
+      batch.delete(d.reference);
+      n++;
+    }
+    if (n > 0) await batch.commit();
+  }
+
+  @override
+  Future<void> setWants(String familyId, String? letter, String dayKey) => _member(familyId, _uid).update({
+        'wants': letter ?? FieldValue.delete(),
+        'wantsOn': letter == null ? FieldValue.delete() : dayKey,
+      });
+
   Future<List<String>> _adultNames(String familyId) async {
     final members = await _family(familyId).collection('members').get();
     return [for (final d in members.docs) if (_toMember(d).adult) _toMember(d).name];
@@ -438,9 +477,11 @@ class FirebaseFamilyBackend implements FamilyBackend {
     if (leaving == null) return;
     final batch = _db.batch()..delete(_member(familyId, uid));
     if (members.docs.length == 1) {
-      // The last one out closes the family, and its family-word days go too.
+      // The last one out closes the family, and its family-word days and
+      // gifts and cheers go too.
       final days = await _family(familyId).collection('days').get();
-      for (final d in days.docs.take(400)) {
+      final notes = await _notes(familyId).get();
+      for (final d in [...days.docs, ...notes.docs].take(450)) {
         batch.delete(d.reference);
       }
       batch.delete(_family(familyId));
