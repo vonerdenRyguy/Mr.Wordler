@@ -14,6 +14,7 @@ import 'package:namer_app/daily/word_of_the_day.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/home_tips.dart';
 import 'package:namer_app/settings/settings_controller.dart';
+import 'package:namer_app/ui/home_nav.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -101,6 +102,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(playTip), findsNothing);
     expect(find.byTooltip('Hide tip'), findsNothing);
+  });
+
+  testWidgets("on the Samsung (text 1.15, with a tip showing) Me still fits one screen", (tester) async {
+    SharedPreferences.setMockInitialValues({SettingsController.homeIntroSeenKey: true});
+    tester.platformDispatcher.textScaleFactorTestValue = 1.15;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    const size = Size(411, 891);
+    await pumpHome(tester, size: size);
+    await goToHomePage(tester, 'Me');
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Spell the word of the day in your village for +10 coins.'), findsOneWidget);
+    for (final label in ['My stats', 'Word level', 'Word journal']) {
+      final box = tester.getRect(find.text(label));
+      expect(box.bottom, lessThan(tester.getRect(find.byType(TipBar)).top), reason: label);
+    }
   });
 
   testWidgets('at Extra large text every page still works without overflow', (tester) async {

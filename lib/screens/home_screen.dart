@@ -724,24 +724,24 @@ class _MePage extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(children: [
             SizedBox(
-              width: 72,
-              height: 72,
+              width: 62,
+              height: 62,
               child: Stack(alignment: Alignment.center, children: [
                 SizedBox.expand(
                   child: CircularProgressIndicator(
                     value: level.progress,
-                    strokeWidth: 7,
+                    strokeWidth: 6,
                     color: WColors.grass,
                     backgroundColor: WColors.boardCell,
                   ),
                 ),
-                PlayerAvatar(player: player, size: 54),
+                PlayerAvatar(player: player, size: 46),
               ]),
             ),
             const SizedBox(width: WSize.gap3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Level ${level.level}', style: WText.heading.copyWith(fontSize: 28)),
+                Text('Level ${level.level}', style: WText.heading.copyWith(fontSize: 26)),
                 const SizedBox(height: 4),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
@@ -762,7 +762,7 @@ class _MePage extends StatelessWidget {
       const SizedBox(height: 10),
       _grow(
         3,
-        180,
+        160,
         Semantics(
           button: word != null,
           label: word == null ? 'Word of the day' : 'Word of the day: ${word.word}. ${word.meaning} Open.',
@@ -782,11 +782,9 @@ class _MePage extends StatelessWidget {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
-                  child: Text(word?.word ?? '', maxLines: 1, style: WText.title.copyWith(fontSize: 42, letterSpacing: 1.5)),
+                  child: Text(word?.word ?? '', maxLines: 1, style: WText.title.copyWith(fontSize: 38, letterSpacing: 1.5)),
                 ),
                 Text(word?.meaning ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: WText.body),
-                if (word != null && !wordClaimed)
-                  Text('Spell it in your village', style: WText.label.copyWith(color: const Color(0xFF2F5A1E))),
               ],
             ),
           ),
@@ -795,7 +793,7 @@ class _MePage extends StatelessWidget {
       const SizedBox(height: 10),
       _grow(
         4,
-        200,
+        170,
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
