@@ -974,132 +974,195 @@ class _MePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final toNext = (level.xpForNextLevel - level.xpIntoLevel).clamp(0, 1 << 30);
     final word = wordOfDay;
+    // A profile, like a game's (spec-12b): you in the middle, one strip,
+    // one row of round buttons.
     return _PageBody(children: [
+      const Spacer(flex: 2),
       Semantics(
         button: true,
-        label: 'Level ${level.level}. $toNext points to Level ${level.level + 1}. Open My properties',
+        label: '${player.name}. Level ${level.level}. $toNext points to Level ${level.level + 1}. Open My properties',
         excludeSemantics: true,
-        child: ChunkyCard(
-          color: WColors.sunTint,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: onLevel,
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
             SizedBox(
-              width: 62,
-              height: 62,
-              child: Stack(alignment: Alignment.center, children: [
+              width: 150,
+              height: 150,
+              child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
                 SizedBox.expand(
                   child: CircularProgressIndicator(
                     value: level.progress,
-                    strokeWidth: 6,
+                    strokeWidth: 12,
                     color: WColors.grass,
                     backgroundColor: WColors.boardCell,
                   ),
                 ),
-                PlayerAvatar(player: player, size: 46),
+                PlayerAvatar(player: player, size: 112),
+                Positioned(
+                  bottom: -14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: WColors.card,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: WColors.ink, width: WSize.outline),
+                      boxShadow: wLip(WSize.lipSmall),
+                    ),
+                    child: Text('Level ${level.level}', style: WText.button.copyWith(color: WColors.ink)),
+                  ),
+                ),
               ]),
+            ),
+            const SizedBox(height: 24),
+            Text(player.name,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.heading.copyWith(fontSize: 30)),
+            Text('$toNext points to Level ${level.level + 1}', style: WText.label),
+          ]),
+        ),
+      ),
+      const Spacer(),
+      Semantics(
+        button: word != null,
+        label: word == null
+            ? 'Word of the day'
+            : 'Word of the day: ${word.word}. ${wordClaimed ? 'Done' : 'Spell it in your village for $kWordOfDayCoins coins'}. Open.',
+        excludeSemantics: true,
+        child: ChunkyCard(
+          color: WColors.card,
+          onTap: onWordOfDay,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: WColors.leafTint,
+                shape: BoxShape.circle,
+                border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+              ),
+              child: const Icon(Icons.eco, color: WColors.grass, size: 26),
             ),
             const SizedBox(width: WSize.gap3),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Level ${level.level}', style: WText.heading.copyWith(fontSize: 26)),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: level.progress,
-                    minHeight: 12,
-                    color: WColors.grass,
-                    backgroundColor: WColors.boardCell,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text('$toNext points to Level ${level.level + 1}', style: WText.label),
-              ]),
-            ),
-          ]),
-        ),
-      ),
-      const SizedBox(height: 10),
-      _grow(
-        3,
-        160,
-        Semantics(
-          button: word != null,
-          label: word == null ? 'Word of the day' : 'Word of the day: ${word.word}. ${word.meaning} Open.',
-          excludeSemantics: true,
-          child: ChunkyCard(
-            color: WColors.leafTint,
-            onTap: onWordOfDay,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Expanded(child: Text('WORD OF THE DAY', maxLines: 1, style: WText.label)),
-                  if (word != null) _Chip(text: wordClaimed ? 'Done' : '+$kWordOfDayCoins coins', color: wordClaimed ? WColors.card : WColors.sun),
-                ]),
-                const SizedBox(height: 4),
+                const Text('Word of the day', maxLines: 1, style: WText.label),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
-                  child: Text(word?.word ?? '', maxLines: 1, style: WText.title.copyWith(fontSize: 38, letterSpacing: 1.5)),
+                  child: Text(word?.word ?? '',
+                      maxLines: 1, style: WText.heading.copyWith(fontSize: 26, letterSpacing: 2)),
                 ),
-                Text(word?.meaning ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: WText.body),
-              ],
+              ]),
             ),
+            if (word != null)
+              _Chip(
+                text: wordClaimed ? 'Done' : '+$kWordOfDayCoins',
+                color: wordClaimed ? WColors.card : WColors.sun,
+              ),
+          ]),
+        ),
+      ),
+      const Spacer(),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _RoundButton(icon: Icons.menu_book, color: WColors.skyTint, label: 'Journal', onTap: onJournal),
+          _RoundButton(icon: Icons.home_work, color: WColors.leafTint, label: 'Homes', onTap: onProperties),
+          _RoundButton(icon: Icons.bar_chart, color: WColors.coralTint, label: 'Stats', onTap: onStats),
+          _RoundButton(
+            icon: Icons.school,
+            color: wordLevel.info.color,
+            label: 'Word level',
+            semantics: 'Word level: ${wordLevel.info.name}',
+            onTap: onWordLevel,
+          ),
+        ],
+      ),
+      const Spacer(),
+    ]);
+  }
+}
+
+/// A round button with a word under it (Me's row, spec-12b).
+class _RoundButton extends StatefulWidget {
+  const _RoundButton({required this.icon, required this.color, required this.label, required this.onTap, this.semantics});
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String? semantics;
+  final VoidCallback onTap;
+
+  @override
+  State<_RoundButton> createState() => _RoundButtonState();
+}
+
+class _RoundButtonState extends State<_RoundButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return Semantics(
+      button: true,
+      label: widget.semantics ?? widget.label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: () {
+          playSfx(context, Sfx.tap);
+          widget.onTap();
+        },
+        child: AnimatedScale(
+          scale: _pressed && !reduce ? 0.92 : 1,
+          duration: const Duration(milliseconds: 90),
+          child: SizedBox(
+            width: 80,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 66,
+                height: 66,
+                margin: const EdgeInsets.only(bottom: WSize.lip),
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: WColors.ink, width: WSize.outline),
+                  boxShadow: wLip(WSize.lip),
+                ),
+                child: Icon(widget.icon, size: 32, color: WColors.ink),
+              ),
+              const SizedBox(height: 4),
+              Text(widget.label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: WText.buttonSmall.copyWith(color: WColors.ink, fontSize: 16)),
+            ]),
           ),
         ),
       ),
-      const SizedBox(height: 10),
-      _grow(
-        4,
-        170,
-        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: _Square(icon: Icons.menu_book, color: WColors.sky, label: 'Word journal', onTap: onJournal)),
-              const SizedBox(width: 10),
-              Expanded(child: _Square(icon: Icons.home_work, color: WColors.leaf, label: 'My properties', onTap: onProperties)),
-            ]),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: _Square(icon: Icons.bar_chart, color: WColors.coral, label: 'My stats', onTap: onStats)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _Square(
-                  icon: Icons.school,
-                  color: wordLevel.info.color,
-                  label: 'Word level',
-                  sub: wordLevel.info.name,
-                  onTap: onWordLevel,
-                ),
-              ),
-            ]),
-          ),
-        ]),
-      ),
-    ]);
+    );
   }
 }
 
 /// A big square button: a round picture and a word or two under it.
 class _Square extends StatelessWidget {
-  const _Square({required this.icon, required this.color, required this.label, required this.onTap, this.sub});
+  const _Square({required this.icon, required this.color, required this.label, required this.onTap});
 
   final IconData icon;
   final Color color;
   final String label;
-  final String? sub;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: sub == null ? label : '$label: $sub',
+      label: label,
       excludeSemantics: true,
       child: ChunkyCard(
         onTap: onTap,
@@ -1120,7 +1183,6 @@ class _Square extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(label, style: WText.button.copyWith(color: WColors.ink)),
-              if (sub != null) Text(sub!, style: WText.label),
             ]),
           ),
         ),
