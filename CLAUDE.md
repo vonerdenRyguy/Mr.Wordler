@@ -30,7 +30,10 @@ Flutter-generated output (already gitignored), not source.
   `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<a folder outside Temp>`
   is set (`%USERPROFILE%\.gradle\sock` works). If Gradle then hits
   `AccessDeniedException` under `build\app\intermediates\merged_native_libs`
-  (OneDrive again), delete that folder and rebuild. `flutter build apk
+  (OneDrive again), delete that folder and rebuild (if it names other
+  folders under `build\`, delete all of `build\`). Building in the main
+  folder needs Windows Developer Mode (plugin symlinks); it's on since
+  2026-11-17. `flutter build apk
   --debug` then `adb install -r build\app\outputs\flutter-apk\app-debug.apk`
   updates the app and keeps its save.
 - The phone's text size is 1.15, so `fits one screen` has to hold there,
