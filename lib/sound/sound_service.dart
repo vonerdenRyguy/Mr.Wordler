@@ -96,7 +96,13 @@ class AudioSoundBackend implements SoundBackend {
     final i = _next[sfx] ?? 0;
     _next[sfx] = (i + 1) % _perSfx;
     final p = players[i];
-    _quietly(() => p.play(AssetSource('sounds/${sfx.file}.wav'), volume: volume, mode: PlayerMode.lowLatency));
+    // Stop first: Android's low-latency player otherwise "resumes" the last,
+    // finished sound at its old volume instead of starting a new one, so a
+    // volume change (or a 0 then back up) didn't take.
+    _quietly(() async {
+      await p.stop();
+      await p.play(AssetSource('sounds/${sfx.file}.wav'), volume: volume, mode: PlayerMode.lowLatency);
+    });
   }
 
   @override
