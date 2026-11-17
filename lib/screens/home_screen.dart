@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -181,6 +182,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await _open(const DailyChallengeScreen());
   }
 
+  // The measured heights of the floating top bar and bottom bars.
+  double? _chromeTop;
+  double? _chromeBottom;
+
+  void _setChrome({double? top, double? bottom}) {
+    if (!mounted) return;
+    final t = top ?? _chromeTop, b = bottom ?? _chromeBottom;
+    if (t == _chromeTop && b == _chromeBottom) return;
+    setState(() {
+      _chromeTop = t;
+      _chromeBottom = b;
+    });
+  }
+
   void _goTo(int page) {
     final reduceMotion = ref.read(settingsProvider).reduceMotion;
     if (reduceMotion) {
@@ -360,59 +375,99 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
     ];
 
+    // Until the floating bars have been measured, a close guess.
+    final mq = MediaQuery.of(context);
+    final scale = mq.textScaler.scale(1.0);
+    final chromeTop = _chromeTop ?? mq.padding.top + 16 + 54 * scale;
+    final chromeBottom = _chromeBottom ?? mq.padding.bottom + 86 + (shownTip != null ? 56 * scale : 0);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: wordlerOverlayStyle,
       child: Scaffold(
         backgroundColor: WColors.paper,
+        // The pages fill the screen and the top bar, tip, dots and tabs
+        // float over them (spec-12), so Play's village runs edge to edge.
+        // Each page keeps clear of them through MediaQuery's padding.
         body: Stack(
           children: [
-            Column(
-              children: [
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(WSize.screenPadding, 12, WSize.screenPadding, 4),
-                    child: _TopBar(
-                      level: level,
-                      coins: portfolio.currency,
-                      onLevel: () => _goTo(HomePage.me.index),
-                      player: players.isFamily ? players.current : null,
-                      onSwitch: () => ref.read(playerPickedProvider.notifier).state = false,
-                      onSettings: () => _open(const SettingsScreen()),
+            Positioned.fill(
+              child: MediaQuery(
+                data: MediaQuery.of(context).copyWith(padding: EdgeInsets.only(top: chromeTop, bottom: chromeBottom)),
+                child: PageView(
+                  controller: _pages,
+                  onPageChanged: (i) {
+                    ref.read(soundProvider).play(Sfx.whoosh);
+                    setState(() => _page = i);
+                  },
+                  children: pages,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _ChromeBackdrop(
+                pages: _pages,
+                page: _page,
+                child: _ReportSize(
+                  onSize: (s) => _setChrome(top: s.height),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(WSize.screenPadding, 12, WSize.screenPadding, 4),
+                      child: _TopBar(
+                        level: level,
+                        coins: portfolio.currency,
+                        onLevel: () => _goTo(HomePage.me.index),
+                        player: players.isFamily ? players.current : null,
+                        onSwitch: () => ref.read(playerPickedProvider.notifier).state = false,
+                        onSettings: () => _open(const SettingsScreen()),
+                      ),
                     ),
                   ),
                 ),
-                Expanded(
-                  child: PageView(
-                    controller: _pages,
-                    onPageChanged: (i) {
-                      ref.read(soundProvider).play(Sfx.whoosh);
-                      setState(() => _page = i);
-                    },
-                    children: pages,
-                  ),
-                ),
-                if (shownTip != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(WSize.screenPadding, 0, WSize.screenPadding, 6),
-                    child: TipBar(
-                      key: ValueKey(shownTip.id),
-                      text: shownTip.text,
-                      onHide: () => ref.read(hiddenTipsProvider.notifier).hide(shownTip.id),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _ReportSize(
+                onSize: (s) => _setChrome(bottom: s.height),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ChromeBackdrop(
+                      pages: _pages,
+                      page: _page,
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        if (shownTip != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(WSize.screenPadding, 0, WSize.screenPadding, 6),
+                            child: TipBar(
+                              key: ValueKey(shownTip.id),
+                              text: shownTip.text,
+                              onHide: () => ref.read(hiddenTipsProvider.notifier).hide(shownTip.id),
+                            ),
+                          ),
+                        PageDots(count: 3, index: _page),
+                        const SizedBox(height: 6),
+                      ]),
                     ),
-                  ),
-                PageDots(count: 3, index: _page),
-                const SizedBox(height: 6),
-                HomeTabBar(
-                  index: _page,
-                  onTap: _goTo,
-                  tabs: [
-                    const HomeTabInfo('Me', Icons.person),
-                    const HomeTabInfo('Play', Icons.home),
-                    HomeTabInfo('Family', Icons.groups, badge: _page == HomePage.family.index ? 0 : unseen),
+                    HomeTabBar(
+                      index: _page,
+                      onTap: _goTo,
+                      tabs: [
+                        const HomeTabInfo('Me', Icons.person),
+                        const HomeTabInfo('Play', Icons.home),
+                        HomeTabInfo('Family', Icons.groups, badge: _page == HomePage.family.index ? 0 : unseen),
+                      ],
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
             if (settings.loaded && !settings.homeIntroSeen)
               Positioned.fill(
@@ -434,17 +489,72 @@ class _PageBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Clear of the floating top bar and bottom bars.
+    final pad = MediaQuery.paddingOf(context);
     return CustomScrollView(
       slivers: [
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(WSize.screenPadding, 8, WSize.screenPadding, 10),
+            padding: EdgeInsets.fromLTRB(WSize.screenPadding, pad.top + 8, WSize.screenPadding, pad.bottom + 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
           ),
         ),
       ],
     );
+  }
+}
+
+/// Paper behind the floating bars on Me and Family, so a page that scrolls
+/// at big text never shows through; clear over Play's village. Fades with
+/// the swipe.
+class _ChromeBackdrop extends StatelessWidget {
+  const _ChromeBackdrop({required this.pages, required this.page, required this.child});
+
+  final PageController pages;
+  final int page;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pages,
+      builder: (context, child) {
+        final at = pages.hasClients && pages.positions.length == 1 ? (pages.page ?? page.toDouble()) : page.toDouble();
+        final paper = (at - HomePage.play.index).abs().clamp(0.0, 1.0);
+        return ColoredBox(color: WColors.paper.withOpacity(paper), child: child);
+      },
+      child: child,
+    );
+  }
+}
+
+/// Tells [onSize] its child's size after each layout that changes it.
+class _ReportSize extends SingleChildRenderObjectWidget {
+  const _ReportSize({required this.onSize, required Widget child}) : super(child: child);
+
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderReportSize(onSize);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderReportSize renderObject) => renderObject.onSize = onSize;
+}
+
+class _RenderReportSize extends RenderProxyBox {
+  _RenderReportSize(this.onSize);
+
+  ValueChanged<Size> onSize;
+  Size? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (size == _last) return;
+    _last = size;
+    final s = size;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onSize(s));
   }
 }
 
@@ -459,6 +569,9 @@ Widget _grow(int flex, double min, Widget child) => Expanded(
 
 // ---- Play ---------------------------------------------------------------------
 
+/// Play (spec-12): your village fills the page, with one big gold PLAY
+/// button and the Daily and Time Attack as round badges above it. PLAY
+/// opens the Daily until it's played today, then your village.
 class _PlayPage extends StatelessWidget {
   const _PlayPage({
     required this.village,
@@ -486,82 +599,287 @@ class _PlayPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PageBody(children: [
-      _grow(5, 230, _VillageCard(village: village, onVisit: onVisit)),
-      const SizedBox(height: 10),
-      _grow(
-        2,
-        92,
-        _BigModeCard(
-          semantics: 'Daily puzzle. ${playedToday ? 'Done for today' : 'Not played yet'}. Theme: $theme',
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [WColors.skyTint, Color(0xFF9ED6F3)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          onTap: onDaily,
-          badge: _CalendarTile(month: _months[now.month - 1], day: now.day),
-          title: 'Daily puzzle',
-          lines: [
-            Text(
-              (playedToday ? 'Done for today' : 'Not played yet') + (streak >= 2 ? ' · $streak-day streak' : ''),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: WText.bodyBold.copyWith(fontSize: 15),
-            ),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                _Chip(text: wordLevel.info.name, color: wordLevel.info.color),
-                const SizedBox(width: 6),
-                Text('Theme: $theme', maxLines: 1, style: WText.label.copyWith(color: const Color(0xFF2A5C78))),
-              ]),
-            ),
-          ],
-          action: playedToday ? 'See result' : 'Play',
-        ),
-      ),
-      const SizedBox(height: 10),
-      _grow(
-        2,
-        92,
-        _BigModeCard(
-          semantics: 'Time Attack. 3 minutes. Beat the clock!',
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [WColors.coralTint, WColors.coralTint, Color(0xFFF8CDBF), Color(0xFFF8CDBF)],
-              stops: [0, 0.62, 0.62, 1],
-              begin: Alignment(-1, -1),
-              end: Alignment(-0.82, -0.55),
-              tileMode: TileMode.repeated,
-            ),
-          ),
-          onTap: onTimeAttack,
-          badge: Container(
-            width: 64,
-            height: 64,
+    final pad = MediaQuery.paddingOf(context);
+    final v = village;
+    final info = v == null || !v.hasSave
+        ? 'New village'
+        : '${v.buildings} building${v.buildings == 1 ? '' : 's'} · Journal ${v.journal}/${kMagicWords.length}';
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _VillageBackdrop(village: v, onTap: onVisit),
+        // A soft shade at the top and bottom so the floating bits read well.
+        const IgnorePointer(
+          child: DecoratedBox(
             decoration: BoxDecoration(
-              color: WColors.card,
-              shape: BoxShape.circle,
-              border: Border.all(color: WColors.ink, width: WSize.outline),
-              boxShadow: wLip(WSize.lipSmall),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x33000000), Color(0x00000000), Color(0x00000000), Color(0x40000000)],
+                stops: [0, 0.18, 0.6, 1],
+              ),
             ),
-            child: const Icon(Icons.bolt, size: 40, color: Color(0xFFE0662F)),
           ),
-          title: 'Time Attack',
-          lines: [
-            Text('3 minutes. Beat the clock!',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: WText.bodyBold.copyWith(fontSize: 15, color: const Color(0xFF8C3218))),
-          ],
-          action: 'Play',
+        ),
+        Positioned(
+          top: pad.top + 6,
+          left: WSize.screenPadding,
+          right: WSize.screenPadding,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(child: _FloatChip(text: info)),
+              const SizedBox(width: WSize.gap2),
+              const Spacer(),
+              // Before the Daily is done, PLAY means the Daily; this is the
+              // way into the village meanwhile.
+              if (!playedToday)
+                ChunkyButton(
+                  label: 'Visit your village',
+                  kind: ChunkyKind.secondary,
+                  size: ChunkySize.small,
+                  onPressed: onVisit,
+                ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: WSize.screenPadding,
+          right: WSize.screenPadding,
+          bottom: pad.bottom + 10,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _RoundBadge(
+                    label: 'Daily puzzle',
+                    semantics: 'Daily puzzle. ${playedToday ? 'Done for today' : 'Not played yet'}'
+                        '${streak >= 2 ? '. $streak-day streak' : ''}',
+                    color: WColors.sky,
+                    alert: !playedToday,
+                    sub: streak >= 2 ? '$streak-day streak' : null,
+                    onTap: onDaily,
+                    child: _CalendarTile(month: _months[now.month - 1], day: now.day),
+                  ),
+                  _RoundBadge(
+                    label: 'Time Attack',
+                    semantics: 'Time Attack. 3 minutes. Beat the clock!',
+                    color: WColors.coral,
+                    onTap: onTimeAttack,
+                    child: const Icon(Icons.bolt, size: 46, color: WColors.white),
+                  ),
+                ],
+              ),
+              const SizedBox(height: WSize.gap3),
+              _PlayButton(
+                onTap: playedToday ? onVisit : onDaily,
+                semantics: playedToday ? 'Play. Build in your village' : 'Play the Daily puzzle. Theme: $theme',
+                sub: playedToday
+                    ? Text('Build in your village',
+                        maxLines: 1, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink))
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          _Chip(text: wordLevel.info.name, color: wordLevel.info.color),
+                          const SizedBox(width: 6),
+                          Text('Theme: $theme',
+                              maxLines: 1, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink)),
+                        ]),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A small label floating over the village.
+class _FloatChip extends StatelessWidget {
+  const _FloatChip({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: WColors.card.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(WSize.radiusChip),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 2))],
+      ),
+      child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.label.copyWith(color: WColors.ink)),
+    );
+  }
+}
+
+/// A round game badge over the village, with its name under it and an
+/// optional red "!" (not played yet today).
+class _RoundBadge extends StatefulWidget {
+  const _RoundBadge({
+    required this.label,
+    required this.semantics,
+    required this.color,
+    required this.onTap,
+    required this.child,
+    this.alert = false,
+    this.sub,
+  });
+
+  final String label;
+  final String semantics;
+  final Color color;
+  final VoidCallback onTap;
+  final Widget child;
+  final bool alert;
+  final String? sub;
+
+  @override
+  State<_RoundBadge> createState() => _RoundBadgeState();
+}
+
+class _RoundBadgeState extends State<_RoundBadge> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 84.0;
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    return Semantics(
+      button: true,
+      label: widget.semantics,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: () {
+          playSfx(context, Sfx.tap);
+          widget.onTap();
+        },
+        child: AnimatedScale(
+          scale: _pressed && !reduce ? 0.92 : 1,
+          duration: const Duration(milliseconds: 90),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: size,
+                    height: size,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: widget.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: WColors.ink, width: WSize.outline),
+                      boxShadow: wLip(WSize.lip),
+                    ),
+                    child: widget.child,
+                  ),
+                  if (widget.alert)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: WColors.brick,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                        ),
+                        child: Text('!',
+                            textScaler: TextScaler.noScaling,
+                            style: WText.button.copyWith(color: WColors.white, fontSize: 18)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _FloatChip(text: widget.label),
+              if (widget.sub != null) ...[
+                const SizedBox(height: 4),
+                _FloatChip(text: widget.sub!),
+              ],
+            ],
+          ),
         ),
       ),
-    ]);
+    );
+  }
+}
+
+/// The one big gold PLAY button.
+class _PlayButton extends StatefulWidget {
+  const _PlayButton({required this.onTap, required this.semantics, required this.sub});
+
+  final VoidCallback onTap;
+  final String semantics;
+  final Widget sub;
+
+  @override
+  State<_PlayButton> createState() => _PlayButtonState();
+}
+
+class _PlayButtonState extends State<_PlayButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final down = _pressed && !reduce;
+    return Semantics(
+      button: true,
+      label: widget.semantics,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: () {
+          playSfx(context, Sfx.tap);
+          widget.onTap();
+        },
+        child: AnimatedScale(
+          scale: down ? 0.97 : 1,
+          duration: const Duration(milliseconds: 90),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 70),
+            margin: EdgeInsets.only(top: down ? WSize.lipHero - 1 : 0, bottom: down ? 1 : WSize.lipHero),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFD866), WColors.sun],
+              ),
+              borderRadius: BorderRadius.circular(WSize.radiusHero),
+              border: Border.all(color: WColors.ink, width: WSize.outline),
+              boxShadow: wLip(down ? 1 : WSize.lipHero, color: const Color(0xFF9A6A12)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('PLAY',
+                    style: WText.title.copyWith(fontSize: 40, letterSpacing: 3, color: WColors.ink, height: 1.0)),
+                const SizedBox(height: 4),
+                widget.sub,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -574,14 +892,13 @@ class _CalendarTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 62,
-      height: 68,
+      width: 48,
+      height: 52,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: WColors.white,
-        border: Border.all(color: WColors.ink, width: WSize.outline),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: wLip(WSize.lipSmall),
+        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(children: [
         Container(
@@ -591,75 +908,15 @@ class _CalendarTile extends StatelessWidget {
           child: Text(month,
               textAlign: TextAlign.center,
               textScaler: TextScaler.noScaling,
-              style: WText.buttonSmall.copyWith(fontSize: 13, color: WColors.white)),
+              style: WText.buttonSmall.copyWith(fontSize: 11, color: WColors.white)),
         ),
         Expanded(
           child: Center(
             child: Text('$day',
-                textScaler: TextScaler.noScaling, style: WText.number.copyWith(fontSize: 30, color: WColors.ink)),
+                textScaler: TextScaler.noScaling, style: WText.number.copyWith(fontSize: 24, color: WColors.ink)),
           ),
         ),
       ]),
-    );
-  }
-}
-
-/// A big, tappable game card: a picture, the name, a line or two, and a
-/// green button.
-class _BigModeCard extends StatelessWidget {
-  const _BigModeCard({
-    required this.semantics,
-    required this.decoration,
-    required this.onTap,
-    required this.badge,
-    required this.title,
-    required this.lines,
-    required this.action,
-  });
-
-  final String semantics;
-  final BoxDecoration decoration;
-  final VoidCallback onTap;
-  final Widget badge;
-  final String title;
-  final List<Widget> lines;
-  final String action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: '$semantics. $action',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: WSize.lip),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: decoration.copyWith(
-            border: Border.all(color: WColors.ink, width: WSize.outline),
-            borderRadius: BorderRadius.circular(WSize.radiusCard),
-            boxShadow: wLip(WSize.lip),
-          ),
-          child: Row(children: [
-            badge,
-            const SizedBox(width: WSize.gap3),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.heading.copyWith(fontSize: 24)),
-                  ...lines,
-                ],
-              ),
-            ),
-            const SizedBox(width: WSize.gap2),
-            IgnorePointer(child: ChunkyButton(label: action, size: ChunkySize.small, onPressed: onTap)),
-          ]),
-        ),
-      ),
     );
   }
 }
@@ -1265,17 +1522,19 @@ class _Badge extends StatelessWidget {
   }
 }
 
-class _VillageCard extends StatefulWidget {
-  const _VillageCard({required this.village, required this.onVisit});
+/// Your village as a still picture filling the Play page, centered on your
+/// newest building. Tapping it opens the village.
+class _VillageBackdrop extends StatefulWidget {
+  const _VillageBackdrop({required this.village, required this.onTap});
 
   final _Village? village;
-  final VoidCallback onVisit;
+  final VoidCallback onTap;
 
   @override
-  State<_VillageCard> createState() => _VillageCardState();
+  State<_VillageBackdrop> createState() => _VillageBackdropState();
 }
 
-class _VillageCardState extends State<_VillageCard> {
+class _VillageBackdropState extends State<_VillageBackdrop> {
   final _camera = TransformationController();
 
   @override
@@ -1294,7 +1553,7 @@ class _VillageCardState extends State<_VillageCard> {
     _aimedAt = focus;
     _aimedSize = size;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _camera.value = isoTransformCenteredOn(focus.r, focus.c, size, 0.8, grid);
+      if (mounted) _camera.value = isoTransformCenteredOn(focus.r, focus.c, size, 0.9, grid);
     });
   }
 
@@ -1302,72 +1561,32 @@ class _VillageCardState extends State<_VillageCard> {
   Widget build(BuildContext context) {
     final village = widget.village;
     final scene = village?.scene;
-    final chip = village == null || !village.hasSave
-        ? 'New village'
-        : '${village.buildings} building${village.buildings == 1 ? '' : 's'} · Journal ${village.journal}/${kMagicWords.length}';
-    return ChunkyCard(
-      hero: true,
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Whatever height the page leaves: the bigger the better.
-          Expanded(
-            child: MinHeightBox(
-              height: 96,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (scene == null)
-                    Image.asset(
-                      'assets/images/village_preview.png',
-                      fit: BoxFit.cover,
-                      excludeFromSemantics: true,
-                      errorBuilder: (context, error, stack) => Container(color: WColors.leafTint),
-                    )
-                  else
-                    // Your own village, as a still picture centered on your
-                    // newest building.
-                    IgnorePointer(
-                      child: LayoutBuilder(builder: (context, constraints) {
-                        _aim(village!.focus, constraints.biggest, scene.grid);
-                        return ColoredBox(
-                          color: WColors.grassField,
-                          child: IsoVillageView(scene: scene, transformController: _camera, interactive: false),
-                        );
-                      }),
-                    ),
-                  Positioned(
-                    top: 10,
-                    left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: WColors.card,
-                        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-                        borderRadius: BorderRadius.circular(WSize.radiusChip),
-                      ),
-                      child: Text(chip, style: WText.label.copyWith(color: WColors.ink)),
-                    ),
-                  ),
-                ],
+    return Semantics(
+      button: true,
+      label: 'Your village. Open it',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: scene == null
+            ? Image.asset(
+                'assets/images/village_preview.png',
+                fit: BoxFit.cover,
+                alignment: const Alignment(0, -0.3),
+                excludeFromSemantics: true,
+                errorBuilder: (context, error, stack) => Container(color: WColors.grassField),
+              )
+            : IgnorePointer(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  // Aiming at a shorter box puts the building at 40% down.
+                  final full = constraints.biggest;
+                  _aim(village!.focus, Size(full.width, full.height * 0.8), scene.grid);
+                  return ColoredBox(
+                    color: WColors.grassField,
+                    child: IsoVillageView(scene: scene, transformController: _camera, interactive: false),
+                  );
+                }),
               ),
-            ),
-          ),
-          Container(height: WSize.outline, color: WColors.ink),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Your village', style: WText.title.copyWith(fontSize: 32)),
-                const SizedBox(height: WSize.gap2),
-                ChunkyButton(
-                    label: 'Visit your village', size: ChunkySize.big, expand: true, onPressed: widget.onVisit),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
