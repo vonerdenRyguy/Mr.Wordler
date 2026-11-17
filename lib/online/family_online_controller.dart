@@ -181,6 +181,10 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     _pendingEmail = saved['pendingEmail'] as String?;
     _paidDays = [for (final d in (saved['paidWordDays'] as List? ?? const [])) d as String];
     _claimedGifts = [for (final d in (saved['claimedGifts'] as List? ?? const [])) d as String];
+    final seen = saved['squareSeen'];
+    if (seen is Map && seen['familyId'] is String && seen['count'] is int) {
+      _squareSeen = (familyId: seen['familyId'] as String, count: seen['count'] as int);
+    }
     final account = backend.account;
     if (account == null) {
       state = FamilyOnlineState(stage: OnlineStage.signedOut, emailSentTo: _pendingEmail);
@@ -224,6 +228,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
         if (s.account != null) 'uid': s.account!.uid,
         if (_paidDays.isNotEmpty) 'paidWordDays': _paidDays,
         if (_claimedGifts.isNotEmpty) 'claimedGifts': _claimedGifts,
+        if (_squareSeen != null) 'squareSeen': {'familyId': _squareSeen!.familyId, 'count': _squareSeen!.count},
       }),
     );
   }
@@ -340,6 +345,31 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       final n = min(left, kMaxBricksAtOnce);
       if (await _changeSquare((s, uids, now) => addSquareBricks(s, n, memberUids: uids, now: now)) == null) return;
     }
+  }
+
+  /// How many finished Town Square buildings this player has celebrated,
+  /// for the family it was counted in.
+  ({String familyId, int count})? _squareSeen;
+
+  /// Town Square buildings the family finished since this player last
+  /// looked, now marked as seen (each is paid once, on each person's own
+  /// phone). The first look at a square counts what's there as seen.
+  Future<List<BuiltThing>> takeFinishedBuildings() async {
+    await _ready;
+    final square = state.square;
+    final fid = state.familyId;
+    if (!_inFamily || square == null || fid == null) return const [];
+    final seen = _squareSeen;
+    if (seen == null || seen.familyId != fid || seen.count > square.built.length) {
+      _squareSeen = (familyId: fid, count: square.built.length);
+      await _save();
+      return const [];
+    }
+    if (square.built.length == seen.count) return const [];
+    final fresh = square.built.sublist(seen.count);
+    _squareSeen = (familyId: fid, count: square.built.length);
+    await _save();
+    return fresh;
   }
 
   /// This player's vote for what to build next.

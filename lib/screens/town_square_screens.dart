@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../online/family_online_controller.dart';
 import '../online/family_online_models.dart';
 import '../players/player_summary.dart';
+import '../portfolio/portfolio_controller.dart';
+import '../sound/sound_service.dart' show Sfx;
+import '../ui/reward_moment.dart';
 import '../players/players.dart';
 import '../ui/chunky_button.dart';
 import '../ui/chunky_card.dart';
@@ -660,6 +663,50 @@ class _GiftButton extends StatelessWidget {
         if (count > 0) Positioned(right: -6, top: -8, child: _RedDot(text: count > 9 ? '9+' : '$count')),
       ]),
     );
+  }
+}
+
+// ---- We built it! ----------------------------------------------------------------
+
+bool _celebrating = false;
+
+/// When the family has finished a Town Square building since this player
+/// last looked: +15 coins each and the We built it! moment. Safe to call
+/// often; does nothing outside an online family.
+Future<void> celebrateSquare(WidgetRef ref, BuildContext context) async {
+  if (_celebrating) return;
+  _celebrating = true;
+  try {
+    final portfolio = ref.read(portfolioProvider.notifier);
+    await portfolio.ready;
+    final fresh = await ref.read(familyOnlineProvider.notifier).takeFinishedBuildings();
+    if (fresh.isEmpty || !context.mounted) return;
+    final coins = kSquareCoins * fresh.length;
+    portfolio.addCurrency(coins);
+    final family = ref.read(familyOnlineProvider).family;
+    final last = squareBuilding(fresh.last.id);
+    final name = last?.name ?? 'building';
+    await showRewardMoment(
+      context,
+      title: 'We built it!',
+      ribbon: 'Town Square',
+      message: fresh.length == 1
+          ? '${family?.name ?? 'Your family'} built a $name in the Town Square. +$kSquareCoins coins each!'
+          : '${family?.name ?? 'Your family'} built ${fresh.length} buildings in the Town Square!',
+      coins: coins,
+      buttonLabel: 'Hooray!',
+      sound: Sfx.building,
+      picture: Column(mainAxisSize: MainAxisSize.min, children: [
+        SquareBuildingArt(id: fresh.last.id, size: 128),
+        if (family != null)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            for (final m in family.members.take(6))
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: PlayerAvatar(player: _asPlayer(m), size: 34)),
+          ]),
+      ]),
+    );
+  } finally {
+    _celebrating = false;
   }
 }
 

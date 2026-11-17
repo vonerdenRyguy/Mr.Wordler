@@ -13,6 +13,7 @@ import 'package:namer_app/main.dart';
 import 'package:namer_app/online/fake_family_backend.dart';
 import 'package:namer_app/online/family_online_controller.dart';
 import 'package:namer_app/online/family_online_models.dart';
+import 'package:namer_app/portfolio/portfolio_controller.dart';
 import 'package:namer_app/settings/settings_controller.dart';
 import 'package:namer_app/settings/word_level.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -163,6 +164,44 @@ void main() {
     expect(find.text('Fountain: 15 bricks to go'), findsOneWidget);
     expect(find.text('+3'), findsOneWidget);
     await shot(tester, 'bricks_screen');
+  });
+
+  testWidgets('the bar fills: We built it!, +15 coins once, and it stands in the square', (tester) async {
+    await family(tester);
+    final uids = [nana.account!.uid, sam.account!.uid];
+    await tester.runAsync(() async {
+      await sam.changeSquare(fid, (s) => pickSquareBuilding(s, uids[0], 'bandstand', memberUids: uids, now: DateTime.now()));
+      await sam.changeSquare(fid, (s) => pickSquareBuilding(s, uids[1], 'bandstand', memberUids: uids, now: DateTime.now()));
+      for (int i = 0; i < 5; i++) {
+        await sam.changeSquare(fid, (s) => addSquareBricks(s, 5, memberUids: uids, now: DateTime.now()));
+      }
+    });
+    await pumpHome(tester);
+    expect(find.text('25 / 30'), findsOneWidget);
+    expect(find.text('We built it!'), findsNothing);
+
+    // Sam's Daily puts in the last bricks.
+    await tester.runAsync(() => sam.changeSquare(fid, (s) => addSquareBricks(s, 5, memberUids: uids, now: DateTime.now())));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('We built it!'), findsOneWidget);
+    expect(find.textContaining('built a Bandstand'), findsOneWidget);
+    await shot(tester, 'we_built_it');
+    await tester.tap(find.text('Hooray!'));
+    await tester.pumpAndSettle();
+    expect(find.text('We built it!'), findsNothing);
+    expect(find.bySemanticsLabel('Bandstand, built by the family'), findsOneWidget);
+    expect(find.text('Vote for what to build'), findsOneWidget);
+    final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+    expect(container.read(portfolioProvider).currency, 15);
+
+    // Coming back to Home doesn't pay again.
+    await tester.tap(find.text('Vote'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('We built it!'), findsNothing);
+    expect(container.read(portfolioProvider).currency, 15);
   });
 
   testWidgets('Extra large text: no overflow', (tester) async {

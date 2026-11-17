@@ -166,7 +166,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
     // The village (buildings, Journal) may have changed.
     _loadVillage();
-    claimFamilyCoins(ref, context);
+    await claimFamilyCoins(ref, context);
+    if (mounted) celebrateSquare(ref, context);
   }
 
   // A brand-new player picks a word level before their first Daily.
@@ -294,6 +295,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.watch(familyWordProvider);
     final familyData = ref.read(familyWordProvider.notifier).today(now);
     // In an online family, the family word is the online family's (spec-09).
+    // A Town Square building finished (spec-13): We built it! and coins.
+    ref.listen(familyOnlineProvider.select((s) => s.square?.built.length), (_, n) {
+      // Not in the middle of a game: it waits until Home is back on top.
+      if (n != null && (ModalRoute.of(context)?.isCurrent ?? true)) celebrateSquare(ref, context);
+    });
     final online = ref.watch(familyOnlineProvider);
     final onlineFamily = online.stage == OnlineStage.member ? online.family : null;
     final hasFamily = players.isFamily || onlineFamily != null;
