@@ -1,10 +1,20 @@
 // The Town Square (spec-13): bricks, the weekly vote, finishing a building.
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:namer_app/online/fake_family_backend.dart';
+import 'package:namer_app/online/family_online_controller.dart';
 import 'package:namer_app/online/family_online_models.dart';
+import 'package:namer_app/players/players.dart';
 import 'package:namer_app/settings/word_level.dart';
+
+Future<void> _settle() async {
+  for (int i = 0; i < 10; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
 
 const _nana = MemberInfo(name: 'Nana', colorIndex: 0, level: WordLevel.wordsmith);
 const _sam = MemberInfo(name: 'Sam', colorIndex: 1, level: WordLevel.builder);
@@ -159,6 +169,88 @@ void main() {
       await stranger.signInWithGoogle();
       expect(() => stranger.changeSquare(fid, (s) => s), throwsStateError);
       expect(await stranger.watchSquare(fid).toList(), isEmpty);
+    });
+  });
+
+  group('bricks from playing', () {
+    late FakeFamilyServer server;
+    late Map<String, FakeFamilyBackend> backends;
+
+    ProviderContainer make() => ProviderContainer(overrides: [
+          familyBackendFactoryProvider.overrideWithValue(
+            (id) async => backends.putIfAbsent(id, () => FakeFamilyBackend(server)),
+          ),
+        ]);
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      PlayerKeys.prefix = '';
+      server = FakeFamilyServer();
+      backends = {};
+    });
+
+    Future<(FamilyOnlineController, FakeFamilyBackend, String)> family(ProviderContainer c) async {
+      final controller = c.read(familyOnlineProvider.notifier);
+      await controller.ready;
+      await controller.signInWithGoogle(birthYear: 1958, group: AgeGroup.adult);
+      await controller.createFamily(name: 'The Rivera family', me: _nana);
+      await _settle();
+      final fid = c.read(familyOnlineProvider).familyId!;
+      final code = c.read(familyOnlineProvider).family!.code;
+      final sam = FakeFamilyBackend(server)..googleEmail = 'sam@example.com';
+      await sam.signInWithGoogle();
+      await sam.requestToJoin(
+          family: (await sam.findFamily(code))!, code: code, me: _sam, birthYear: 1990, group: AgeGroup.adult);
+      await _settle();
+      await controller.approve(c.read(familyOnlineProvider).family!.requests.single);
+      await _settle();
+      return (controller, sam, fid);
+    }
+
+    test('Daily +3 once a day, gifts and cheers +1, new buildings +2 each', () async {
+      final c = make();
+      addTearDown(c.dispose);
+      final (controller, sam, fid) = await family(c);
+      final now = DateTime.now();
+
+      await controller.markPlayed(now);
+      await _settle();
+      expect(sam.squareOf(fid).bricks, 3);
+      await controller.markPlayed(now);
+      await _settle();
+      expect(sam.squareOf(fid).bricks, 3, reason: 'one Daily a day');
+
+      await controller.giveLetter(sam.account!.uid, 'E');
+      await controller.cheer(sam.account!.uid, 'thanks');
+      await _settle();
+      expect(sam.squareOf(fid).bricks, 5);
+
+      // The first sync is what was already there; after that, new ones count.
+      await controller.syncBuildings({'WELL': 1});
+      await _settle();
+      expect(sam.squareOf(fid).bricks, 5);
+      await controller.syncBuildings({'WELL': 2, 'FARM': 2});
+      await _settle();
+      expect(sam.squareOf(fid).bricks, 11, reason: '3 new buildings, 6 bricks in two goes');
+      expect(c.read(familyOnlineProvider).square!.bricks, 11);
+    });
+
+    test('voting from the controller, and the vote opens on its own', () async {
+      final c = make();
+      addTearDown(c.dispose);
+      final (controller, sam, fid) = await family(c);
+      await _settle();
+      await controller.settleSquareIfDue();
+      await _settle();
+      expect(c.read(familyOnlineProvider).square!.vote!.choices, ['fountain', 'bandstand', 'library']);
+
+      expect(await controller.voteFor('bandstand'), isTrue);
+      await sam.changeSquare(
+          fid,
+          (s) => pickSquareBuilding(s, sam.account!.uid, 'bandstand',
+              memberUids: [for (final m in c.read(familyOnlineProvider).family!.members) m.uid], now: DateTime.now()));
+      await _settle();
+      expect(c.read(familyOnlineProvider).square!.building, 'bandstand');
     });
   });
 }

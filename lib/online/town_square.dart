@@ -98,7 +98,10 @@ class SquareVote {
   static SquareVote? fromData(Object? raw) {
     if (raw is! Map) return null;
     final week = raw['week'];
-    final choices = [for (final c in (raw['choices'] as List? ?? const [])) if (c is String) c];
+    final choices = [
+      for (final c in (raw['choices'] as List? ?? const []))
+        if (c is String) c
+    ];
     if (week is! String || choices.isEmpty) return null;
     return SquareVote(
       week: week,
@@ -182,7 +185,9 @@ class TownSquare {
         'bricks': bricks,
         'spent': spent,
         'goal': goal,
-        'built': [for (final b in built) {'id': b.id, 'on': b.on}],
+        'built': [
+          for (final b in built) {'id': b.id, 'on': b.on}
+        ],
         'vote': vote?.toData(),
         'finishedOn': finishedOn,
       };
@@ -247,8 +252,7 @@ TownSquare settleSquare(TownSquare s, {required List<String> memberUids, require
 
 /// Adds [count] bricks (at most kMaxBricksAtOnce).
 TownSquare addSquareBricks(TownSquare s, int count, {required List<String> memberUids, required DateTime now}) =>
-    settleSquare(s.copyWith(bricks: s.bricks + count.clamp(0, kMaxBricksAtOnce)),
-        memberUids: memberUids, now: now);
+    settleSquare(s.copyWith(bricks: s.bricks + count.clamp(0, kMaxBricksAtOnce)), memberUids: memberUids, now: now);
 
 /// [uid] votes for [id] (changing their mind is fine). Nothing happens if
 /// there's no vote open or [id] isn't one of its choices.
