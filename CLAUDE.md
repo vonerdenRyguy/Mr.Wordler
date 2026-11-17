@@ -270,6 +270,14 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     round Daily (red !) and Time Attack badges.
   - `ChunkyButton` bounces; `ChunkyCard` without `onTap` has no outline
     or lip (soft shadow) so tappable things stand out.
+  - Low-latency sounds must `stop()` before each `play()`: Android's
+    SoundPool player otherwise resumes the finished stream at its old
+    volume (fixed in spec-12b).
+- **spec-12b calmer Me** (merged 2026-11-16). Ryan found Me and Family
+  crowded. Me is a profile: avatar in a big level ring, name, points to
+  next level; word of the day as one strip (+10 / Done); one row of
+  `_RoundButton`s: Journal, Homes, Stats, Word level. Family's clean-up
+  comes with spec-13 (Town Square board D121).
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -414,7 +422,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 219 tests as of spec-12 (202 as of spec-11).
+- `flutter test` — 220 tests as of spec-12b (202 as of spec-11).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
