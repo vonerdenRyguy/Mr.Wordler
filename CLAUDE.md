@@ -38,9 +38,9 @@ Flutter-generated output (already gitignored), not source.
 - OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
   re-run `flutter test`.
 
-## Current state (as of 2026-11-16)
+## Current state (as of 2026-11-17)
 
-Built from specs 01-12, **all merged to master**. Specs 04 and 05 were
+Built from specs 01-14, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
 (spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
@@ -278,6 +278,39 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   next level; word of the day as one strip (+10 / Done); one row of
   `_RoundButton`s: Journal, Homes, Stats, Word level. Family's clean-up
   comes with spec-13 (Town Square board D121).
+- **spec-13 Town Square** (branch `spec-13-town-square`, merged with
+  spec-14 on 2026-11-17 after Ryan's Pixel check). Step 6 of the family
+  game; online families only (Ryan: shared devices are for kids, not
+  grown-ups).
+  - `lib/online/town_square.dart`: six buildings (`kSquareBuildings`),
+    bricks (Daily +3, family word +5, new village building +2, gift or
+    cheer +1; at most 5 at once), goal `squareGoal` = 15 x members (min
+    30; `--dart-define=SQUARE_TEST_GOAL=n` for a test build), a weekly
+    vote (`SquareVote`, closes when all voted or Monday UTC). Pure change
+    functions `settleSquare` / `addSquareBricks` / `pickSquareBuilding`.
+  - Server: `families/{fid}/square/state`, changed only in
+    `changeSquare` transactions; `bricks` only goes up (finished buildings
+    move bricks to `spent`) so the rules can check it. Rules published
+    2026-11-16.
+  - The online Family page is `TownSquarePage`
+    (`lib/screens/town_square_screens.dart`, art in `square_art.dart`);
+    "We built it!" (`celebrateSquare`, +15 coins) shows once per phone,
+    counted in `familyOnlineData.squareSeen`.
+- **spec-14 building art and wallpaper** (branch `spec-14-building-art`,
+  merged 2026-11-17 after Ryan's Pixel check; Samsung not checked).
+  Canvas boards H141-H144.
+  - Raised letter blocks are back (spec-13's ground lots were undone).
+  - Buildings are drawn in code (`lib/village/building_art.dart`,
+    `paintBuilding`), covering their word's whole run of blocks: a window
+    per letter, door on the middle one. Crossing building words: the later
+    one covers the longest stretch not already used
+    (`VillageScene.buildingCells`); `buildingDepth` orders buildings so
+    one in front always draws after. Taps use `buildingOutline`. The
+    sprites in `assets/village/buildings/` are only used for tap cards now.
+  - Wallpapers (`lib/ui/wallpaper.dart`): `pattern` behind every
+    `WordlerScaffold` page and the offline Family page; `hills` behind Me
+    and `ModeStartView`. Home's floating bars show the same picture
+    (`WallpaperSlice`).
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -296,7 +329,8 @@ design canvas first and approved there before any code):
 4. Family word and family map online (spec-09, merged).
 5. Helping: letter gifts, requests, ready-made cheers, no open chat
    (spec-10, merged).
-6. Town Square, weekly family vote, family level and fog.
+6. Town Square, weekly family vote (spec-13, merged); family level and fog
+   still to come.
 7. Playing together: Word bridge (turn-based first), Word buddies.
 
 The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
@@ -392,6 +426,7 @@ lib/
     structures.dart           BoardStructure, computeStructures(runs), stripes
     iso_math.dart             Isometric projection + view-switch camera helpers
     iso_village_view.dart     IsoVillageView, VillageScene, hitTestVillage
+    building_art.dart         The eight buildings drawn in code (spec-14)
     village_art.dart          Loads buildings.json + sprites (with alpha)
     village_cards.dart        Building/word/meaning cards, first-building helper
     village_rewards.dart      First-building coins, free Swaps
@@ -422,7 +457,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 220 tests as of spec-12b (202 as of spec-11).
+- `flutter test` — 242 tests as of spec-14 (220 as of spec-12b).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
