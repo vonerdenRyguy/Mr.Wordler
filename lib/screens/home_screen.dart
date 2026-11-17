@@ -41,6 +41,7 @@ import 'family_online_screens.dart';
 import 'family_screens.dart';
 import 'family_word_online_screens.dart';
 import 'helping_screens.dart';
+import 'town_square_screens.dart';
 import 'home_tips.dart';
 import 'infinite_estate_screen.dart';
 import 'mode_start_pages.dart';
@@ -355,6 +356,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _NoFamilyPage(
           onThisPhone: () => _open(const FamilyScreen()),
           onDifferentPhones: () => _open(const FamilyOnlineScreen()),
+        )
+      else if (onlineFamily != null)
+        TownSquarePage(
+          streak: familyWordData.solved ? familyWordData.streak : 0,
+          familyWordAlert: !playedToday && !familyWordData.solved,
+          helpCount: helpItems.length,
+          onFamilyWord: () => _open(const FamilyWordScreen()),
+          onFromFamily: () => _open(const FromFamilyScreen()),
         )
       else
         _FamilyPage(

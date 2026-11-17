@@ -538,6 +538,33 @@ class FromFamilyScreen extends ConsumerWidget {
             ChunkyCard(
               child: Column(children: [for (final i in items) HelpItemRow(item: i, family: family)]),
             ),
+          if (family != null && family.members.length > 1) ...[
+            const SizedBox(height: WSize.gap3),
+            ChunkyCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('CHEER SOMEONE', style: WText.label),
+                const SizedBox(height: WSize.gap2),
+                Wrap(spacing: WSize.gap3, runSpacing: WSize.gap2, children: [
+                  for (final m in family.members)
+                    if (m.uid != online.account?.uid)
+                      Semantics(
+                        button: true,
+                        label: 'Cheer for ${m.name}',
+                        excludeSemantics: true,
+                        child: GestureDetector(
+                          onTap: () =>
+                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CheerScreen(uid: m.uid))),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            PlayerAvatar(player: _asPlayer(m), size: 52),
+                            const SizedBox(height: 2),
+                            Text(m.name, style: WText.buttonSmall.copyWith(color: WColors.ink)),
+                          ]),
+                        ),
+                      ),
+                ]),
+              ]),
+            ),
+          ],
           const SizedBox(height: WSize.gap3),
           Text(
             left == 0 ? 'No letters left to give today.' : '$left letter${left == 1 ? '' : 's'} left to give today',
