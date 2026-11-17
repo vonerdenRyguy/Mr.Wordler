@@ -38,16 +38,21 @@ class ChunkyCard extends StatelessWidget {
         ),
       );
     }
+    // Only things you can tap get the ink outline and lip (spec-12); the
+    // rest sit on a soft shadow, so tappable things stand out.
+    final tappable = onTap != null;
     final card = Container(
       margin: EdgeInsets.only(bottom: hero ? WSize.lipHero : WSize.lip),
       decoration: BoxDecoration(
         color: color,
-        border: Border.all(color: WColors.ink, width: WSize.outline),
+        border: tappable ? Border.all(color: WColors.ink, width: WSize.outline) : null,
         borderRadius: radius,
-        boxShadow: wLip(hero ? WSize.lipHero : WSize.lip),
+        boxShadow: tappable
+            ? wLip(hero ? WSize.lipHero : WSize.lip)
+            : const [BoxShadow(color: Color(0x2E3B2A1E), blurRadius: 10, offset: Offset(0, 3))],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular((hero ? WSize.radiusHero : WSize.radiusCard) - WSize.outline),
+        borderRadius: BorderRadius.circular((hero ? WSize.radiusHero : WSize.radiusCard) - (tappable ? WSize.outline : 0)),
         child: content,
       ),
     );
