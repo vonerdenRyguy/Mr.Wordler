@@ -27,6 +27,7 @@ import '../ui/chunky_card.dart';
 import '../ui/home_nav.dart';
 import '../ui/min_height_box.dart';
 import '../ui/tokens.dart';
+import '../ui/wallpaper.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
@@ -334,7 +335,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final shownTip = tip == null || hidden.contains(tip.id) ? null : tip;
 
     final pages = <Widget>[
-      _MePage(
+      Wallpaper(
+        kind: WallpaperKind.hills,
+        child: _MePage(
         level: level,
         player: players.current,
         wordOfDay: wordOfDay,
@@ -346,6 +349,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onProperties: () => _open(const PortfolioScreen()),
         onStats: () => _open(const StatsScreen()),
         onWordLevel: () => _open(const WordLevelScreen()),
+      ),
       ),
       _PlayPage(
         village: _village,
@@ -359,9 +363,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onTimeAttack: () => _open(const TimeAttackStartPage()),
       ),
       if (!hasFamily)
-        _NoFamilyPage(
+        Wallpaper(
+          kind: WallpaperKind.pattern,
+          child: _NoFamilyPage(
           onThisPhone: () => _open(const FamilyScreen()),
           onDifferentPhones: () => _open(const FamilyOnlineScreen()),
+        ),
         )
       else if (onlineFamily != null)
         TownSquarePage(
@@ -372,7 +379,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onFromFamily: () => _open(const FromFamilyScreen()),
         )
       else
-        _FamilyPage(
+        Wallpaper(
+          kind: WallpaperKind.pattern,
+          child: _FamilyPage(
           players: players,
           online: onlineFamily,
           myUid: online.account?.uid,
@@ -387,6 +396,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onCheer: onlineFamily == null ? null : () => _pickCheer(onlineFamily, online.account?.uid),
           onTheFamily: () => _open(const FamilyScreen()),
           onPassPhone: () => ref.read(playerPickedProvider.notifier).state = false,
+        ),
         ),
     ];
 
@@ -425,6 +435,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: _ChromeBackdrop(
                 pages: _pages,
                 page: _page,
+                top: true,
                 child: _ReportSize(
                   onSize: (s) => _setChrome(top: s.height),
                   child: SafeArea(
@@ -457,6 +468,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _ChromeBackdrop(
                       pages: _pages,
                       page: _page,
+                      top: false,
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         if (shownTip != null)
                           Padding(
@@ -520,14 +532,17 @@ class _PageBody extends StatelessWidget {
   }
 }
 
-/// Paper behind the floating bars on Me and Family, so a page that scrolls
-/// at big text never shows through; clear over Play's village. Fades with
-/// the swipe.
+/// The page's wallpaper behind the floating bars on Me and Family (the
+/// same picture, lined up with the screen), so a page that scrolls at big
+/// text never shows through; clear over Play's village. Fades with the
+/// swipe.
 class _ChromeBackdrop extends StatelessWidget {
-  const _ChromeBackdrop({required this.pages, required this.page, required this.child});
+  const _ChromeBackdrop({required this.pages, required this.page, required this.top, required this.child});
 
   final PageController pages;
   final int page;
+  // At the top of the screen (else the bottom).
+  final bool top;
   final Widget child;
 
   @override
@@ -536,8 +551,18 @@ class _ChromeBackdrop extends StatelessWidget {
       animation: pages,
       builder: (context, child) {
         final at = pages.hasClients && pages.positions.length == 1 ? (pages.page ?? page.toDouble()) : page.toDouble();
-        final paper = (at - HomePage.play.index).abs().clamp(0.0, 1.0);
-        return ColoredBox(color: WColors.paper.withOpacity(paper), child: child);
+        final cover = (at - HomePage.play.index).abs().clamp(0.0, 1.0);
+        final kind = at < HomePage.play.index ? WallpaperKind.hills : WallpaperKind.pattern;
+        return Stack(children: [
+          if (cover > 0)
+            Positioned.fill(
+              child: Opacity(
+                opacity: cover,
+                child: WallpaperSlice(kind: kind, top: top, child: const SizedBox.expand()),
+              ),
+            ),
+          child!,
+        ]);
       },
       child: child,
     );
