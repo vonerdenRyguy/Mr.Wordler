@@ -83,7 +83,7 @@ void main() {
     expect(find.text('1'), findsWidgets); // "1 building" chip
 
     // The well's sprite stands on its word's middle letter.
-    final wellTop = _grid.ground(_mid, _mid - 1) - const Offset(0, isoBuildingLift + 30);
+    final wellTop = _grid.ground(_mid, _mid - 1) - const Offset(0, isoBlockHeight + 30);
     await tester.tapAt(onScreen(tester, wellTop));
     await tester.pumpAndSettle();
     expect(find.text('Well'), findsWidgets);

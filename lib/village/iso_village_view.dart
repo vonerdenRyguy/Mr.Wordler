@@ -12,11 +12,8 @@ import 'village_art.dart';
 // uses in Words view. Magic words are raised letter blocks with their
 // building standing on top; every other letter is a flat stone path slab.
 
-/// How far above the ground a building's sprite stands. Since spec-13 it
-/// stands right on the ground (it used to sit on raised letter blocks).
-const double isoBuildingLift = 0;
+const double isoBlockHeight = isoTileH * 0.45;
 const double _slabHeight = 6;
-const double _stoneHeight = 5;
 // PNGs are 3x kit units and a kit block is 80 units wide; 0.72 keeps a
 // building mostly over its own word.
 const double isoSpriteScale = (isoTileW / 80) * 0.72 / 3;
@@ -32,11 +29,6 @@ const _slabOutline = Color(0xFF6B5A48);
 const _slabLeft = Color(0xFFA8987C);
 const _slabRight = Color(0xFF8F8068);
 const _slabLetter = Color(0xFF4A3A2C);
-const _lotDirt = Color(0xFFD9C49C);
-const _lotEdge = Color(0x88B89F72);
-const _lotPebble = Color(0xFFB9A27A);
-const _tuftColor = Color(0xFF5E9E3A);
-const _flowers = [Color(0xFFF59C86), Color(0xFFFFF6E0), Color(0xFFF6C443)];
 const _landmarkFill = Color(0xFFFDF1D6);
 const _landmarkOutline = Color(0xFFB7791F);
 
@@ -82,7 +74,7 @@ class VillageScene {
   Rect? buildingRect(BoardStructure s) {
     final meta = spriteMeta[s.def.word];
     if (meta == null) return null;
-    final anchor = groundOf(s.middle) - const Offset(0, isoBuildingLift);
+    final anchor = groundOf(s.middle) - const Offset(0, isoBlockHeight);
     final w = meta.width * isoSpriteScale;
     final h = meta.height * isoSpriteScale;
     // Down words draw the sprite mirrored around its anchor.
@@ -282,16 +274,9 @@ class IsoVillagePainter extends CustomPainter {
       items.add((
         scene.depthOf(index),
         block != null
-            ? () => _paintLot(canvas, index, scene.groundOf(index), block, lit)
+            ? () => _paintBlock(canvas, scene.groundOf(index), letter, block, lit)
             : () => _paintSlab(canvas, scene.groundOf(index), letter, lit),
       ));
-      // A building's letters go on stepping-stones in front of it.
-      if (block != null) {
-        items.add((
-          max(scene.depthOf(index), scene.buildingDepth(block)) + 0.25,
-          () => _paintStone(canvas, scene.groundOf(index), letter, block, lit),
-        ));
-      }
     }
     final loaded = art;
     if (loaded != null) {
@@ -375,91 +360,44 @@ class IsoVillagePainter extends CustomPainter {
 
   Path _poly(List<Offset> points) => Path()..addPolygon(points, true);
 
-  /// A building's cell (spec-13): packed earth flush with the grass, with a
-  /// soft edge and a few grass tufts and flowers where it meets the lawn.
-  /// The letter goes on a stepping-stone in front (see [_paintStone]).
-  void _paintLot(Canvas canvas, int index, Offset g, BoardStructure s, bool lit) {
-    canvas.drawPath(
-      _diamond(g, 1.08),
-      Paint()
-        ..color = _lotEdge
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-    );
-    canvas.drawPath(_diamond(g, 1.0), Paint()..color = lit ? _highlightTop : _lotDirt);
-    // A couple of pebbles, always in the same places for a cell.
-    final rnd = Random(index);
-    for (int i = 0; i < 2; i++) {
-      final p = g + Offset((rnd.nextDouble() - 0.5) * isoTileW * 0.5, (rnd.nextDouble() - 0.5) * isoTileH * 0.4);
-      canvas.drawOval(Rect.fromCenter(center: p, width: 5, height: 3), Paint()..color = _lotPebble);
-    }
-    // Tufts on the edges that meet grass (not the rest of this lot).
-    final r = scene.rowOf(index), c = scene.colOf(index);
-    const hw = isoTileW / 2, hh = isoTileH / 2;
-    final edges = [
-      (r, c - 1, g + Offset(-hw / 2, -hh / 2)), // top-left
-      (r - 1, c, g + Offset(hw / 2, -hh / 2)), // top-right
-      (r, c + 1, g + Offset(hw / 2, hh / 2)), // bottom-right
-      (r + 1, c, g + Offset(-hw / 2, hh / 2)), // bottom-left
-    ];
-    for (final (nr, nc, mid) in edges) {
-      if (nr < 0 || nc < 0 || nr >= grid.boardHeight || nc >= grid.boardWidth) continue;
-      final n = nr * grid.boardWidth + nc;
-      if (identical(scene.blockOf[n], s) || scene.boardCells[n] != null) continue;
-      if (rnd.nextDouble() < 0.35) continue;
-      final along = (rnd.nextDouble() - 0.5) * 0.5;
-      final p = mid + Offset(along * hw, (nr == r ? -along : along) * hh);
-      _tuft(canvas, p);
-      if (rnd.nextDouble() < 0.4) {
-        canvas.drawCircle(p + const Offset(5, -2), 2.6, Paint()..color = _flowers[rnd.nextInt(_flowers.length)]);
-      }
-    }
-  }
-
-  void _tuft(Canvas canvas, Offset p) {
-    final paint = Paint()
-      ..color = _tuftColor
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(p, p + const Offset(-3, -6), paint);
-    canvas.drawLine(p, p + const Offset(0, -8), paint);
-    canvas.drawLine(p, p + const Offset(3, -6), paint);
-  }
-
-  /// A word's letter on a small stepping-stone at the front of its lot,
-  /// drawn after the building so it always stays readable.
-  void _paintStone(Canvas canvas, Offset g, String letter, BoardStructure s, bool lit) {
-    final ground = _corners(g, 1, 0);
-    // The edge facing the viewer along the word, and a little in from it.
-    final front = s.across ? (ground.left + ground.bottom) / 2 : (ground.bottom + ground.right) / 2;
-    final c = Offset.lerp(g, front, 1.12)!;
-    const scale = 0.4;
-    final base = _corners(c, scale, 0);
-    final top = _corners(c, scale, _stoneHeight);
-    canvas.drawOval(Rect.fromCenter(center: c + const Offset(0, 2), width: isoTileW * 0.44, height: isoTileH * 0.36),
-        Paint()..color = const Color(0x333B2A1E));
-    final edge = Paint()
+  void _paintBlock(Canvas canvas, Offset g, String letter, BoardStructure s, bool lit) {
+    const scale = 0.94;
+    final ground = _corners(g, scale, 0);
+    final top = _corners(g, scale, isoBlockHeight);
+    final leftFace = _poly([ground.left, ground.bottom, top.bottom, top.left]);
+    final rightFace = _poly([ground.bottom, ground.right, top.right, top.bottom]);
+    final topFace = _poly([top.top, top.right, top.bottom, top.left]);
+    final outline = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
+      ..strokeWidth = lit ? 2.5 : 2
       ..strokeJoin = StrokeJoin.round
       ..color = WColors.ink;
-    final leftFace = _poly([base.left, base.bottom, top.bottom, top.left]);
-    final rightFace = _poly([base.bottom, base.right, top.right, top.bottom]);
-    final topFace = _poly([top.top, top.right, top.bottom, top.left]);
+
     canvas.drawPath(leftFace, Paint()..color = _blockLeft);
     canvas.drawPath(rightFace, Paint()..color = _blockRight);
+    // The building's color as a 5px stripe along the bottom of the face
+    // that runs along the word.
+    final stripe = s.across
+        ? _poly([ground.left, ground.bottom, ground.bottom - const Offset(0, 5), ground.left - const Offset(0, 5)])
+        : _poly([ground.bottom, ground.right, ground.right - const Offset(0, 5), ground.bottom - const Offset(0, 5)]);
+    canvas.drawPath(stripe, Paint()..color = s.def.color);
     canvas.drawPath(topFace, Paint()..color = lit ? _highlightTop : _blockTop);
-    for (final f in [leftFace, rightFace, topFace]) {
-      canvas.drawPath(f, edge);
+    for (final face in [leftFace, rightFace, topFace]) {
+      canvas.drawPath(face, outline);
     }
-    // The building's color as a thin line under the stone's front.
-    canvas.drawLine(base.left + const Offset(2, 0), base.bottom, Paint()
-      ..color = s.def.color
-      ..strokeWidth = 2.5);
-    canvas.drawLine(base.bottom, base.right - const Offset(2, 0), Paint()
-      ..color = s.def.color
-      ..strokeWidth = 2.5);
-    final tp = _letter(letter, 15, WColors.ink);
-    tp.paint(canvas, c - const Offset(0, _stoneHeight) - Offset(tp.width / 2, tp.height / 2));
+
+    // The letter sits on that same side face, skewed to lie on it, so the
+    // building above never covers it.
+    final tp = _letter(letter, 19, WColors.ink);
+    final faceCenter = s.across
+        ? Offset((ground.left.dx + ground.bottom.dx) / 2, (ground.left.dy + ground.bottom.dy) / 2 - isoBlockHeight / 2 - 1)
+        : Offset((ground.bottom.dx + ground.right.dx) / 2, (ground.bottom.dy + ground.right.dy) / 2 - isoBlockHeight / 2 - 1);
+    final skew = Matrix4.identity()..setEntry(1, 0, s.across ? 0.5 : -0.5);
+    canvas.save();
+    canvas.translate(faceCenter.dx, faceCenter.dy);
+    canvas.transform(skew.storage);
+    tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+    canvas.restore();
   }
 
   void _paintSlab(Canvas canvas, Offset g, String letter, bool lit) {
@@ -499,14 +437,7 @@ class IsoVillagePainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
       );
     }
-    final anchor = scene.groundOf(s.middle) - const Offset(0, isoBuildingLift);
-    // A soft contact shadow on the ground, so it stands there.
-    canvas.drawOval(
-      Rect.fromCenter(center: anchor + const Offset(0, 4), width: rect.width * 0.7, height: isoTileH * 0.8),
-      Paint()
-        ..color = const Color(0x553B2A1E)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
-    );
+    final anchor = scene.groundOf(s.middle) - const Offset(0, isoBlockHeight);
     canvas.save();
     canvas.translate(anchor.dx, anchor.dy);
     if (!s.across) canvas.scale(-1, 1);
@@ -551,8 +482,8 @@ class NoHit extends VillageHit {
 /// Buildings first, front to back, using the sprite's alpha ([opaque]
 /// answers "is this sprite pixel solid?"; null treats every pixel inside
 /// the sprite's rectangle as solid). Otherwise the letter under the tap,
-/// trying the point itself and then the point shifted down by a slab's
-/// height, so the top of a raised slab or stone hits its own cell.
+/// trying the point itself and then the point shifted down by the block
+/// height, so the top of a raised block hits its own cell.
 VillageHit hitTestVillage(
   Offset p,
   VillageScene scene, {
@@ -564,7 +495,7 @@ VillageHit hitTestVillage(
     if (pixel == null) continue;
     if (opaque == null || opaque(s, pixel.x, pixel.y)) return BuildingHit(s);
   }
-  for (final point in [p, p + const Offset(0, _slabHeight)]) {
+  for (final point in [p, p + const Offset(0, isoBlockHeight)]) {
     final cell = scene.grid.cellAt(point);
     if (cell == null) continue;
     final index = cell.r * scene.grid.boardWidth + cell.c;
