@@ -42,16 +42,16 @@ void main() {
     final s = scene();
     // The sprite covers the WELL letters; with every pixel transparent the
     // tap reaches the block below.
-    final ground = s.groundOf(53) - const Offset(0, isoBlockHeight);
+    final ground = s.groundOf(53) - const Offset(0, isoBuildingLift);
     expect(hitTestVillage(ground, s), isA<BuildingHit>());
     final hit = hitTestVillage(ground, s, opaque: (_, __, ___) => false);
     expect(hit, isA<CellHit>());
     expect((hit as CellHit).index, 53);
   });
 
-  test("a raised block's top face hits its own cell", () {
+  test("a building's lot cell hits its own cell", () {
     final s = scene();
-    final top = s.groundOf(55) - const Offset(0, isoBlockHeight);
+    final top = s.groundOf(55) - const Offset(0, isoBuildingLift);
     final hit = hitTestVillage(top, s, opaque: (_, __, ___) => false);
     expect((hit as CellHit).index, 55);
   });
