@@ -27,7 +27,9 @@ import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 
 import '../ui/chunky_button.dart';
+import '../sound/sound_service.dart';
 import '../ui/pill_chip.dart';
+import '../ui/reward_moment.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
@@ -480,20 +482,20 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     await claims.loaded;
     if (!mounted || !claims.claim(now)) return;
     ref.read(portfolioProvider.notifier).addCurrency(kWordOfDayCoins);
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: WColors.ink,
-        duration: const Duration(seconds: 3),
-        content: Text(
-          'Word of the day! $today  +$kWordOfDayCoins coins',
-          textAlign: TextAlign.center,
-          style: WText.bodyBold.copyWith(color: WColors.white),
-        ),
-      ),
+    await _rewardsShowing; // one moment at a time (a new building first)
+    if (!mounted) return;
+    await showRewardMoment(
+      context,
+      title: 'Word of the day!',
+      word: today,
+      message: 'You spelled it in your village.',
+      coins: kWordOfDayCoins,
     );
   }
+
+  // The new-building moment, while it's open; the word of the day waits
+  // for it so two moments never stack.
+  Future<void> _rewardsShowing = Future.value();
 
   Future<void> _refreshScore() async {
     final controller = ref.read(gridGameControllerProvider.notifier);
@@ -512,8 +514,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   int get _freeSwapsLeft => freeSwapsLeft(used: _freeSwapsUsed, hasFarm: _hasStructure('FARM'));
 
-  // +10 coins the first time each building is ever built, with a dialog.
-  // Words already discovered (older saves included) never pay again.
+  // +10 coins the first time each building is ever built, with the new
+  // building moment (spec-12). Words already discovered (older saves
+  // included) never pay again.
   void _celebrateNewBuildings(Set<String> words) {
     final coins = coinsForDiscoveries(words);
     ref.read(portfolioProvider.notifier).addCurrency(coins);
@@ -524,21 +527,19 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         ? 'You built a ${names.first}!'
         : 'You built a ${names.sublist(0, names.length - 1).join(', a ')} and a ${names.last}!';
     final card = _spriteMeta[defs.first.word]?.cardPath;
-    showWordlerDialog<void>(
+    final what = names.length == 1 ? defs.first.description : null;
+    _rewardsShowing = showRewardMoment(
       context,
+      ribbon: 'New building!',
       title: title,
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (card != null)
-            SizedBox(height: 160, child: Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true)),
-          const SizedBox(height: WSize.gap2),
-          Text(
-              '+$coins coins. Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see what ${names.length == 1 ? 'it does' : 'they do'}.',
-              style: WText.body),
-        ],
-      ),
-      actions: [WordlerDialogAction('Wonderful!', () {})],
+      message: [
+        if (what != null) what,
+        'Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see more.',
+      ].join('\n'),
+      coins: coins,
+      picture: card == null ? null : Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true),
+      buttonLabel: 'Hooray!',
+      sound: Sfx.building,
     );
   }
 

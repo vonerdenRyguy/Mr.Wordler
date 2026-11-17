@@ -427,6 +427,9 @@ class _DailyChallengeBodyState extends ConsumerState<_DailyChallengeBody> {
       bonusWordFound: secretFound,
     );
     final coins = secretFound ? secretWordCoins(cluesUsed, unlimitedClues: _info.unlimitedClues) : 0;
+    // The result card shows the secret word's coins; it gets the reward
+    // jingle (spec-12), or the plain chime for a finish without it.
+    ref.read(soundProvider).play(secretFound ? Sfx.reward : Sfx.word);
 
     ref.read(dailyChallengeProvider.notifier).recordAttempt(
           now: widget.today,

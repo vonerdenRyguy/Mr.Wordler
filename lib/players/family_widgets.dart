@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../game/letter_tile.dart';
 import '../online/family_online_controller.dart';
 import '../portfolio/portfolio_controller.dart';
+import '../ui/reward_moment.dart';
 import '../ui/tokens.dart';
 import 'family_word.dart';
 import 'players.dart';
@@ -110,10 +111,10 @@ Future<void> claimFamilyCoins(WidgetRef ref, BuildContext context) async {
   final coins = family.claimOwed(playerId) + onlineCoins;
   if (coins == 0) return;
   portfolio.addCurrency(coins);
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      behavior: SnackBarBehavior.floating,
-      content: Text('Family word found!  +$coins coins', style: WText.bodyBold.copyWith(color: WColors.white)),
-    ));
+  await showRewardMoment(
+    context,
+    title: 'Family word found!',
+    message: 'Your family found the hidden word together.',
+    coins: coins,
+  );
 }
