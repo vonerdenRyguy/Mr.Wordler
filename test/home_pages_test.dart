@@ -61,7 +61,7 @@ void main() {
     // Swipe right: Me.
     await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
     await tester.pumpAndSettle();
-    expect(find.text('Word journal'), findsOneWidget);
+    expect(find.text('Journal'), findsOneWidget);
     expect(find.text('Visit your village'), findsNothing);
 
     // Swipe left twice: Play, then Family.
@@ -115,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Spell the word of the day in your village for +10 coins.'), findsOneWidget);
-    for (final label in ['My stats', 'Word level', 'Word journal']) {
+    for (final label in ['Stats', 'Word level', 'Journal', 'Homes']) {
       final box = tester.getRect(find.text(label));
       expect(box.bottom, lessThan(tester.getRect(find.byType(TipBar)).top), reason: label);
     }
@@ -135,6 +135,23 @@ void main() {
       expect(const Rect.fromLTWH(0, 0, 390, 844).contains(tester.getRect(find.text(label)).bottomRight), isTrue,
           reason: label);
     }
+  });
+
+  testWidgets('Me (spec-12b): one hero, one strip, a row of round buttons that open their pages', (tester) async {
+    SharedPreferences.setMockInitialValues({SettingsController.homeIntroSeenKey: true, 'wordLevel': 'sprout'});
+    await pumpHome(tester);
+    await goToHomePage(tester, 'Me');
+    await tester.pumpAndSettle();
+    expect(find.text('Word of the day'), findsOneWidget);
+    expect(find.text('WORD OF THE DAY'), findsNothing);
+    await tester.tap(find.text('Word level'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sprout'), findsWidgets);
+    Navigator.of(tester.element(find.text('Sprout').first)).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Journal'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsOneWidget);
   });
 
   group('Play page (spec-12)', () {

@@ -127,7 +127,7 @@ void main() {
     await goToHomePage(tester, 'Me');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    onScreen(['WORD OF THE DAY', today.word, '+10 coins', 'Word journal', 'My properties', 'My stats', 'Word level']);
+    onScreen(['Word of the day', today.word, '+10', 'Journal', 'Homes', 'Stats', 'Word level']);
 
     // Family, with no family yet: two ways to start one.
     await goToHomePage(tester, 'Family');
@@ -147,13 +147,13 @@ void main() {
     final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
     final today = wordOfDayFor(DateTime.now(), words);
     await goToHomePage(tester, 'Me');
-    await tester.tap(find.text('WORD OF THE DAY'));
+    await tester.tap(find.text('Word of the day'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Word of the day'), findsOneWidget);
-    // On the card (one line) and, in full, in the sheet.
-    expect(find.text(today.meaning), findsNWidgets(2));
+    expect(find.text('Word of the day'), findsNWidgets(2)); // the strip and the sheet
+    // The meaning is in the sheet (the strip keeps Me calm).
+    expect(find.text(today.meaning), findsOneWidget);
     expect(find.text('Spell it in your village today for +10 coins.'), findsOneWidget);
     expect(find.bySemanticsLabel(today.word), findsOneWidget);
   });
@@ -187,7 +187,7 @@ void main() {
     await pumpApp(tester);
 
     await goToHomePage(tester, 'Me');
-    await tester.tap(find.text('My properties'));
+    await tester.tap(find.text('Homes'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -486,7 +486,7 @@ void main() {
     await pumpApp(tester);
 
     await goToHomePage(tester, 'Me');
-    await tester.tap(find.text('My stats'));
+    await tester.tap(find.text('Stats'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
