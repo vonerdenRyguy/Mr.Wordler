@@ -18,6 +18,10 @@ class SettingsData {
     this.showTips = true,
     this.homeIntroSeen = true,
     this.loaded = false,
+    this.musicOn = true,
+    this.musicVolume = defaultMusicVolume,
+    this.soundsOn = true,
+    this.soundsVolume = defaultSoundsVolume,
   });
 
   /// 0 = Normal, 1 = Large, 2 = Extra large.
@@ -33,6 +37,15 @@ class SettingsData {
 
   /// True once the saved settings have been read.
   final bool loaded;
+
+  /// Music and sounds (spec-12). Per phone; on, and fairly quiet, to start.
+  final bool musicOn;
+  final double musicVolume;
+  final bool soundsOn;
+  final double soundsVolume;
+
+  static const defaultMusicVolume = 0.4;
+  static const defaultSoundsVolume = 0.7;
 
   /// The word level the player picked (spec-06); null until they pick one.
   final WordLevel? chosenWordLevel;
@@ -53,6 +66,10 @@ class SettingsData {
     WordLevel? chosenWordLevel,
     bool? showTips,
     bool? homeIntroSeen,
+    bool? musicOn,
+    double? musicVolume,
+    bool? soundsOn,
+    double? soundsVolume,
   }) =>
       SettingsData(
         textSizeStep: textSizeStep ?? this.textSizeStep,
@@ -61,6 +78,10 @@ class SettingsData {
         showTips: showTips ?? this.showTips,
         homeIntroSeen: homeIntroSeen ?? this.homeIntroSeen,
         loaded: loaded,
+        musicOn: musicOn ?? this.musicOn,
+        musicVolume: musicVolume ?? this.musicVolume,
+        soundsOn: soundsOn ?? this.soundsOn,
+        soundsVolume: soundsVolume ?? this.soundsVolume,
       );
 }
 
@@ -74,6 +95,10 @@ class SettingsController extends StateNotifier<SettingsData> {
   static const wordLevelKey = 'wordLevel';
   static const showTipsKey = 'showTips';
   static const homeIntroSeenKey = 'homeIntroSeen';
+  static const musicOnKey = 'musicOn';
+  static const musicVolumeKey = 'musicVolume';
+  static const soundsOnKey = 'soundsOn';
+  static const soundsVolumeKey = 'soundsVolume';
 
   // The word level is per player (spec-07); text size and Reduce motion
   // belong to the phone.
@@ -95,6 +120,10 @@ class SettingsController extends StateNotifier<SettingsData> {
       showTips: prefs.getBool(showTipsKey) ?? true,
       homeIntroSeen: prefs.getBool(homeIntroSeenKey) ?? false,
       loaded: true,
+      musicOn: prefs.getBool(musicOnKey) ?? true,
+      musicVolume: (prefs.getDouble(musicVolumeKey) ?? SettingsData.defaultMusicVolume).clamp(0.0, 1.0),
+      soundsOn: prefs.getBool(soundsOnKey) ?? true,
+      soundsVolume: (prefs.getDouble(soundsVolumeKey) ?? SettingsData.defaultSoundsVolume).clamp(0.0, 1.0),
     );
   }
 
@@ -108,6 +137,30 @@ class SettingsController extends StateNotifier<SettingsData> {
     state = state.copyWith(homeIntroSeen: true);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(homeIntroSeenKey, true);
+  }
+
+  Future<void> setMusicOn(bool value) async {
+    state = state.copyWith(musicOn: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(musicOnKey, value);
+  }
+
+  Future<void> setMusicVolume(double value) async {
+    state = state.copyWith(musicVolume: value.clamp(0.0, 1.0));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(musicVolumeKey, state.musicVolume);
+  }
+
+  Future<void> setSoundsOn(bool value) async {
+    state = state.copyWith(soundsOn: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(soundsOnKey, value);
+  }
+
+  Future<void> setSoundsVolume(double value) async {
+    state = state.copyWith(soundsVolume: value.clamp(0.0, 1.0));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(soundsVolumeKey, state.soundsVolume);
   }
 
   Future<void> setWordLevel(WordLevel level) async {

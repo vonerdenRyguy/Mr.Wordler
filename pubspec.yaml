@@ -27,6 +27,7 @@ dependencies:
   cloud_firestore: 5.6.0
   google_sign_in: 6.2.1
   app_links: 6.3.0
+  audioplayers: 6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -46,6 +47,8 @@ flutter:
     - assets/village/buildings/
     - assets/village/cards/
     - assets/village/buildings.json
+    # Sounds and music, made by tool/make_sounds.dart (spec-12).
+    - assets/sounds/
 
   fonts:
     - family: LilitaOne

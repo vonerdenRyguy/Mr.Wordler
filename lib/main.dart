@@ -12,6 +12,7 @@ import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
 import 'package:namer_app/screens/players_screens.dart';
 import 'package:namer_app/settings/settings_controller.dart';
+import 'package:namer_app/sound/sound_service.dart';
 import 'package:namer_app/ui/tokens.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart' hide Consumer;
@@ -95,7 +96,9 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       }),
-      home: const AppRoot(),
+      // The village tune plays from the start (spec-12); the Daily and
+      // Time Attack bring their own while they're open.
+      home: const SoundLifecycle(child: MusicScope(track: MusicTrack.village, child: AppRoot())),
     );
   }
 }
