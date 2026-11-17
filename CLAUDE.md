@@ -5,7 +5,7 @@ pool into a rack, drag them onto a board to form connected, dictionary-valid
 words. The main mode is a village builder: magic words become buildings.
 Repo: `vonerdenRyguy/Mr.Wordler`.
 
-**Ignore `build/` and `.dart_tool/`** when exploring this codebase â€” both are
+**Ignore `build/` and `.dart_tool/`** when exploring this codebase — both are
 Flutter-generated output (already gitignored), not source.
 
 ## How we work
@@ -245,6 +245,7 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     to look around" card (`homeIntroSeen`). All three keys are per phone.
     Tests that pump `MyApp` call `skipHomeIntro()` /
     `goToHomePage()` from `test/home_test_helpers.dart`.
+
 - **spec-12 game feel** (branch `spec-12-game-feel`, merged 2026-11-16
   after Ryan's phone check). Came out of the research note
   `Desktop\MrWordlerScreenshots\research\2026-11-16-what-games-do.md`.
@@ -325,7 +326,7 @@ concept, each spec's proposal, and dated real-phone screenshots.
   whole rack must always fit.
 - **The word-landing banner can carry a note** (`landingNoteProvider`,
   default none): the Daily overrides it so the secret word lands as
-  `HORSE Â· Secret word!`.
+  `HORSE · Secret word!`.
 - **Verification policy:** risky changes go on a feature branch with
   analyze + test before every commit and an on-device check before merge.
 
@@ -411,9 +412,9 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 ## Testing
 
-- `flutter analyze` â€” clean except the pre-existing `bananagramsTiles.dart`
+- `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` â€” 202 tests as of spec-11 (193 as of spec-10).
+- `flutter test` — 219 tests as of spec-12 (202 as of spec-11).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
