@@ -1,20 +1,15 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/game/word_runs.dart';
+import 'package:namer_app/village/building_art.dart';
 import 'package:namer_app/village/iso_math.dart';
 import 'package:namer_app/village/iso_village_view.dart';
+import 'package:namer_app/village/magic_word.dart';
 import 'package:namer_app/village/structures.dart';
-import 'package:namer_app/village/village_art.dart';
 
 void main() {
   const grid = IsoGrid(boardWidth: 10, boardHeight: 10);
-  const meta = SpriteMeta(
-    anchorX: 200,
-    anchorY: 400,
-    width: 400,
-    height: 440,
-    spritePath: 'assets/village/buildings/well.png',
-    cardPath: 'assets/village/cards/well.png',
-  );
 
   VillageScene scene() {
     final board = List<String?>.filled(100, null);
@@ -25,40 +20,67 @@ void main() {
     return VillageScene(
       grid: grid,
       boardCells: board,
-      structures: computeStructures(const [WordRun('WELL', [52, 53, 54, 55], true)]),
+      structures: computeStructures(const [
+        WordRun('WELL', [52, 53, 54, 55], true)
+      ]),
       landmarkIndices: const {},
-      spriteMeta: const {'WELL': meta},
     );
   }
 
-  test('a building rectangle wins over the cell under it', () {
+  test('the building covers every letter of its word', () {
     final s = scene();
-    final rect = s.buildingRect(s.structures.single)!;
-    final hit = hitTestVillage(rect.center, s);
-    expect(hit, isA<BuildingHit>());
-  });
-
-  test('a transparent sprite pixel falls through to what is behind', () {
-    final s = scene();
-    // The sprite covers the WELL letters; with every pixel transparent the
-    // tap reaches the block below.
-    final ground = s.groundOf(53) - const Offset(0, isoBlockHeight);
-    expect(hitTestVillage(ground, s), isA<BuildingHit>());
-    final hit = hitTestVillage(ground, s, opaque: (_, __, ___) => false);
-    expect(hit, isA<CellHit>());
-    expect((hit as CellHit).index, 53);
-  });
-
-  test("a raised block's top face hits its own cell", () {
-    final s = scene();
-    final top = s.groundOf(55) - const Offset(0, isoBlockHeight);
-    final hit = hitTestVillage(top, s, opaque: (_, __, ___) => false);
-    expect((hit as CellHit).index, 55);
+    final well = s.structures.single;
+    expect(s.buildingCells(well), [52, 53, 54, 55]);
+    for (final i in [52, 53, 54, 55]) {
+      // On each letter's block and just above it.
+      expect(hitTestVillage(s.groundOf(i) - const Offset(0, isoBlockHeight), s), isA<BuildingHit>());
+      expect(hitTestVillage(s.groundOf(i) - const Offset(0, isoBlockHeight + 20), s), isA<BuildingHit>());
+    }
+    final rect = s.buildingRect(well)!;
+    expect(rect.left, lessThan(s.groundOf(52).dx));
+    expect(rect.right, greaterThan(s.groundOf(55).dx));
   });
 
   test('a path letter hits its cell, empty grass hits nothing', () {
     final s = scene();
     expect((hitTestVillage(s.groundOf(83), s) as CellHit).index, 83);
     expect(hitTestVillage(s.groundOf(99), s), isA<NoHit>());
+  });
+
+  test('crossing buildings never share a block', () {
+    final board = List<String?>.filled(100, null);
+    // HOUSE across row 3 cols 1-5; TOWER down col 2 rows 2-6 (O shared).
+    const house = WordRun('HOUSE', [31, 32, 33, 34, 35], true);
+    const tower = WordRun('TOWER', [22, 32, 42, 52, 62], false);
+    for (final run in [house, tower]) {
+      for (int i = 0; i < run.positions.length; i++) {
+        board[run.positions[i]] = run.word[i];
+      }
+    }
+    final s = VillageScene(
+        grid: grid, boardCells: board, structures: computeStructures([house, tower]), landmarkIndices: const {});
+    expect(s.buildingCells(s.structures[0]), [31, 32, 33, 34, 35]);
+    // TOWER loses the shared O and keeps the longer side: W, E, R.
+    expect(s.buildingCells(s.structures[1]), [42, 52, 62]);
+  });
+
+  test('every building paints at every length, across and down', () {
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    Offset p(double c, double r, double z) => grid.ground(r, c) - Offset(0, z);
+    for (final def in kMagicWords) {
+      for (int n = 3; n <= 7; n++) {
+        for (final across in [true, false]) {
+          paintBuilding(
+            canvas,
+            def.word,
+            BuildingSpot(c0: 1.5, r0: 1.5, length: n, across: across, z0: isoBlockHeight, k: isoBuildingScale),
+            p,
+          );
+        }
+      }
+      expect(buildingTopHeight(def.word, 1), greaterThan(0));
+    }
+    recorder.endRecording().dispose();
   });
 }

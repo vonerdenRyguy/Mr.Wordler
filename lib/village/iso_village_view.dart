@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../ui/tokens.dart';
+import 'building_art.dart';
 import 'iso_math.dart';
 import 'structures.dart';
 import 'village_art.dart';
@@ -14,9 +15,8 @@ import 'village_art.dart';
 
 const double isoBlockHeight = isoTileH * 0.45;
 const double _slabHeight = 6;
-// PNGs are 3x kit units and a kit block is 80 units wide; 0.72 keeps a
-// building mostly over its own word.
-const double isoSpriteScale = (isoTileW / 80) * 0.72 / 3;
+// The buildings were designed on 60px-wide tiles.
+const double isoBuildingScale = isoTileW / 60;
 
 const _grassA = Color(0xFF8ACD52);
 const _grassB = Color(0xFF80C64A);
@@ -69,36 +69,116 @@ class VillageScene {
   int colOf(int index) => index % grid.boardWidth;
   Offset groundOf(int index) => grid.ground(rowOf(index), colOf(index));
 
-  /// Where [s]'s sprite is drawn, in content coordinates, or null if its
-  /// art isn't known.
-  Rect? buildingRect(BoardStructure s) {
-    final meta = spriteMeta[s.def.word];
-    if (meta == null) return null;
-    final anchor = groundOf(s.middle) - const Offset(0, isoBlockHeight);
-    final w = meta.width * isoSpriteScale;
-    final h = meta.height * isoSpriteScale;
-    // Down words draw the sprite mirrored around its anchor.
-    final left = s.across ? anchor.dx - meta.anchorX * isoSpriteScale : anchor.dx - (meta.width - meta.anchorX) * isoSpriteScale;
-    return Rect.fromLTWH(left, anchor.dy - meta.anchorY * isoSpriteScale, w, h);
+  /// The letters of [s]'s word its building covers (spec-14): the longest
+  /// stretch of its cells that no earlier building's word already uses,
+  /// so two crossing buildings never stand on the same block. Usually the
+  /// whole word.
+  List<int> buildingCells(BoardStructure s) {
+    var best = <int>[], run = <int>[];
+    for (final p in s.ordered) {
+      if (identical(blockOf[p], s)) {
+        run = [...run, p];
+        if (run.length > best.length) best = run;
+      } else {
+        run = [];
+      }
+    }
+    return best;
   }
 
-  /// The sprite pixel under content point [p] for building [s] (accounting
-  /// for mirroring), for alpha hit testing.
-  ({int x, int y})? spritePixelAt(BoardStructure s, Offset p) {
-    final rect = buildingRect(s);
-    final meta = spriteMeta[s.def.word];
-    if (rect == null || meta == null || !rect.contains(p)) return null;
-    var x = (p.dx - rect.left) / isoSpriteScale;
-    final y = (p.dy - rect.top) / isoSpriteScale;
-    if (!s.across) x = meta.width - x;
-    return (x: x.floor(), y: y.floor());
+  /// Where [s]'s building stands, for [paintBuilding], or null if another
+  /// building already covers all of its letters.
+  BuildingSpot? spotOf(BoardStructure s) {
+    final cells = buildingCells(s);
+    if (cells.isEmpty) return null;
+    return BuildingSpot(
+      c0: colOf(cells.first) - 0.5,
+      r0: rowOf(cells.first) - 0.5,
+      length: cells.length,
+      across: s.across,
+      z0: isoBlockHeight,
+      k: isoBuildingScale,
+    );
   }
+
+  /// [paintBuilding]'s projection: cell-edge coordinates to content space.
+  Offset project(double c, double r, double z) => grid.ground(r, c) - Offset(0, z);
+
+  /// The outline of [s]'s building and the blocks under it, for tapping.
+  Path? buildingOutline(BoardStructure s) {
+    final spot = spotOf(s);
+    if (spot == null) return null;
+    final c1 = spot.c0 + (spot.across ? spot.length : 1);
+    final r1 = spot.r0 + (spot.across ? 1 : spot.length);
+    final top = isoBlockHeight + buildingTopHeight(s.def.word, isoBuildingScale);
+    return Path()
+      ..addPolygon([
+        project(spot.c0, spot.r0, top),
+        project(c1, spot.r0, top),
+        project(c1, spot.r0, 0),
+        project(c1, r1, 0),
+        project(spot.c0, r1, 0),
+        project(spot.c0, r1, top),
+      ], true);
+  }
+
+  /// The box [s]'s building is drawn in, or null if it has none.
+  Rect? buildingRect(BoardStructure s) => buildingOutline(s)?.getBounds();
 
   /// Depth for back-to-front drawing: r + c, then c.
   double depthOf(int index) => (rowOf(index) + colOf(index)) * 100000.0 + colOf(index);
 
-  /// A building draws just after the front-most cell of its footprint.
-  double buildingDepth(BoardStructure s) => s.ordered.map(depthOf).reduce(max) + 0.5;
+  /// A building draws just after the front-most cell of its footprint, and
+  /// always after any building standing behind it (a long building's
+  /// front-most cell alone can't tell which of two is in front).
+  double buildingDepth(BoardStructure s) => (_buildingDepths ??= _orderBuildings())[s]!;
+
+  Map<BoardStructure, double>? _buildingDepths;
+
+  double _ownDepth(BoardStructure s) {
+    final cells = buildingCells(s);
+    return (cells.isEmpty ? s.ordered : cells).map(depthOf).reduce(max) + 0.5;
+  }
+
+  // Whether [a]'s building must be drawn after [b]'s: they overlap on
+  // screen, and [a] is further along a row or column without [b] being
+  // further along the other one (then they sit side by side).
+  bool _inFront(BoardStructure a, BoardStructure b) {
+    final fa = _footprint(a), fb = _footprint(b);
+    if (fa == null || fb == null) return false;
+    if (!buildingRect(a)!.overlaps(buildingRect(b)!)) return false;
+    final aByRow = fa.r0 >= fb.r1, aByCol = fa.c0 >= fb.c1;
+    final bByRow = fb.r0 >= fa.r1, bByCol = fb.c0 >= fa.c1;
+    return (aByRow && !bByCol) || (aByCol && !bByRow);
+  }
+
+  ({double r0, double r1, double c0, double c1})? _footprint(BoardStructure s) {
+    final spot = spotOf(s);
+    if (spot == null) return null;
+    return (
+      r0: spot.r0,
+      r1: spot.r0 + (spot.across ? 1 : spot.length),
+      c0: spot.c0,
+      c1: spot.c0 + (spot.across ? spot.length : 1),
+    );
+  }
+
+  Map<BoardStructure, double> _orderBuildings() {
+    final left = [...structures]..sort((a, b) => _ownDepth(a).compareTo(_ownDepth(b)));
+    final depths = <BoardStructure, double>{};
+    var last = double.negativeInfinity;
+    while (left.isNotEmpty) {
+      // The first (by own depth) with nothing still to draw behind it.
+      final next = left.firstWhere(
+        (s) => !left.any((o) => !identical(o, s) && _inFront(s, o)),
+        orElse: () => left.first,
+      );
+      left.remove(next);
+      last = max(_ownDepth(next), last + 0.01);
+      depths[next] = last;
+    }
+    return depths;
+  }
 
   /// Center of all letters (or the board center if empty), as a cell.
   ({int r, int c}) lettersCenter() {
@@ -145,18 +225,9 @@ class IsoVillageView extends StatefulWidget {
 }
 
 class _IsoVillageViewState extends State<IsoVillageView> {
-  VillageArt? _art;
   late final TransformationController _ownController = TransformationController();
 
   TransformationController get _controller => widget.transformController ?? _ownController;
-
-  @override
-  void initState() {
-    super.initState();
-    VillageArt.load().then((art) {
-      if (mounted) setState(() => _art = art);
-    }).catchError((_) {});
-  }
 
   @override
   void dispose() {
@@ -180,7 +251,6 @@ class _IsoVillageViewState extends State<IsoVillageView> {
           scene: widget.scene,
           visible: visible,
           zoom: transformScale(_controller.value),
-          art: _art,
           highlight: widget.highlight,
           highlightBuilding: widget.highlightBuilding,
         );
@@ -201,7 +271,6 @@ class IsoVillagePainter extends CustomPainter {
     required this.scene,
     required this.visible,
     required this.zoom,
-    required this.art,
     required this.highlight,
     required this.highlightBuilding,
   });
@@ -209,7 +278,6 @@ class IsoVillagePainter extends CustomPainter {
   final VillageScene scene;
   final Rect visible;
   final double zoom;
-  final VillageArt? art;
   final Set<int> highlight;
   final BoardStructure? highlightBuilding;
 
@@ -278,14 +346,10 @@ class IsoVillagePainter extends CustomPainter {
             : () => _paintSlab(canvas, scene.groundOf(index), letter, lit),
       ));
     }
-    final loaded = art;
-    if (loaded != null) {
-      for (final s in scene.structures) {
-        final sprite = loaded.sprites[s.def.word];
-        final rect = scene.buildingRect(s);
-        if (sprite == null || rect == null || !rect.overlaps(area)) continue;
-        items.add((scene.buildingDepth(s), () => _paintBuilding(canvas, s, sprite, rect)));
-      }
+    for (final s in scene.structures) {
+      final rect = scene.buildingRect(s);
+      if (rect == null || !rect.overlaps(area)) continue;
+      items.add((scene.buildingDepth(s), () => _paintBuilding(canvas, s, rect)));
     }
     items.sort((a, b) => a.$1.compareTo(b.$1));
     for (final item in items) {
@@ -390,8 +454,10 @@ class IsoVillagePainter extends CustomPainter {
     // building above never covers it.
     final tp = _letter(letter, 19, WColors.ink);
     final faceCenter = s.across
-        ? Offset((ground.left.dx + ground.bottom.dx) / 2, (ground.left.dy + ground.bottom.dy) / 2 - isoBlockHeight / 2 - 1)
-        : Offset((ground.bottom.dx + ground.right.dx) / 2, (ground.bottom.dy + ground.right.dy) / 2 - isoBlockHeight / 2 - 1);
+        ? Offset(
+            (ground.left.dx + ground.bottom.dx) / 2, (ground.left.dy + ground.bottom.dy) / 2 - isoBlockHeight / 2 - 1)
+        : Offset((ground.bottom.dx + ground.right.dx) / 2,
+            (ground.bottom.dy + ground.right.dy) / 2 - isoBlockHeight / 2 - 1);
     final skew = Matrix4.identity()..setEntry(1, 0, s.across ? 0.5 : -0.5);
     canvas.save();
     canvas.translate(faceCenter.dx, faceCenter.dy);
@@ -427,7 +493,9 @@ class IsoVillagePainter extends CustomPainter {
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
   }
 
-  void _paintBuilding(Canvas canvas, BoardStructure s, BuildingSprite sprite, Rect rect) {
+  void _paintBuilding(Canvas canvas, BoardStructure s, Rect rect) {
+    final spot = scene.spotOf(s);
+    if (spot == null) return;
     if (identical(s, highlightBuilding)) {
       canvas.drawCircle(
         rect.center,
@@ -437,17 +505,7 @@ class IsoVillagePainter extends CustomPainter {
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
       );
     }
-    final anchor = scene.groundOf(s.middle) - const Offset(0, isoBlockHeight);
-    canvas.save();
-    canvas.translate(anchor.dx, anchor.dy);
-    if (!s.across) canvas.scale(-1, 1);
-    canvas.scale(isoSpriteScale);
-    canvas.drawImage(
-      sprite.image,
-      Offset(-sprite.meta.anchorX, -sprite.meta.anchorY),
-      Paint()..filterQuality = FilterQuality.medium,
-    );
-    canvas.restore();
+    paintBuilding(canvas, s.def.word, spot, scene.project);
   }
 
   @override
@@ -455,7 +513,6 @@ class IsoVillagePainter extends CustomPainter {
       oldDelegate.visible != visible ||
       oldDelegate.zoom != zoom ||
       !identical(oldDelegate.scene, scene) ||
-      !identical(oldDelegate.art, art) ||
       oldDelegate.highlight != highlight ||
       !identical(oldDelegate.highlightBuilding, highlightBuilding);
 }
@@ -479,21 +536,14 @@ class NoHit extends VillageHit {
   const NoHit();
 }
 
-/// Buildings first, front to back, using the sprite's alpha ([opaque]
-/// answers "is this sprite pixel solid?"; null treats every pixel inside
-/// the sprite's rectangle as solid). Otherwise the letter under the tap,
-/// trying the point itself and then the point shifted down by the block
-/// height, so the top of a raised block hits its own cell.
-VillageHit hitTestVillage(
-  Offset p,
-  VillageScene scene, {
-  bool Function(BoardStructure s, int x, int y)? opaque,
-}) {
+/// Buildings first, front to back (a building's outline includes the
+/// letter blocks under it). Otherwise the letter under the tap, trying the
+/// point itself and then the point shifted down by the block height, so
+/// the top of a raised block hits its own cell.
+VillageHit hitTestVillage(Offset p, VillageScene scene) {
   final front = [...scene.structures]..sort((a, b) => scene.buildingDepth(b).compareTo(scene.buildingDepth(a)));
   for (final s in front) {
-    final pixel = scene.spritePixelAt(s, p);
-    if (pixel == null) continue;
-    if (opaque == null || opaque(s, pixel.x, pixel.y)) return BuildingHit(s);
+    if (scene.buildingOutline(s)?.contains(p) ?? false) return BuildingHit(s);
   }
   for (final point in [p, p + const Offset(0, isoBlockHeight)]) {
     final cell = scene.grid.cellAt(point);

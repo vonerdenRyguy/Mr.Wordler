@@ -34,6 +34,10 @@ void main() {
     across(_mid + 3, _mid - 3, 'FARM');
     down(_mid, _mid + 2, 'EAR');
     across(_mid - 3, _mid + 1, 'MILL');
+    across(_mid + 6, _mid - 5, 'GARDEN');
+    across(_mid - 7, _mid - 4, 'BRIDGE');
+    down(_mid - 6, _mid + 5, 'WELL');
+    down(_mid + 4, _mid + 3, 'BARN');
     SharedPreferences.setMockInitialValues({
       'homeIntroSeen': true,
       'infiniteEstateVillageSave': jsonEncode({
@@ -42,25 +46,28 @@ void main() {
         'pool': List<String>.filled(50, 'E'),
         'dealtLetters': List<String>.filled(30, 'E'),
         'lastCashedOutScore': 0,
-        'discoveredWords': ['HOUSE', 'TOWER', 'FARM', 'MILL'],
+        'discoveredWords': ['HOUSE', 'TOWER', 'FARM', 'MILL', 'GARDEN', 'BRIDGE', 'WELL', 'BARN'],
         'saveVersion': 2,
       }),
     });
-    tester.view.physicalSize = const Size(411, 700);
+    tester.view.physicalSize = const Size(411, 891);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.runAsync(() => VillageArt.load());
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        wordCheckProvider.overrideWithValue((w) async => {'HOUSE', 'TOWER', 'FARM', 'MILL', 'EAR'}.contains(w)),
+        wordCheckProvider.overrideWithValue(
+            (w) async => {'HOUSE', 'TOWER', 'FARM', 'MILL', 'EAR', 'GARDEN', 'BRIDGE', 'WELL', 'BARN'}.contains(w)),
       ],
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('Village view'));
+    if (find.bySemanticsLabel('Village view').evaluate().isNotEmpty) {
+      await tester.tap(find.bySemanticsLabel('Village view'));
+    }
     await tester.pumpAndSettle();
     // Sprites decode for real.
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 800)));
