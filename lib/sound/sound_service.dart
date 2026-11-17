@@ -198,6 +198,16 @@ class SoundController {
 
 final soundProvider = Provider<SoundController>((ref) => SoundController(ref));
 
+/// Plays [sfx] from a plain widget. Does nothing outside a ProviderScope
+/// (a few widget tests build buttons on their own).
+void playSfx(BuildContext context, Sfx sfx) {
+  try {
+    ProviderScope.containerOf(context, listen: false).read(soundProvider).play(sfx);
+  } catch (_) {
+    // No scope, no sound.
+  }
+}
+
 /// Plays [track] while this widget is on screen; the screen underneath gets
 /// its music back when this one closes.
 class MusicScope extends ConsumerStatefulWidget {

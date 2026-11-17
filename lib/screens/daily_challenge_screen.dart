@@ -19,6 +19,7 @@ import '../game/grid_providers.dart';
 import '../game/letter_tile.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
+import '../sound/sound_service.dart';
 import '../game/word_landing_banner.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../portfolio/property_tier.dart';
@@ -87,7 +88,7 @@ class _DailyChallengeScreenState extends ConsumerState<DailyChallengeScreen> {
         ),
         landingNoteProvider.overrideWithValue((word) => word.toUpperCase() == secret ? 'Secret word!' : null),
       ],
-      child: _DailyChallengeBody(puzzle: _puzzle, today: _today),
+      child: MusicScope(track: MusicTrack.daily, child: _DailyChallengeBody(puzzle: _puzzle, today: _today)),
     );
   }
 }

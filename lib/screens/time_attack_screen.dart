@@ -3,6 +3,7 @@ import '../components/valid_word_check.dart' show initSpellCheck;
 import '../game/grid_config.dart';
 import '../game/grid_providers.dart';
 import '../portfolio/portfolio_controller.dart';
+import '../sound/sound_service.dart';
 import '../ui/chunky_button.dart';
 import '../ui/game_layout.dart';
 import '../ui/tokens.dart';
@@ -32,7 +33,7 @@ class TimeAttackScreen extends StatelessWidget {
           const GridConfig(boardWidth: 10, boardHeight: 10, rackSize: 21),
         ),
       ],
-      child: const _TimeAttackBody(),
+      child: const MusicScope(track: MusicTrack.timeAttack, child: _TimeAttackBody()),
     );
   }
 }

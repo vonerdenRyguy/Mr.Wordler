@@ -20,6 +20,7 @@ import '../players/players.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
+import '../sound/sound_service.dart';
 import '../ui/chunky_button.dart';
 import '../ui/chunky_card.dart';
 import '../ui/home_nav.dart';
@@ -384,7 +385,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 Expanded(
                   child: PageView(
                     controller: _pages,
-                    onPageChanged: (i) => setState(() => _page = i),
+                    onPageChanged: (i) {
+                      ref.read(soundProvider).play(Sfx.whoosh);
+                      setState(() => _page = i);
+                    },
                     children: pages,
                   ),
                 ),

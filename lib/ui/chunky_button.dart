@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../sound/sound_service.dart';
 import 'tokens.dart';
+
+/// Every chunky button gives a soft tap sound (spec-12) before it acts.
+void _tapThen(BuildContext context, VoidCallback action) {
+  playSfx(context, Sfx.tap);
+  action();
+}
 
 enum ChunkyKind { primary, secondary, danger, mode }
 
@@ -84,7 +91,7 @@ class _ChunkyButtonState extends State<ChunkyButton> {
         onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
         onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
         onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        onTap: widget.onPressed,
+        onTap: enabled ? () => _tapThen(context, widget.onPressed!) : null,
         child: Padding(
           // Reserve the lip's space so pressing doesn't shift the layout.
           padding: const EdgeInsets.only(bottom: WSize.lip),
@@ -168,7 +175,7 @@ class _ChunkyIconButtonState extends State<ChunkyIconButton> {
           onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
           onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
           onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-          onTap: widget.onPressed,
+          onTap: enabled ? () => _tapThen(context, widget.onPressed!) : null,
           child: SizedBox(
             width: WSize.tapTarget,
             height: WSize.tapTarget,

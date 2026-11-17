@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../sound/sound_service.dart';
+import '../village/magic_word.dart';
 import 'word_landing.dart';
 
 /// An extra note the banner adds after a word, e.g. "HORSE · Secret word!".
@@ -27,6 +29,7 @@ class _WordLandingBannerState extends ConsumerState<WordLandingBanner> with Sing
   late final AnimationController _controller;
   String? _text;
   int _lastSeq = -1;
+  int _lastClackSeq = -1;
 
   @override
   void initState() {
@@ -46,8 +49,20 @@ class _WordLandingBannerState extends ConsumerState<WordLandingBanner> with Sing
   @override
   Widget build(BuildContext context) {
     ref.listen<TileLanding?>(tileLandingProvider, (prev, next) {
-      if (next == null || next.words.isEmpty || next.seq == _lastSeq) return;
+      if (next == null) return;
+      final sound = ref.read(soundProvider);
+      // Every tile that lands clacks (spec-12); a word chimes, a magic
+      // word chimes brighter.
+      if (next.words.isEmpty) {
+        if (next.seq != _lastClackSeq) {
+          _lastClackSeq = next.seq;
+          sound.play(Sfx.clack);
+        }
+        return;
+      }
+      if (next.seq == _lastSeq) return;
       _lastSeq = next.seq;
+      sound.play(next.words.any((w) => magicWordFor(w.word) != null) ? Sfx.magic : Sfx.word);
       final noteFor = ref.read(landingNoteProvider);
       setState(() => _text = next.words.map((w) {
             final note = noteFor(w.word);

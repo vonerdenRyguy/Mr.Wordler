@@ -1,5 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/game/grid_board_widget.dart';
+import 'package:namer_app/game/grid_config.dart';
+import 'package:namer_app/game/grid_providers.dart';
+import 'package:namer_app/game/tile_location.dart';
+import 'package:namer_app/game/word_landing.dart';
 import 'package:namer_app/settings/settings_controller.dart';
 import 'package:namer_app/sound/sound_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,6 +116,47 @@ void main() {
     expect(fake.playing, MusicTrack.village);
     await c.read(settingsProvider.notifier).setMusicVolume(0.8);
     expect(fake.musicVolume, 0.8);
+  });
+
+  Future<FakeSoundBackend> spell(WidgetTester tester, String word) async {
+    SharedPreferences.setMockInitialValues({});
+    final fake = FakeSoundBackend();
+    final letters = word.split('');
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        soundBackendProvider.overrideWithValue(fake),
+        gridConfigProvider.overrideWithValue(GridConfig(boardWidth: letters.length, boardHeight: 1, rackSize: letters.length)),
+        wordCheckProvider.overrideWithValue((w) async => w == word),
+      ],
+      child: const MaterialApp(home: Scaffold(body: GridBoardView())),
+    ));
+    final container = ProviderScope.containerOf(tester.element(find.byType(GridBoardView)));
+    final controller = container.read(gridGameControllerProvider.notifier);
+    controller.restoreState(
+      boardCells: List.filled(letters.length, null),
+      rackCells: letters,
+      pool: const [],
+      dealtLetters: letters,
+    );
+    await tester.pump();
+    for (int i = 0; i < letters.length; i++) {
+      controller.moveTile(TileLocation(TileZone.rack, i), TileLocation(TileZone.board, i));
+      await tester.pump();
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    return fake;
+  }
+
+  testWidgets('each tile clacks; a word chimes', (tester) async {
+    final fake = await spell(tester, 'CAT');
+    expect(fake.sfx, [Sfx.clack, Sfx.clack, Sfx.clack, Sfx.word]);
+  });
+
+  testWidgets('a magic word chimes brighter', (tester) async {
+    final fake = await spell(tester, 'WELL');
+    expect(fake.sfx.last, Sfx.magic);
+    expect(fake.sfx.where((s) => s == Sfx.clack), hasLength(4));
   });
 
   test('music stays off when it was saved off', () async {
