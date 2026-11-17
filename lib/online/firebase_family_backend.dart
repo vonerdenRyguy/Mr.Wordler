@@ -436,6 +436,23 @@ class FirebaseFamilyBackend implements FamilyBackend {
         'wantsOn': letter == null ? FieldValue.delete() : dayKey,
       });
 
+  // ---- The Town Square (spec-13) ----
+
+  DocumentReference<Map<String, dynamic>> _square(String fid) => _family(fid).collection('square').doc('state');
+
+  @override
+  Stream<TownSquare> watchSquare(String familyId) =>
+      _square(familyId).snapshots().map((s) => TownSquare.fromData(s.data()));
+
+  @override
+  Future<TownSquare> changeSquare(String familyId, TownSquare Function(TownSquare square) change) =>
+      _db.runTransaction((tx) async {
+        final before = await tx.get(_square(familyId));
+        final after = change(TownSquare.fromData(before.data()));
+        tx.set(_square(familyId), after.toData());
+        return after;
+      });
+
   Future<List<String>> _adultNames(String familyId) async {
     final members = await _family(familyId).collection('members').get();
     return [for (final d in members.docs) if (_toMember(d).adult) _toMember(d).name];
@@ -481,7 +498,8 @@ class FirebaseFamilyBackend implements FamilyBackend {
       // gifts and cheers go too.
       final days = await _family(familyId).collection('days').get();
       final notes = await _notes(familyId).get();
-      for (final d in [...days.docs, ...notes.docs].take(450)) {
+      final square = await _family(familyId).collection('square').get();
+      for (final d in [...square.docs, ...days.docs, ...notes.docs].take(450)) {
         batch.delete(d.reference);
       }
       batch.delete(_family(familyId));

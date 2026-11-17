@@ -38,6 +38,13 @@ class WColors {
   static const grassFieldCell = Color(0xFFAED47E); // empty Estate cell
   static const brick = Color(0xFFC8432F); // End, Leave, Give up
   static const white = Color(0xFFFFFFFF);
+  // Wallpapers (spec-14): the faint pattern, the sky, the hills.
+  static const paperPattern = Color(0xFFE6D6B4);
+  static const wallSky = Color(0xFFBFE6F7);
+  static const hillFar = Color(0xFFB9DF8F);
+  static const hillMid = Color(0xFF9BD46A);
+  static const hillNear = WColors.leaf;
+  static const path = Color(0xFFE9DCC0);
 }
 
 /// Each mode's own color: its icon tile, start page hero, and timer pill.

@@ -18,6 +18,7 @@ class _FakeFamily {
   final Map<String, JoinRequest> requests = {};
   final Map<String, FamilyDay> days = {};
   final Map<String, FamilyNote> notes = {};
+  TownSquare square = const TownSquare();
 }
 
 class FakeFamilyServer {
@@ -395,6 +396,50 @@ class FakeFamilyBackend implements FamilyBackend {
     f.members[_uid] = letter == null ? m.copyWith(clearWants: true) : m.copyWith(wants: letter, wantsOn: dayKey);
     server._changed();
   }
+
+  // ---- spec-13 ----
+
+  @override
+  Stream<TownSquare> watchSquare(String familyId) async* {
+    final uid = _uid;
+    TownSquare? read() {
+      final f = server._families[familyId];
+      if (f == null || !f.members.containsKey(uid)) return null;
+      return f.square;
+    }
+
+    final first = read();
+    if (first == null) return;
+    yield first;
+    await for (final _ in server._changes.stream) {
+      final s = read();
+      if (s == null) return;
+      yield s;
+    }
+  }
+
+  @override
+  Future<TownSquare> changeSquare(String familyId, TownSquare Function(TownSquare square) change) async {
+    server._check();
+    final f = _family(familyId);
+    if (!f.members.containsKey(_uid)) throw StateError('members only');
+    final before = f.square;
+    final after = change(before);
+    // As the rules: bricks only go up, by at most 5; spent bricks and
+    // finished buildings never go away.
+    if (after.bricks < before.bricks || after.bricks > before.bricks + kMaxBricksAtOnce) {
+      throw StateError('bricks go up by at most $kMaxBricksAtOnce');
+    }
+    if (after.spent < before.spent || after.built.length < before.built.length) {
+      throw StateError('finished buildings stay finished');
+    }
+    f.square = after;
+    server._changed();
+    return after;
+  }
+
+  /// The Town Square as the server has it, for tests.
+  TownSquare squareOf(String familyId) => server._families[familyId]?.square ?? const TownSquare();
 
   @override
   Future<String> newCode(String familyId) async {

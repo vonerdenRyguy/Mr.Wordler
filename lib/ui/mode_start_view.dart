@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'chunky_button.dart';
 import 'chunky_card.dart';
 import 'tokens.dart';
+import 'wallpaper.dart';
 
 /// One "How it works" line: a short symbol in a small tile, then a line.
 class ModeStartRow {
@@ -51,110 +52,115 @@ class ModeStartView extends StatelessWidget {
       value: wordlerOverlayStyle,
       child: Scaffold(
         backgroundColor: WColors.paper,
-        body: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(WSize.screenPadding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          ChunkyIconButton(
-                            icon: Icons.arrow_back,
-                            tooltip: 'Home',
-                            onPressed: () => Navigator.of(context).maybePop(),
-                          ),
-                          const SizedBox(width: WSize.gap2),
-                          const Text('Home', style: WText.label),
-                        ],
-                      ),
-                      const Spacer(),
-                      Center(
-                        child: Container(
-                          width: 112,
-                          height: 112,
-                          margin: const EdgeInsets.only(bottom: 6),
-                          decoration: BoxDecoration(
-                            color: color,
-                            border: Border.all(color: WColors.ink, width: 4),
-                            borderRadius: BorderRadius.circular(26),
-                            boxShadow: wLip(6),
-                          ),
-                          child: Icon(icon, size: 62, color: WColors.ink),
-                        ),
-                      ),
-                      const SizedBox(height: WSize.gap3),
-                      Semantics(
-                        header: true,
-                        child: Text(title, style: WText.title, textAlign: TextAlign.center),
-                      ),
-                      const SizedBox(height: WSize.gap1),
-                      Text(description, style: WText.body.copyWith(fontSize: 19), textAlign: TextAlign.center),
-                      const SizedBox(height: WSize.gap5),
-                      ChunkyCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text('How it works', style: WText.heading.copyWith(fontSize: 21)),
-                            const SizedBox(height: WSize.gap2),
-                            for (final row in rows)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 5),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      alignment: Alignment.center,
-                                      decoration: BoxDecoration(
-                                        color: color,
-                                        border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-                                        borderRadius: BorderRadius.circular(9),
-                                      ),
-                                      child: Text(row.symbol, style: WText.button.copyWith(fontSize: 17, color: WColors.ink)),
-                                    ),
-                                    const SizedBox(width: WSize.gap3),
-                                    Expanded(child: Text(row.text, style: WText.bodyBold)),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (stats.isNotEmpty) ...[
-                        const SizedBox(height: WSize.gap3),
+        // The hills wallpaper on the big start pages (spec-14).
+        body: Wallpaper(
+          kind: WallpaperKind.hills,
+          child: SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(WSize.screenPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         Row(
                           children: [
-                            for (int i = 0; i < stats.length; i++) ...[
-                              if (i > 0) const SizedBox(width: WSize.gap3),
-                              Expanded(
-                                child: ChunkyCard(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                            ChunkyIconButton(
+                              icon: Icons.arrow_back,
+                              tooltip: 'Home',
+                              onPressed: () => Navigator.of(context).maybePop(),
+                            ),
+                            const SizedBox(width: WSize.gap2),
+                            const Text('Home', style: WText.label),
+                          ],
+                        ),
+                        const Spacer(),
+                        Center(
+                          child: Container(
+                            width: 112,
+                            height: 112,
+                            margin: const EdgeInsets.only(bottom: 6),
+                            decoration: BoxDecoration(
+                              color: color,
+                              border: Border.all(color: WColors.ink, width: 4),
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: wLip(6),
+                            ),
+                            child: Icon(icon, size: 62, color: WColors.ink),
+                          ),
+                        ),
+                        const SizedBox(height: WSize.gap3),
+                        Semantics(
+                          header: true,
+                          child: Text(title, style: WText.title, textAlign: TextAlign.center),
+                        ),
+                        const SizedBox(height: WSize.gap1),
+                        Text(description, style: WText.body.copyWith(fontSize: 19), textAlign: TextAlign.center),
+                        const SizedBox(height: WSize.gap5),
+                        ChunkyCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text('How it works', style: WText.heading.copyWith(fontSize: 21)),
+                              const SizedBox(height: WSize.gap2),
+                              for (final row in rows)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 5),
+                                  child: Row(
                                     children: [
-                                      Text(stats[i].label, style: WText.label),
-                                      Text(stats[i].value, style: WText.number.copyWith(fontSize: 26)),
+                                      Container(
+                                        width: 36,
+                                        height: 36,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: color,
+                                          border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                                          borderRadius: BorderRadius.circular(9),
+                                        ),
+                                        child: Text(row.symbol,
+                                            style: WText.button.copyWith(fontSize: 17, color: WColors.ink)),
+                                      ),
+                                      const SizedBox(width: WSize.gap3),
+                                      Expanded(child: Text(row.text, style: WText.bodyBold)),
                                     ],
                                   ),
                                 ),
-                              ),
                             ],
-                          ],
+                          ),
                         ),
+                        if (stats.isNotEmpty) ...[
+                          const SizedBox(height: WSize.gap3),
+                          Row(
+                            children: [
+                              for (int i = 0; i < stats.length; i++) ...[
+                                if (i > 0) const SizedBox(width: WSize.gap3),
+                                Expanded(
+                                  child: ChunkyCard(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(stats[i].label, style: WText.label),
+                                        Text(stats[i].value, style: WText.number.copyWith(fontSize: 26)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                        const Spacer(),
+                        const SizedBox(height: WSize.gap4),
+                        ChunkyButton(label: startLabel, size: ChunkySize.big, expand: true, onPressed: onStart),
                       ],
-                      const Spacer(),
-                      const SizedBox(height: WSize.gap4),
-                      ChunkyButton(label: startLabel, size: ChunkySize.big, expand: true, onPressed: onStart),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

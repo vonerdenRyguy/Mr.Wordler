@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show max, min;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +51,7 @@ class FamilyOnlineState {
     this.emailSentTo,
     this.day,
     this.notes = const [],
+    this.square,
   });
 
   final OnlineStage stage;
@@ -74,6 +76,9 @@ class FamilyOnlineState {
   /// Today's and yesterday's gifts and cheers in the family (spec-10).
   final List<FamilyNote> notes;
 
+  /// The family's Town Square (spec-13), once it has loaded.
+  final TownSquare? square;
+
   bool get isAdult => group == AgeGroup.adult;
 
   OnlineMember? get me {
@@ -93,6 +98,7 @@ class FamilyOnlineState {
     String? emailSentTo,
     FamilyDay? day,
     List<FamilyNote>? notes,
+    TownSquare? square,
     bool clearFamily = false,
     bool clearWaiting = false,
     bool clearAccount = false,
@@ -110,6 +116,7 @@ class FamilyOnlineState {
         emailSentTo: clearEmail ? null : (emailSentTo ?? this.emailSentTo),
         day: clearFamily ? null : (day ?? this.day),
         notes: clearFamily ? const [] : (notes ?? this.notes),
+        square: clearFamily ? null : (square ?? this.square),
       );
 }
 
@@ -129,6 +136,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   StreamSubscription<RequestStatus>? _requestSub;
   StreamSubscription<FamilyDay>? _daySub;
   StreamSubscription<List<FamilyNote>>? _notesSub;
+  StreamSubscription<TownSquare>? _squareSub;
   String? _dayKey;
 
   /// Gifts already added to this player's village rack (spec-10).
@@ -173,6 +181,10 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     _pendingEmail = saved['pendingEmail'] as String?;
     _paidDays = [for (final d in (saved['paidWordDays'] as List? ?? const [])) d as String];
     _claimedGifts = [for (final d in (saved['claimedGifts'] as List? ?? const [])) d as String];
+    final seen = saved['squareSeen'];
+    if (seen is Map && seen['familyId'] is String && seen['count'] is int) {
+      _squareSeen = (familyId: seen['familyId'] as String, count: seen['count'] as int);
+    }
     final account = backend.account;
     if (account == null) {
       state = FamilyOnlineState(stage: OnlineStage.signedOut, emailSentTo: _pendingEmail);
@@ -216,6 +228,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
         if (s.account != null) 'uid': s.account!.uid,
         if (_paidDays.isNotEmpty) 'paidWordDays': _paidDays,
         if (_claimedGifts.isNotEmpty) 'claimedGifts': _claimedGifts,
+        if (_squareSeen != null) 'squareSeen': {'familyId': _squareSeen!.familyId, 'count': _squareSeen!.count},
       }),
     );
   }
@@ -270,6 +283,8 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
   // ---- The family word and map (spec-09) ----
 
   void _stopDay() {
+    unawaited(_squareSub?.cancel());
+    _squareSub = null;
     unawaited(_daySub?.cancel());
     _daySub = null;
     unawaited(_notesSub?.cancel());
@@ -285,6 +300,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     final key = dailyDateKey(_clock());
     if (_dayKey == key && _daySub != null) return;
     _stopDay();
+    _watchSquare(fid);
     _dayKey = key;
     state = state.copyWith(day: const FamilyDay());
     _daySub = _backend!.watchDay(fid, key).listen((day) {
@@ -296,6 +312,84 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       if (mounted && _dayKey == key) state = state.copyWith(notes: notes);
     }, onError: (Object _) {});
     unawaited(_backend!.cleanUpNotes(fid, days).catchError((Object _) {}));
+  }
+
+  // ---- The Town Square (spec-13) ----
+
+  void _watchSquare(String familyId) {
+    unawaited(_squareSub?.cancel());
+    _squareSub = _backend!.watchSquare(familyId).listen((square) {
+      if (mounted && state.familyId == familyId) state = state.copyWith(square: square);
+    }, onError: (Object _) {});
+  }
+
+  List<String> get _memberUids => [for (final m in state.family?.members ?? const <OnlineMember>[]) m.uid];
+
+  Future<TownSquare?> _changeSquare(TownSquare Function(TownSquare s, List<String> uids, DateTime now) change) async {
+    await _ready;
+    if (!_inFamily || state.family == null) return null;
+    final uids = _memberUids;
+    final now = _clock();
+    try {
+      final after = await _backend!.changeSquare(state.familyId!, (s) => change(s, uids, now));
+      if (mounted) state = state.copyWith(square: after);
+      return after;
+    } catch (_) {
+      return null; // Offline: these bricks are lost, which is fine.
+    }
+  }
+
+  /// Adds [count] bricks to the Town Square, five at a time.
+  Future<void> addBricks(int count) async {
+    for (var left = count; left > 0; left -= kMaxBricksAtOnce) {
+      final n = min(left, kMaxBricksAtOnce);
+      if (await _changeSquare((s, uids, now) => addSquareBricks(s, n, memberUids: uids, now: now)) == null) return;
+    }
+  }
+
+  /// How many finished Town Square buildings this player has celebrated,
+  /// for the family it was counted in.
+  ({String familyId, int count})? _squareSeen;
+
+  /// Town Square buildings the family finished since this player last
+  /// looked, now marked as seen (each is paid once, on each person's own
+  /// phone). The first look at a square counts what's there as seen.
+  Future<List<BuiltThing>> takeFinishedBuildings() async {
+    await _ready;
+    final square = state.square;
+    final fid = state.familyId;
+    if (!_inFamily || square == null || fid == null) return const [];
+    final seen = _squareSeen;
+    if (seen == null || seen.familyId != fid || seen.count > square.built.length) {
+      _squareSeen = (familyId: fid, count: square.built.length);
+      await _save();
+      return const [];
+    }
+    if (square.built.length == seen.count) return const [];
+    final fresh = square.built.sublist(seen.count);
+    _squareSeen = (familyId: fid, count: square.built.length);
+    await _save();
+    return fresh;
+  }
+
+  /// This player's vote for what to build next.
+  Future<bool> voteFor(String buildingId) async {
+    final me = state.account?.uid;
+    if (me == null) return false;
+    final after =
+        await _changeSquare((s, uids, now) => pickSquareBuilding(s, me, buildingId, memberUids: uids, now: now));
+    return after != null;
+  }
+
+  /// Opens or closes the vote if it's due (a new week, or the square has
+  /// never been used). Writes only when something changes.
+  Future<void> settleSquareIfDue() async {
+    await _ready;
+    final current = state.square;
+    if (!_inFamily || current == null || state.family == null) return;
+    final settled = settleSquare(current, memberUids: _memberUids, now: _clock());
+    if (jsonEncode(settled.toData()) == jsonEncode(current.toData())) return;
+    await _changeSquare((s, uids, now) => settleSquare(s, memberUids: uids, now: now));
   }
 
   // ---- Helping (spec-10) ----
@@ -325,6 +419,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       final sent = await _backend!.sendNote(state.familyId!, note);
       // Counted straight away, before the server echoes it back.
       if (mounted && !state.notes.any((n) => n.id == sent.id)) state = state.copyWith(notes: [...state.notes, sent]);
+      unawaited(addBricks(kBricksHelp));
       return true;
     } catch (_) {
       return false;
@@ -349,6 +444,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
           at: _clock().millisecondsSinceEpoch,
         ),
       );
+      unawaited(addBricks(kBricksHelp));
       return true;
     } catch (_) {
       return false;
@@ -481,8 +577,13 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
       paid.add(key);
     }
     if (coins == 0 || !mounted) return 0;
+    final newlyPaid = paid.length - _paidDays.length;
     _paidDays = paid.length > 4 ? paid.sublist(paid.length - 4) : paid;
     await _save();
+    // Each person's share of the family word's bricks (spec-13).
+    for (int i = 0; i < newlyPaid; i++) {
+      unawaited(addBricks(kBricksFamilyWord));
+    }
     return coins;
   }
 
@@ -509,6 +610,10 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     final newList = {...me.newOnDay(key), ...newly}.where(buildings.containsKey).toList();
     try {
       await _backend!.updateBuildings(state.familyId!, buildings: buildings, newBuildings: newList, newOn: key);
+      final added = firstTime
+          ? 0
+          : buildings.entries.fold<int>(0, (n, e) => n + max(0, e.value - (me.buildings[e.key] ?? 0)));
+      if (added > 0) unawaited(addBricks(kBricksNewBuilding * added));
     } catch (_) {
       // Offline: sent next time.
     }
@@ -660,8 +765,10 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     await _ready;
     final fid = state.familyId;
     if (state.stage != OnlineStage.member || fid == null) return;
+    final firstToday = state.me?.playedDay != dailyDateKey(now);
     try {
       await _backend!.setPlayedDay(fid, dailyDateKey(now));
+      if (firstToday) unawaited(addBricks(kBricksDaily));
     } catch (_) {
       // Offline: the family just won't see it today.
     }
@@ -712,6 +819,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
     _requestSub?.cancel();
     _daySub?.cancel();
     _notesSub?.cancel();
+    _squareSub?.cancel();
     super.dispose();
   }
 }

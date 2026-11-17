@@ -1,6 +1,9 @@
 import 'dart:math';
 
 import '../settings/word_level.dart';
+import 'town_square.dart';
+
+export 'town_square.dart';
 
 // Family online (spec-08): the shapes of the data that live on the server,
 // and the one interface the app talks to. FirebaseFamilyBackend is the real
@@ -391,6 +394,15 @@ abstract class FamilyBackend {
 
   /// Asks the family for [letter] today, or takes the request back (null).
   Future<void> setWants(String familyId, String? letter, String dayKey);
+
+  // ---- The Town Square (spec-13) ----
+
+  /// The family's Town Square as it changes (empty until someone adds to it).
+  Stream<TownSquare> watchSquare(String familyId);
+
+  /// Applies [change] to the Town Square in one step on the server, so
+  /// bricks from two phones at once both count. Returns it as saved.
+  Future<TownSquare> changeSquare(String familyId, TownSquare Function(TownSquare square) change);
 }
 
 enum NoteKind { gift, cheer }

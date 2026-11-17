@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'chunky_button.dart';
 import 'tokens.dart';
+import 'wallpaper.dart';
 
 /// A paper-background screen with the app's top bar (64px: a back button
 /// and a Lilita One title) instead of a Material AppBar. No color band, so
@@ -27,41 +28,45 @@ class WordlerScaffold extends StatelessWidget {
       value: wordlerOverlayStyle,
       child: Scaffold(
         backgroundColor: WColors.paper,
-        body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: 64,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: WSize.screenPadding),
-                  child: Row(
-                    children: [
-                      if (showBack) ...[
-                        ChunkyIconButton(
-                          icon: Icons.arrow_back,
-                          tooltip: 'Back',
-                          onPressed: () => Navigator.of(context).maybePop(),
-                        ),
-                        const SizedBox(width: WSize.gap3),
-                      ],
-                      Expanded(
-                        child: Semantics(
-                          header: true,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(title, maxLines: 1, style: WText.heading.copyWith(fontSize: 28)),
+        // The quiet pattern wallpaper on every list page (spec-14).
+        body: Wallpaper(
+          kind: WallpaperKind.pattern,
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 64,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: WSize.screenPadding),
+                    child: Row(
+                      children: [
+                        if (showBack) ...[
+                          ChunkyIconButton(
+                            icon: Icons.arrow_back,
+                            tooltip: 'Back',
+                            onPressed: () => Navigator.of(context).maybePop(),
+                          ),
+                          const SizedBox(width: WSize.gap3),
+                        ],
+                        Expanded(
+                          child: Semantics(
+                            header: true,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(title, maxLines: 1, style: WText.heading.copyWith(fontSize: 28)),
+                            ),
                           ),
                         ),
-                      ),
-                      ...actions,
-                    ],
+                        ...actions,
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Expanded(child: body),
-            ],
+                Expanded(child: body),
+              ],
+            ),
           ),
         ),
       ),

@@ -180,7 +180,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   List<String?>? _sceneBoard;
   List<BoardStructure>? _sceneStructures;
   Map<String, SpriteMeta> _spriteMeta = const {};
-  VillageArt? _art;
   // Every valid word on the board (repeats included), for tap cards.
   List<WordRun> _wordRuns = const [];
   // The word whose card is open, lit up on the map.
@@ -208,9 +207,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
       if (mounted) setState(() => _spriteMeta = meta);
-    }).catchError((_) {});
-    VillageArt.load().then((art) {
-      if (mounted) setState(() => _art = art);
     }).catchError((_) {});
   }
 
@@ -684,12 +680,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   Future<String?> _loadDefinition(String word) => ref.read(definitionServiceProvider).getDefinition(word);
 
   void _onVillageTap(Offset contentPoint) {
-    final art = _art;
-    final hit = hitTestVillage(
-      contentPoint,
-      _villageScene(),
-      opaque: art == null ? null : (s, x, y) => art.sprites[s.def.word]?.opaqueAt(x, y) ?? true,
-    );
+    final hit = hitTestVillage(contentPoint, _villageScene());
     switch (hit) {
       case BuildingHit(:final structure):
         _openBuildingCard(structure);

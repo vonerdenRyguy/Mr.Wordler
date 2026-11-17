@@ -47,3 +47,6 @@ android/app/google-services.json
 
 # Firebase CLI deploy cache
 firebase/.firebase/
+
+# Preview images from SQUARE_PREVIEW=1 test runs
+test/preview/

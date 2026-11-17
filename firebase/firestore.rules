@@ -17,6 +17,8 @@ rules_version = '2';
 //                                  positions, and whether it was found. Members only.
 //   families/{fid}/notes/{id}      gifts (one letter) and cheers (a sticker) between members.
 //                                  Members only; nothing typed.
+//   families/{fid}/square/state    the Town Square (spec-13): what's being built, bricks,
+//                                  what's finished, this week's vote. Members only.
 //   families/{fid}/requests/{uid}  a child asking to join. The child and the family's grown-ups.
 //
 // Nothing about a child is readable by anyone outside the family, and a
@@ -54,6 +56,14 @@ service cloud.firestore {
         && request.resource.data.found is map
         && request.resource.data.solved is bool
         && request.resource.data.streak is int;
+    }
+
+    function squareFields() {
+      return request.resource.data.keys().hasOnly(['building', 'bricks', 'spent', 'goal', 'built', 'vote', 'finishedOn'])
+        && request.resource.data.bricks is int
+        && request.resource.data.spent is int
+        && request.resource.data.goal is int
+        && request.resource.data.built is list && request.resource.data.built.size() <= 200;
     }
 
     match /users/{uid} {
@@ -137,6 +147,22 @@ service cloud.firestore {
         // The receiver or sender tidies up; or the last member closing the family.
         allow delete: if isMember(fid) && (resource.data.to == me() || resource.data.from == me()
                                            || !existsAfter(familyPath(fid)));
+      }
+
+      // The Town Square (spec-13): one document, changed in a transaction.
+      // Bricks only go up, at most 5 at a time; finished buildings stay.
+      match /square/{doc} {
+        allow read: if isMember(fid);
+        allow create: if isMember(fid) && doc == 'state' && squareFields()
+          && request.resource.data.bricks <= 5
+          && request.resource.data.spent == 0;
+        allow update: if isMember(fid) && squareFields()
+          && request.resource.data.bricks >= resource.data.bricks
+          && request.resource.data.bricks <= resource.data.bricks + 5
+          && request.resource.data.spent >= resource.data.spent
+          && request.resource.data.built.size() >= resource.data.built.size();
+        // Only while closing the family, by its last member.
+        allow delete: if isMember(fid);
       }
 
       match /requests/{uid} {
