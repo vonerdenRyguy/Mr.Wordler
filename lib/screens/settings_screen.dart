@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../game/letter_tile.dart';
 import '../settings/settings_controller.dart';
 import '../settings/word_level.dart';
+import '../sound/sound_service.dart';
 import 'family_online_screens.dart';
 import 'family_screens.dart';
 import 'word_level_screen.dart';
@@ -86,6 +87,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         Switch(value: settings.reduceMotion, onChanged: controller.setReduceMotion),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: WSize.gap3),
+                  // Music and sounds (spec-12).
+                  _SoundCard(
+                    icon: Icons.music_note,
+                    title: 'Music',
+                    note: 'Soft tunes in your village, the Daily and Time Attack.',
+                    on: settings.musicOn,
+                    volume: settings.musicVolume,
+                    onOn: controller.setMusicOn,
+                    onVolume: controller.setMusicVolume,
+                  ),
+                  const SizedBox(height: WSize.gap3),
+                  _SoundCard(
+                    icon: Icons.notifications_active,
+                    title: 'Sounds',
+                    note: 'Tiles, words, coins and buildings. Everything still works with sound off.',
+                    on: settings.soundsOn,
+                    volume: settings.soundsVolume,
+                    onOn: controller.setSoundsOn,
+                    onVolume: controller.setSoundsVolume,
+                    onVolumeEnd: (_) => ref.read(soundProvider).play(Sfx.coin),
                   ),
                   const SizedBox(height: WSize.gap3),
                   // Mr. W's tips on Home (spec-11).
@@ -170,6 +193,64 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Music or Sounds: a switch, and a volume slider while it's on.
+class _SoundCard extends StatelessWidget {
+  const _SoundCard({
+    required this.icon,
+    required this.title,
+    required this.note,
+    required this.on,
+    required this.volume,
+    required this.onOn,
+    required this.onVolume,
+    this.onVolumeEnd,
+  });
+
+  final IconData icon;
+  final String title;
+  final String note;
+  final bool on;
+  final double volume;
+  final ValueChanged<bool> onOn;
+  final ValueChanged<double> onVolume;
+  final ValueChanged<double>? onVolumeEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChunkyCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: WColors.ink, size: 28),
+              const SizedBox(width: WSize.gap3),
+              Expanded(child: Text(title, style: WText.heading.copyWith(fontSize: 22))),
+              Switch(value: on, onChanged: onOn),
+            ],
+          ),
+          if (on)
+            Row(
+              children: [
+                const Icon(Icons.volume_down, color: WColors.muted),
+                Expanded(
+                  child: Slider(
+                    value: volume,
+                    onChanged: onVolume,
+                    onChangeEnd: onVolumeEnd,
+                    semanticFormatterCallback: (v) => '$title volume ${(v * 100).round()} percent',
+                  ),
+                ),
+                const Icon(Icons.volume_up, color: WColors.muted),
+              ],
+            ),
+          Text(note, style: WText.body.copyWith(color: WColors.muted)),
+        ],
       ),
     );
   }

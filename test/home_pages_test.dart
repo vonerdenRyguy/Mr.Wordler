@@ -3,6 +3,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show min;
 
 import 'dart:ui' show SemanticsFlag;
 
@@ -129,9 +130,77 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: tab);
     }
-    // The page scrolls (no bar) so its last button can be reached.
-    await tester.scrollUntilVisible(find.text('Time Attack'), 100, scrollable: find.byType(Scrollable).at(1));
-    expect(find.text('Time Attack'), findsOneWidget);
+    // Play's badges and PLAY are all on screen.
+    for (final label in ['Daily puzzle', 'Time Attack', 'PLAY']) {
+      expect(const Rect.fromLTWH(0, 0, 390, 844).contains(tester.getRect(find.text(label)).bottomRight), isTrue,
+          reason: label);
+    }
+  });
+
+  group('Play page (spec-12)', () {
+    Map<String, Object> prefs({bool played = false}) => {
+          SettingsController.homeIntroSeenKey: true,
+          'wordLevel': 'wordsmith',
+          if (played) 'dailyChallengeData': jsonEncode({'lastPlayedDateKey': dailyDateKey(DateTime.now()), 'streak': 1}),
+        };
+
+    // Everything on Play sits above the tab bar and below the top bar.
+    void fitsBetweenBars(WidgetTester tester, List<String> labels) {
+      final tabsTop = tester.getRect(find.byType(HomeTabBar)).top;
+      final dotsTop = tester.getRect(find.byType(PageDots)).top;
+      for (final label in labels) {
+        final box = tester.getRect(find.text(label));
+        expect(box.bottom, lessThanOrEqualTo(min(tabsTop, dotsTop)), reason: label);
+        expect(box.top, greaterThan(40), reason: label);
+      }
+    }
+
+    testWidgets('before the Daily is played, PLAY opens it and Daily wears a red !', (tester) async {
+      SharedPreferences.setMockInitialValues(prefs());
+      await pumpHome(tester);
+      expect(find.text('!'), findsOneWidget);
+      expect(find.text('Visit your village'), findsOneWidget);
+      fitsBetweenBars(tester, ['PLAY', 'Daily puzzle', 'Time Attack', 'Visit your village']);
+      await tester.tap(find.text('PLAY'));
+      await tester.pumpAndSettle();
+      expect(find.text('Clue'), findsOneWidget); // the Daily round
+    });
+
+    testWidgets('after the Daily, PLAY builds in your village', (tester) async {
+      SharedPreferences.setMockInitialValues(prefs(played: true));
+      await pumpHome(tester);
+      expect(find.text('!'), findsNothing);
+      expect(find.text('Build in your village'), findsOneWidget);
+      expect(find.text('Visit your village'), findsNothing);
+      await tester.tap(find.text('PLAY'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
+          const Duration(seconds: 20));
+      expect(find.text('Swap'), findsOneWidget); // the village
+    });
+
+    testWidgets('the badges open the Daily and Time Attack', (tester) async {
+      SharedPreferences.setMockInitialValues(prefs(played: true));
+      await pumpHome(tester);
+      await tester.tap(find.text('Time Attack'));
+      await tester.pumpAndSettle();
+      expect(find.text('Start - 3:00'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Start - 3:00'))).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Daily puzzle'));
+      await tester.pumpAndSettle();
+      expect(find.text("You've already played today!"), findsOneWidget);
+    });
+
+    testWidgets('fits the Samsung at text 1.15, tip showing', (tester) async {
+      SharedPreferences.setMockInitialValues(prefs());
+      tester.platformDispatcher.textScaleFactorTestValue = 1.15;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpHome(tester, size: const Size(411, 891));
+      expect(tester.takeException(), isNull);
+      expect(find.text(playTip), findsOneWidget);
+      fitsBetweenBars(tester, ['PLAY', 'Daily puzzle', 'Time Attack']);
+      expect(tester.getRect(find.text('PLAY')).bottom, lessThan(tester.getRect(find.byType(TipBar)).top));
+    });
   });
 
   group('homeTipFor', () {

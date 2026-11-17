@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../sound/sound_service.dart';
 import 'tokens.dart';
+
+/// Every chunky button gives a soft tap sound (spec-12) before it acts.
+void _tapThen(BuildContext context, VoidCallback action) {
+  playSfx(context, Sfx.tap);
+  action();
+}
 
 enum ChunkyKind { primary, secondary, danger, mode }
 
@@ -84,47 +91,71 @@ class _ChunkyButtonState extends State<ChunkyButton> {
         onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
         onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
         onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-        onTap: widget.onPressed,
-        child: Padding(
-          // Reserve the lip's space so pressing doesn't shift the layout.
-          padding: const EdgeInsets.only(bottom: WSize.lip),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 80),
-            transform: Matrix4.translationValues(0, enabled && _pressed ? 3 : 0, 0),
-            constraints: BoxConstraints(minHeight: minHeight - WSize.lip),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: enabled ? fill : WColors.boardCell,
-              border: Border.all(color: enabled ? WColors.ink : WColors.muted, width: WSize.outline),
-              borderRadius: BorderRadius.circular(WSize.radiusButton),
-              boxShadow: lip > 0 ? wLip(lip, color: lipColor) : null,
-            ),
-            child: Row(
-              mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (widget.icon != null) ...[
-                  Icon(widget.icon, color: textColor, size: style.fontSize! + 4),
-                  const SizedBox(width: WSize.gap2),
-                ],
-                Flexible(
-                  child: Text(
-                    widget.label,
-                    style: style.copyWith(color: textColor),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+        onTap: enabled ? () => _tapThen(context, widget.onPressed!) : null,
+        child: _Bounce(
+          pressed: enabled && _pressed,
+          child: Padding(
+            // Reserve the lip's space so pressing doesn't shift the layout.
+            padding: const EdgeInsets.only(bottom: WSize.lip),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 80),
+              transform: Matrix4.translationValues(0, enabled && _pressed ? 3 : 0, 0),
+              constraints: BoxConstraints(minHeight: minHeight - WSize.lip),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: enabled ? fill : WColors.boardCell,
+                border: Border.all(color: enabled ? WColors.ink : WColors.muted, width: WSize.outline),
+                borderRadius: BorderRadius.circular(WSize.radiusButton),
+                boxShadow: lip > 0 ? wLip(lip, color: lipColor) : null,
+              ),
+              child: Row(
+                mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (widget.icon != null) ...[
+                    Icon(widget.icon, color: textColor, size: style.fontSize! + 4),
+                    const SizedBox(width: WSize.gap2),
+                  ],
+                  Flexible(
+                    child: Text(
+                      widget.label,
+                      style: style.copyWith(color: textColor),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
                   ),
-                ),
-                if (widget.trailing != null) ...[
-                  const SizedBox(width: WSize.gap2),
-                  widget.trailing!,
+                  if (widget.trailing != null) ...[
+                    const SizedBox(width: WSize.gap2),
+                    widget.trailing!,
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A quick squash while pressed and a little springy bounce back on
+/// release (spec-12). Reduce motion: no squash, the lip still moves.
+class _Bounce extends StatelessWidget {
+  const _Bounce({required this.pressed, required this.child});
+
+  final bool pressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduce) return child;
+    return AnimatedScale(
+      scale: pressed ? 0.95 : 1.0,
+      duration: Duration(milliseconds: pressed ? 70 : 260),
+      curve: pressed ? Curves.easeOut : Curves.elasticOut,
+      child: child,
     );
   }
 }
@@ -168,24 +199,27 @@ class _ChunkyIconButtonState extends State<ChunkyIconButton> {
           onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
           onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
           onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-          onTap: widget.onPressed,
-          child: SizedBox(
-            width: WSize.tapTarget,
-            height: WSize.tapTarget,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 80),
-                transform: Matrix4.translationValues(0, _pressed ? 2 : 0, 0),
-                width: WSize.tapTarget,
-                height: WSize.tapTarget - WSize.lipSmall,
-                decoration: BoxDecoration(
-                  color: widget.fill,
-                  border: Border.all(color: WColors.ink, width: WSize.outline),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: wLip(_pressed ? 1 : WSize.lipSmall),
+          onTap: enabled ? () => _tapThen(context, widget.onPressed!) : null,
+          child: _Bounce(
+            pressed: enabled && _pressed,
+            child: SizedBox(
+              width: WSize.tapTarget,
+              height: WSize.tapTarget,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 80),
+                  transform: Matrix4.translationValues(0, _pressed ? 2 : 0, 0),
+                  width: WSize.tapTarget,
+                  height: WSize.tapTarget - WSize.lipSmall,
+                  decoration: BoxDecoration(
+                    color: widget.fill,
+                    border: Border.all(color: WColors.ink, width: WSize.outline),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: wLip(_pressed ? 1 : WSize.lipSmall),
+                  ),
+                  child: Icon(widget.icon, color: WColors.ink, size: 24),
                 ),
-                child: Icon(widget.icon, color: WColors.ink, size: 24),
               ),
             ),
           ),

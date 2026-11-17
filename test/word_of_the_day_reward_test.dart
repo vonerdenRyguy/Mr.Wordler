@@ -65,7 +65,17 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(container.read(portfolioProvider).currency, kWordOfDayCoins);
     expect(container.read(wordOfDayProvider.notifier).claimedToday(DateTime.now()), isTrue);
-    expect(find.textContaining('Word of the day!'), findsOneWidget);
+    // A reward moment (spec-12), not a SnackBar; Collect flies the coins
+    // into its counter, which ends on the new total, then it closes.
+    expect(find.text('Word of the day!'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('+$kWordOfDayCoins'), findsOneWidget);
+    await tester.tap(find.text('Collect'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
+    expect(find.text('$kWordOfDayCoins'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Word of the day!'), findsNothing);
 
     // Leaving and coming back refreshes the board again: no second reward.
     await tester.tap(find.text('End'));
@@ -75,20 +85,41 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('Visit your village'), findsOneWidget);
-    // The Me page's word card now says Done. (Swipe: the reward's
-    // SnackBar is still over the tab bar.)
-    await tester.fling(find.byType(PageView), const Offset(400, 0), 1000);
+    // The Me page's word card now says Done.
+    await tester.tap(find.text('Me').last);
     await tester.pumpAndSettle();
     expect(find.text('Done'), findsOneWidget);
     expect(find.text('+10 coins'), findsNothing);
     final coinsBefore = container.read(portfolioProvider).currency;
-    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.tap(find.text('Play').last);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
     expect(container.read(portfolioProvider).currency, coinsBefore);
+  });
+
+  testWidgets('the first building shows the new building moment, once', (tester) async {
+    final container = await openVillageWith(tester, 'WELL');
+    expect(find.text('New building!'), findsOneWidget);
+    expect(find.text('You built a Well!'), findsOneWidget);
+    expect(container.read(portfolioProvider).currency, 10);
+    await tester.tap(find.text('Hooray!'));
+    await tester.pumpAndSettle();
+    expect(find.text('New building!'), findsNothing);
+
+    await tester.tap(find.text('End'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Leave Village'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Visit your village'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
+        const Duration(seconds: 20));
+    expect(find.text('New building!'), findsNothing);
+    expect(container.read(portfolioProvider).currency, 10);
   });
 
   testWidgets('another word on the board pays nothing', (tester) async {
