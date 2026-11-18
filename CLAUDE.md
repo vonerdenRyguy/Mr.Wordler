@@ -41,6 +41,13 @@ Flutter-generated output (already gitignored), not source.
 - OneDrive sometimes locks `build/unit_test_assets`; `rm -rf` it and
   re-run `flutter test`.
 
+## Model choice
+
+Before starting a task, say in one line whether it needs Opus (new feature
+design, architecture, tricky bugs) or Sonnet (building from a spec, tests,
+installs, small fixes). If I'm on the wrong one, tell me to switch with
+`/model`.
+
 ## Current state (as of 2026-11-17)
 
 Built from specs 01-14, **all merged to master**. Specs 04 and 05 were
