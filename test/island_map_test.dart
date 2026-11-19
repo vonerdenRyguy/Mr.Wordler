@@ -111,10 +111,9 @@ void main() {
 
   test('isWaterIndex agrees with isWater', () {
     final map = mapFor(1);
-    const r = 250, c = 282; // river cell: dist = 32? wait — 282-250=32 → hills
     // Use a known river cell
-    const riverCol = 250 + 30; // distance 30 → river
-    final idx = r * bw + riverCol;
+    const r = 250, riverCol = 250 + 30; // distance 30 → river
+    const idx = r * bw + riverCol;
     expect(map.isWaterIndex(idx), equals(map.isWater(r, riverCol)));
   });
 

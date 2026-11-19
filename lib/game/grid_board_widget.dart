@@ -74,7 +74,6 @@ class GridTileWidget extends ConsumerWidget {
     required this.location,
     required this.isBoardStyle,
     this.theme = GridTheme.classic,
-    this.isLandmark = false,
     this.isPinned = false,
     this.onTogglePin,
     this.stripe,
@@ -85,11 +84,6 @@ class GridTileWidget extends ConsumerWidget {
   final TileLocation location;
   final bool isBoardStyle;
   final GridTheme theme;
-  // Marks this as a landmark spot (Infinite Estate/Village only -- every
-  // other mode leaves this false). Only shows the glow/star while the
-  // tile is still empty; once a letter lands here it renders normally,
-  // and the landmark-reached event is handled by the caller, not here.
-  final bool isLandmark;
   // Rack "pin" (Infinite Estate/Village only): a UI-only marker the
   // player toggles via long-press to remind themselves they're saving
   // this letter for something -- it doesn't affect gameplay at all.
@@ -116,7 +110,6 @@ class GridTileWidget extends ConsumerWidget {
     final isBoard = location.zone == TileZone.board;
     // Only the tiles a landing actually involves rebuild (see fxFor).
     final fx = isBoard ? ref.watch(tileLandingProvider.select((l) => fxFor(l, location.index))) : null;
-    final showLandmarkGlow = isLandmark && letter == null;
     final showPin = !isBoard && isPinned && letter != null;
 
     // The cell is just the slot; the letter is drawn by LetterTile inside.
@@ -127,13 +120,6 @@ class GridTileWidget extends ConsumerWidget {
           color: Colors.blue.shade50,
           border: Border.all(color: Colors.blue.shade700, width: 3),
           borderRadius: radius,
-        );
-      }
-      if (showLandmarkGlow) {
-        return BoxDecoration(
-          color: WColors.sun,
-          border: Border.all(color: WColors.ink, width: 2.5),
-          boxShadow: [BoxShadow(color: WColors.sun.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
         );
       }
       if (isBoardStyle) {
@@ -154,14 +140,7 @@ class GridTileWidget extends ConsumerWidget {
     return _withOverlay(DragTarget<TileLocation>(
       builder: (context, candidateData, rejectedData) {
         final Widget content;
-        if (showLandmarkGlow) {
-          content = Center(
-            child: LayoutBuilder(
-              builder: (context, c) =>
-                  Icon(Icons.star, color: WColors.ink, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
-            ),
-          );
-        } else if (letter != null) {
+        if (letter != null) {
           content = Draggable<TileLocation>(
             data: location,
             // A fixed, big tile under the finger, so it stays readable
@@ -245,7 +224,6 @@ class GridBoardView extends ConsumerWidget {
     this.minScale = 0.2,
     this.maxScale = 2.5,
     this.boundaryMargin = EdgeInsets.zero,
-    this.landmarkIndices = const {},
     this.transformController,
     this.cellSize,
     this.cellGap = 0,
@@ -258,10 +236,6 @@ class GridBoardView extends ConsumerWidget {
   final double minScale;
   final double maxScale;
   final EdgeInsets boundaryMargin;
-  // Board indices to render as landmark spots (empty ones get a glow/star
-  // -- see GridTileWidget.isLandmark). Empty by default for every mode
-  // except Infinite Estate/Village, which passes its own set.
-  final Set<int> landmarkIndices;
   // Bridge structure ability: lets the caller programmatically pan/zoom
   // (e.g. jump to a landmark) by driving this controller. Null (the
   // default, every other mode) lets InteractiveViewer manage its own
@@ -328,7 +302,6 @@ class GridBoardView extends ConsumerWidget {
                     child: GridTileWidget(
                       location: TileLocation(TileZone.board, index),
                       isBoardStyle: true,
-                      isLandmark: landmarkIndices.contains(index),
                       theme: theme,
                       stripe: stripes[index],
                       cellOverlay: cellOverlay?.call(index),
@@ -371,7 +344,6 @@ class GridBoardView extends ConsumerWidget {
                     child: GridTileWidget(
                       location: TileLocation(TileZone.board, row * config.boardWidth + col),
                       isBoardStyle: true,
-                      isLandmark: landmarkIndices.contains(row * config.boardWidth + col),
                       theme: theme,
                       stripe: stripes[row * config.boardWidth + col],
                       cellOverlay: cellOverlay?.call(row * config.boardWidth + col),

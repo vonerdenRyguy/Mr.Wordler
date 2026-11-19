@@ -31,8 +31,6 @@ const _slabOutline = Color(0xFF6B5A48);
 const _slabLeft = Color(0xFFA8987C);
 const _slabRight = Color(0xFF8F8068);
 const _slabLetter = Color(0xFF4A3A2C);
-const _landmarkFill = Color(0xFFFDF1D6);
-const _landmarkOutline = Color(0xFFB7791F);
 
 /// Everything the Village view draws, worked out from the board: pure, so
 /// painting and tapping agree and both can be tested.
@@ -41,7 +39,6 @@ class VillageScene {
     required this.grid,
     required this.boardCells,
     required this.structures,
-    required this.landmarkIndices,
     this.spriteMeta = const {},
   }) {
     for (int i = 0; i < boardCells.length; i++) {
@@ -57,7 +54,6 @@ class VillageScene {
   final IsoGrid grid;
   final List<String?> boardCells;
   final List<BoardStructure> structures;
-  final Set<int> landmarkIndices;
   final Map<String, SpriteMeta> spriteMeta;
 
   /// Board indices holding a letter.
@@ -345,11 +341,6 @@ class IsoVillagePainter extends CustomPainter {
 
     // Everything standing on the grass, back to front.
     final items = <(double, void Function())>[];
-    for (final index in scene.landmarkIndices) {
-      if (scene.boardCells[index] == null && inView(index)) {
-        items.add((scene.depthOf(index), () => _paintLandmark(canvas, scene.groundOf(index))));
-      }
-    }
     for (final index in scene.occupied) {
       if (!inView(index)) continue;
       final block = scene.blockOf[index];
@@ -427,36 +418,6 @@ class IsoVillagePainter extends CustomPainter {
     if (!waterPath.getBounds().isEmpty) {
       canvas.drawPath(waterPath, Paint()..color = const Color(0x44448BCA));
     }
-  }
-
-  void _paintLandmark(Canvas canvas, Offset g) {
-    final shape = _diamond(g, 0.85);
-    canvas.drawPath(shape, Paint()..color = _landmarkFill);
-    canvas.drawPath(
-        shape,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = _landmarkOutline);
-    final star = _starPath(g - const Offset(0, 14 + 10), 11, 5);
-    canvas.drawPath(star, Paint()..color = WColors.sun);
-    canvas.drawPath(
-        star,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
-          ..color = WColors.ink);
-  }
-
-  Path _starPath(Offset c, double outer, double inner) {
-    final path = Path();
-    for (int i = 0; i < 10; i++) {
-      final radius = i.isEven ? outer : inner;
-      final angle = -pi / 2 + i * pi / 5;
-      final p = c + Offset(cos(angle) * radius, sin(angle) * radius);
-      i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-    }
-    return path..close();
   }
 
   // The four corners of a cell's diamond at [scale], lifted by [lift].

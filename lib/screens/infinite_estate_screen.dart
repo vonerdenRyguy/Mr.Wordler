@@ -160,11 +160,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   Set<String> _foundSpecials = {};
   Set<ShrineKind> _shrines = {};
   Set<int> _levelTreats = {};
-  // Kept as both an ordered list (so the Bridge jump dialog can number
-  // landmarks in a stable, meaningful order) and a Set (for the O(1)
-  // membership checks GridTileWidget/IsoVillageView need every build).
+  // Bridge ability: ordered list of reached old landmarks, kept for the
+  // jump menu. Only index matters; never re-computed from scratch.
   late final List<int> _landmarkOrder;
-  late final Set<int> _landmarkIndices;
   Set<int> _reachedLandmarks = {};
   Set<String> _discoveredWords = {};
   // Rack pinning is a pure UI affordance (no mechanical effect), so it's
@@ -225,7 +223,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       InfiniteEstateScreen.boardSize,
       InfiniteEstateScreen.boardSize,
     );
-    _landmarkIndices = _landmarkOrder.toSet();
     _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
@@ -245,7 +242,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         grid: _isoGrid,
         boardCells: board,
         structures: _structures,
-        landmarkIndices: _landmarkIndices,
         spriteMeta: _spriteMeta,
       );
     }
@@ -564,32 +560,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         foundLandmarks: foundLandmarks,
       ),
     );
-  }
-
-  // A landmark is "reached" the instant a letter lands on its tile.
-  // One-time and always positive: a bonus letter draw plus a celebratory
-  // message, never a penalty. reachedLandmarks (persisted) guards against
-  // firing again on a later visit.
-  Future<void> _checkLandmarks() async {
-    final boardCells = ref.read(gridGameControllerProvider).boardCells;
-    for (final index in _landmarkIndices) {
-      if (_reachedLandmarks.contains(index)) continue;
-      if (boardCells[index] == null) continue;
-
-      _reachedLandmarks = {..._reachedLandmarks, index};
-      final gotLetter = ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
-      await _saveVillage();
-      if (!mounted) return;
-      showWordlerDialog<void>(
-        context,
-        title: 'Landmark discovered!',
-        icon: const Icon(Icons.star, color: WColors.sun, size: 32),
-        bodyText: gotLetter
-            ? 'Your village has grown to reach a landmark. A bonus letter has been added to the end of your rack!'
-            : 'Your village has grown to reach a landmark. Wonderful exploring!',
-        actions: [WordlerDialogAction('Wonderful!', () {})],
-      );
-    }
   }
 
   // Re-derives which magic words are currently built (see BoardStructure's
@@ -1130,7 +1100,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     ref.listen(gridGameControllerProvider, (previous, next) {
       if (previous?.boardCells != next.boardCells) {
         _refreshStructures();
-        if (!_restoring) _checkLandmarks();
       }
       if (previous != null && previous.rackCells != next.rackCells) {
         _updatePinsAfterRackChange(previous, next);
@@ -1235,7 +1204,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                       minScale: 0.2,
                                       maxScale: 2.5,
                                       boundaryMargin: const EdgeInsets.all(400),
-                                      landmarkIndices: _landmarkIndices,
                                       transformController: _transformController,
                                       cellSize: InfiniteEstateScreen.cellSize,
                                       stripes: stripes,

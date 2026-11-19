@@ -23,7 +23,6 @@ void main() {
       structures: computeStructures(const [
         WordRun('WELL', [52, 53, 54, 55], true)
       ]),
-      landmarkIndices: const {},
     );
   }
 
@@ -58,7 +57,7 @@ void main() {
       }
     }
     final s = VillageScene(
-        grid: grid, boardCells: board, structures: computeStructures([house, tower]), landmarkIndices: const {});
+        grid: grid, boardCells: board, structures: computeStructures([house, tower]));
     expect(s.buildingCells(s.structures[0]), [31, 32, 33, 34, 35]);
     // TOWER loses the shared O and keeps the longer side: W, E, R.
     expect(s.buildingCells(s.structures[1]), [42, 52, 62]);

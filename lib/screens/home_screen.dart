@@ -31,7 +31,6 @@ import '../ui/wallpaper.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
-import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
@@ -133,7 +132,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       grid: const IsoGrid(boardWidth: size, boardHeight: size),
       boardCells: saved.boardCells,
       structures: structures,
-      landmarkIndices: landmarkBoardIndices(size, size).toSet(),
       spriteMeta: meta,
     );
     setState(() => _village = (
