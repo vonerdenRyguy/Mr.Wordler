@@ -367,8 +367,24 @@ game for this, then mock everything up on the canvas.
   wishes ("a word about cats"); this replaces "village orders".
 - **Later:** day/night and seasons, Mr. W story quests, a discovery
   journal of everything found, a family fog map.
-- **Build order:** spec-15 Explore (fog, regions, special tiles, XP),
-  spec-16 Villagers, spec-17 day/night, seasons, quests, family map.
+- **Shared island (family, approved 2026-11-19):** the whole family lives
+  on one map. Each person's village starts at its own spot on the coast,
+  with fog between. Fog anyone clears is cleared for everyone. A word that
+  touches a family member's word joins the two villages with a road (a big
+  shared moment). A family landmark in the center fog (e.g. a ruined
+  lighthouse) is restored by reaching it from all sides; it replaces the
+  Town Square bricks (the vote can stay). Villagers visit along roads.
+  Nobody changes anyone else's tiles; each side's region rules follow
+  that person's word level. Extras: keys found on one side that open a
+  gate on another's, and a shared family discovery book.
+  Open: what's in the middle; one-phone families; where new members start.
+- **Play together (approved 2026-11-19):** live co-op mini-games when two
+  family members are on at once, like Clash Royale's friendly battle but
+  family vs the puzzle. Ryan's seed: given a meaning and some letters,
+  spell the word together. Details still to design.
+- **Build order:** spec-15 Explore (fog, regions, special tiles, XP; map
+  made ready for several villages), spec-16 Villagers, spec-17 Shared
+  island, spec-18 Play together, spec-19 day/night, seasons, quests.
 - Keep it gentle: no region locked forever; a hint when stuck.
 
 The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
