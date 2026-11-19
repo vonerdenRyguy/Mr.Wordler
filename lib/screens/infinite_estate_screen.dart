@@ -6,7 +6,9 @@ import '../dictionary/definition_service.dart';
 import '../explore/explore_rules.dart';
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
+import '../portfolio/level_info.dart';
 import '../settings/settings_controller.dart' show settingsProvider;
+import 'island_map_screen.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
@@ -181,6 +183,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // Free Swaps used this visit (1 each visit, 2 with a Farm). Works like
   // the Well's limit: session-only, reset when the screen is reopened.
   int _freeSwapsUsed = 0;
+  // spec-15: hints used this visit (1 normally, 3 with Shrine of Sight).
+  int _hintsUsedThisVisit = 0;
 
   // Bridge structure ability: drives GridBoardView's InteractiveViewer to
   // jump/pan to a reached landmark. _boardViewportSize is captured by the
@@ -350,9 +354,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           case SpecialKind.goldenSquare:
             _goldenCells.add(cell); // already there, but ensures mutable set
           case SpecialKind.boulder:
-            break; // boulder rewards handled in hint commit (7)
+            newXp += 10;
           case SpecialKind.landmark:
-            break; // landmark rewards handled in hint commit (7)
+            newCoins += 50;
           case SpecialKind.shrine:
             final kind = special.shrine!;
             _shrines = {..._shrines, kind};
@@ -366,10 +370,23 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
     if (newXp <= 0 && newCoins <= 0 && !fogChanged && newlyActivated.isEmpty) return;
 
-    if (newXp > 0) ref.read(portfolioProvider.notifier).addXp(newXp);
+    final portfolio = ref.read(portfolioProvider);
+    final levelBefore = levelInfoForXp(portfolio.totalXp).level;
+    if (newXp > 0) {
+      ref.read(portfolioProvider.notifier).addXp(newXp);
+      _showXpFloat(newXp);
+    }
     if (newCoins > 0) ref.read(portfolioProvider.notifier).addCurrency(newCoins);
     if (fogChanged) setState(() {}); // redraw fog overlay
     await _saveVillage();
+
+    // Level-up treats (fire at most once per level, in order).
+    if (newXp > 0) {
+      final levelAfter = levelInfoForXp(ref.read(portfolioProvider).totalXp).level;
+      for (var lv = levelBefore + 1; lv <= levelAfter; lv++) {
+        if (!_levelTreats.contains(lv)) await _doLevelTreat(lv);
+      }
+    }
   }
 
   Future<void> _loadSavedVillage() async {
@@ -532,6 +549,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   void _openJournal() {
     final rackCells = ref.read(gridGameControllerProvider).rackCells;
+    final foundLandmarks = {
+      for (final s in _islandMap.specials)
+        if (s.kind == SpecialKind.landmark && _foundSpecials.contains(s.id)) s.landmark!,
+    };
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -540,6 +561,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         loadDefinition: _loadDefinition,
         rackCells: rackCells,
         discoveredWords: _discoveredWords,
+        foundLandmarks: foundLandmarks,
       ),
     );
   }
@@ -656,6 +678,98 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   }
 
   int get _freeSwapsLeft => freeSwapsLeft(used: _freeSwapsUsed, hasFarm: _hasStructure('FARM'));
+
+  // spec-15: hints remaining this visit (Shrine of Sight triples them).
+  int get _hintsLeft =>
+      (_shrines.contains(ShrineKind.sight) ? 3 : 1) - _hintsUsedThisVisit;
+
+  // spec-15: show a hint SnackBar telling the player the minimum word
+  // length needed to push fog into the nearest ring.
+  void _doHint() {
+    if (_hintsLeft <= 0) return;
+    final level = ref.read(settingsProvider).wordLevel;
+    const bw = InfiniteEstateScreen.boardSize;
+    const homeR = InfiniteEstateScreen.homeIndex ~/ bw;
+    const homeC = InfiniteEstateScreen.homeIndex % bw;
+    const halfCells = 100;
+
+    Ring? nearestRing;
+    var minLen = 999;
+    for (var dr = -halfCells; dr <= halfCells; dr++) {
+      for (var dc = -halfCells; dc <= halfCells; dc++) {
+        final r = homeR + dr;
+        final c = homeC + dc;
+        if (r < 0 || r >= bw || c < 0 || c >= bw) continue;
+        final idx = r * bw + c;
+        if (!_fog.canSee(idx)) continue;
+        final ring = _islandMap.ringAtIndex(idx);
+        if (ring == Ring.coast) continue;
+        final len = minLength(ring, level);
+        if (len < minLen) {
+          minLen = len;
+          nearestRing = ring;
+        }
+      }
+    }
+
+    setState(() => _hintsUsedThisVisit++);
+    if (!mounted) return;
+    final msg = nearestRing == null
+        ? 'Keep spelling to clear the fog!'
+        : 'Spell a $minLen+ letter word to push into the ${nearestRing.displayName}!';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  // spec-15: flash a small "+N XP" SnackBar after a word rewards XP.
+  void _showXpFloat(int xp) {
+    if (!mounted || xp <= 0) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('+$xp XP', style: WText.bodyBold.copyWith(color: WColors.white)),
+        duration: const Duration(seconds: 1),
+        backgroundColor: const Color(0xFF6A4FB6),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // spec-15: show a level-up reward moment for reaching [level] and apply
+  // any treat (larger rack for Shrine of Plenty is handled on shrine
+  // activation; here we just celebrate).
+  Future<void> _doLevelTreat(int level) async {
+    _levelTreats = {..._levelTreats, level};
+    await _saveVillage();
+    if (!mounted) return;
+    await _rewardsShowing;
+    if (!mounted) return;
+    _rewardsShowing = showRewardMoment(
+      context,
+      ribbon: 'Level up!',
+      title: 'Level $level!',
+      message: 'Your village is growing. Keep exploring!',
+      coins: 0,
+      buttonLabel: 'Onward!',
+    );
+  }
+
+  // spec-15: open the whole-island map page.
+  void _openIslandMap() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => IslandMapPage(
+          islandMap: _islandMap,
+          fog: _fog,
+          foundSpecialIds: _foundSpecials,
+          onJumpTo: (boardIndex) {
+            _centerWordsOn(boardIndex, transformScale(_transformController.value));
+          },
+        ),
+      ),
+    );
+  }
 
   // +10 coins the first time each building is ever built, with the new
   // building moment (spec-12). Words already discovered (older saves
@@ -1061,6 +1175,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                       ),
                     ),
                     const SizedBox(width: WSize.gap2),
+                    ChunkyIconButton(
+                      icon: Icons.map,
+                      tooltip: 'Island map',
+                      onPressed: _openIslandMap,
+                    ),
+                    const SizedBox(width: WSize.gap2),
                     ChunkyButton(label: 'End', kind: ChunkyKind.danger, size: ChunkySize.small, onPressed: _endSession),
                   ],
                 ),
@@ -1070,6 +1190,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                 child: _VillageActionBar(
                   score: _score,
                   onScoreTap: _refreshScore,
+                  totalXp: ref.watch(portfolioProvider.select((p) => p.totalXp)),
                   discoveredCount: _discoveredWords.length,
                   totalMagicWords: kMagicWords.length,
                   onJournal: _openJournal,
@@ -1190,14 +1311,26 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                 const SizedBox(width: gap),
                                 SizedBox(
                                   width: swapWidth,
-                                  height: rackHeight,
-                                  child: _SwapColumn(
-                                    allPinned: _allBaseSlotsPinned(
-                                        ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                                    freeLeft: _freeSwapsLeft,
-                                    canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
-                                        InfiniteEstateScreen.swapCost,
-                                    onSwap: _swapRack,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _HintButton(
+                                        hintsLeft: _hintsLeft,
+                                        onHint: _doHint,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      SizedBox(
+                                        height: rackHeight,
+                                        child: _SwapColumn(
+                                          allPinned: _allBaseSlotsPinned(
+                                              ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                                          freeLeft: _freeSwapsLeft,
+                                          canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
+                                              InfiniteEstateScreen.swapCost,
+                                          onSwap: _swapRack,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1290,6 +1423,7 @@ class _VillageActionBar extends StatelessWidget {
   const _VillageActionBar({
     required this.score,
     required this.onScoreTap,
+    required this.totalXp,
     required this.discoveredCount,
     required this.totalMagicWords,
     required this.onJournal,
@@ -1304,6 +1438,8 @@ class _VillageActionBar extends StatelessWidget {
 
   final int score;
   final VoidCallback onScoreTap;
+  // spec-15: total XP for the XP chip (replaces the score chip).
+  final int totalXp;
   final int discoveredCount;
   final int totalMagicWords;
   final VoidCallback onJournal;
@@ -1318,17 +1454,17 @@ class _VillageActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lvInfo = levelInfoForXp(totalXp);
     return Wrap(
       spacing: WSize.gap2,
       runSpacing: WSize.gap1,
       children: [
         PillChip(
-          icon: Icons.landscape,
-          value: '$score',
-          label: 'pts',
-          badgeColor: WColors.leaf,
-          tooltip: 'Village score (tap to recount)',
-          onTap: onScoreTap,
+          icon: Icons.star,
+          value: 'Lv ${lvInfo.level}',
+          label: '${lvInfo.xpIntoLevel}/${lvInfo.xpForNextLevel} XP',
+          badgeColor: WColors.sun,
+          tooltip: 'Your explorer level',
         ),
         if (buildingCount != null)
           PillChip(
@@ -1362,6 +1498,50 @@ class _VillageActionBar extends StatelessWidget {
             onTap: onBridge,
           ),
       ],
+    );
+  }
+}
+
+// "Hint" button above the Swap column: tells the player the minimum word
+// length needed to push fog into the nearest visible ring.
+class _HintButton extends StatelessWidget {
+  const _HintButton({required this.hintsLeft, required this.onHint});
+
+  final int hintsLeft;
+  final VoidCallback onHint;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = hintsLeft > 0;
+    final ink = enabled ? WColors.ink : WColors.muted;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: 'Hint${enabled ? ", $hintsLeft left" : " used"}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onHint : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          decoration: BoxDecoration(
+            color: enabled ? WColors.skyTint : WColors.boardCell,
+            border: Border.all(color: ink, width: WSize.outline),
+            borderRadius: BorderRadius.circular(WSize.radiusButton),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lightbulb_outline, color: enabled ? WColors.sky : WColors.muted, size: 22),
+              Text('Hint', style: WText.buttonSmall.copyWith(color: ink)),
+              Text(
+                enabled ? (hintsLeft > 1 ? 'x$hintsLeft' : '1 left') : 'used',
+                style: WText.label.copyWith(color: ink, height: 1.1),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

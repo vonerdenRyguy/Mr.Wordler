@@ -307,12 +307,8 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    // Tapping the score chip itself re-checks the score (there's no
-    // separate "Score" button).
-    expect(find.byIcon(Icons.landscape), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.landscape));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
+    // The XP chip is always present in the action bar (spec-15).
+    expect(find.byIcon(Icons.star), findsOneWidget);
     expect(find.text('End'), findsOneWidget);
     expect(oneLetterTileFinder(), findsNWidgets(10));
 
@@ -381,7 +377,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
-    expect(find.byIcon(Icons.landscape), findsOneWidget);
+    expect(find.byIcon(Icons.star), findsOneWidget);
     expect(find.text('End'), findsOneWidget);
   });
 

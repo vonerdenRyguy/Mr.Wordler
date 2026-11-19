@@ -140,6 +140,9 @@ class IslandMap {
   /// Fast lookup: board cell index → special tile.
   late final Map<int, SpecialTile> _byCell;
 
+  /// Count of non-coast cells (Meadow through Mountains) for explored-fraction.
+  late final int reachableCellCount;
+
   IslandMap({
     required this.seed,
     required this.homes,
@@ -148,6 +151,26 @@ class IslandMap {
   }) {
     specials = _generateSpecials();
     _byCell = {for (final s in specials) s.cell: s};
+    reachableCellCount = _countReachable();
+  }
+
+  int _countReachable() {
+    // Count all cells that belong to a non-coast ring.
+    if (homes.isEmpty) return 0;
+    final homeR = homes.first ~/ boardWidth;
+    final homeC = homes.first % boardWidth;
+    const maxDist = _mountainsMax;
+    var count = 0;
+    final r0 = math.max(0, homeR - maxDist);
+    final r1 = math.min(boardHeight - 1, homeR + maxDist);
+    final c0 = math.max(0, homeC - maxDist);
+    final c1 = math.min(boardWidth - 1, homeC + maxDist);
+    for (var r = r0; r <= r1; r++) {
+      for (var c = c0; c <= c1; c++) {
+        if (ringAt(r, c) != Ring.coast) count++;
+      }
+    }
+    return count;
   }
 
   // ── Ring queries ─────────────────────────────────────────────────────────

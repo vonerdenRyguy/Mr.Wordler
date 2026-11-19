@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../explore/island_map.dart' show LandmarkKind;
 import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
 import 'magic_word.dart';
@@ -38,11 +39,14 @@ class DiscoveryJournalView extends StatelessWidget {
     super.key,
     required this.rackCells,
     required this.discoveredWords,
+    this.foundLandmarks = const {},
     this.loadDefinition,
   });
 
   final List<String?> rackCells;
   final Set<String> discoveredWords;
+  // spec-15: landmarks found on the island.
+  final Set<LandmarkKind> foundLandmarks;
   // For each row's "What it means" link; null hides the link.
   final DefinitionLoader? loadDefinition;
 
@@ -66,8 +70,19 @@ class DiscoveryJournalView extends StatelessWidget {
             children: [
               Semantics(header: true, child: const Text('Discovery Journal', style: WText.heading)),
               const SizedBox(height: 4),
-              const Text('Magic words that can be built into structures.', style: WText.label),
-              const SizedBox(height: 12),
+              const Text('Magic words and island discoveries.', style: WText.label),
+              if (foundLandmarks.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('Landmarks', style: WText.bodyBold),
+                const SizedBox(height: 8),
+                for (final lk in LandmarkKind.values)
+                  if (foundLandmarks.contains(lk))
+                    _LandmarkEntry(kind: lk),
+                const SizedBox(height: 8),
+              ],
+              const SizedBox(height: 8),
+              const Text('Buildings', style: WText.bodyBold),
+              const SizedBox(height: 8),
               for (final def in kMagicWords)
                 _JournalEntry(
                   def: def,
@@ -81,6 +96,54 @@ class DiscoveryJournalView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _LandmarkEntry extends StatelessWidget {
+  const _LandmarkEntry({required this.kind});
+
+  final LandmarkKind kind;
+
+  static const _icons = {
+    LandmarkKind.giantOak: Icons.park,
+    LandmarkKind.waterfall: Icons.water,
+    LandmarkKind.windmill: Icons.wind_power,
+    LandmarkKind.castle: Icons.castle,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: WSize.gap2),
+      child: ChunkyCard(
+        color: const Color(0xFFFFF8E1),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: WColors.sun,
+                border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(_icons[kind] ?? Icons.star, color: WColors.ink, size: 22),
+            ),
+            const SizedBox(width: WSize.gap3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(kind.displayName, style: WText.bodyBold),
+                  Text('Landmark discovered!', style: WText.label),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
