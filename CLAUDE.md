@@ -400,6 +400,17 @@ game for this, then mock everything up on the canvas.
   made ready for several villages), spec-16 Villagers, spec-17 Shared
   island, spec-18 Play together, spec-19 day/night, seasons, quests.
 - Keep it gentle: no region locked forever; a hint when stuck.
+- **Canvas row "Chapter 1 ... and the game wheel"** (boards M161-M168,
+  2026-11-19): Ryan likes the concept; the art is placeholder.
+- **Art, later (Ryan, 2026-11-19: mock-ups look "AI slop"; functionality
+  first, looks after).** Plan: Ryan picks one of ~4 style directions on
+  the canvas (soft 3D toy, low-poly diorama, hand-painted storybook,
+  chunky isometric 3D) and a written style guide follows. 3D avatars,
+  villagers that walk and buildings made with the Meshy skill (models,
+  rigging, walk cycles), then pre-rendered to sprite sheets (8
+  directions) so Flutter stays 2D and fast. The island map becomes one
+  painted illustration with fog layers, like Royal Match / Hay Day maps.
+  Consider a human artist for a few key pieces to anchor the style.
 
 The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
 (https://claude.ai/artifact/C4fYPKs7owUmfUDfM1VK7L): rows for the family
