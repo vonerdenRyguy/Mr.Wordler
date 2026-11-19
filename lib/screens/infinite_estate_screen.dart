@@ -1040,6 +1040,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                         minScale: 0.2,
                                         maxScale: 2.5,
                                         boundaryMargin: const EdgeInsets.all(400),
+                                        fog: _fog,
+                                        islandMap: _islandMap,
                                       );
                                     }),
                             ),
