@@ -343,6 +343,34 @@ design canvas first and approved there before any code):
    still to come.
 7. Playing together: Word bridge (turn-based first), Word buddies.
 
+### Next direction: Explore (Ryan, 2026-11-18/19)
+
+Ryan doesn't enjoy playing yet ("good but not engaging"). The hook will be
+**exploring**, not collecting resources. The harvest / building-upgrade
+boards (canvas row "spec-15 ideas", K151-K156) are **tabled**. Ryan
+approved all of the ideas below. Before any code: rethink the family
+game for this, then mock everything up on the canvas.
+- **Fog and regions:** the village starts in a clear meadow; words clear
+  fog. Rings outward need longer words (Meadow 3+, Forest 4+, River 5+,
+  Hills 6+, Mountains 7+), scaled down by word level (Sprout's mountains
+  ask for 4). Same map every time: generated from a fixed seed and saved.
+- **Special tiles to reach (these are what you collect):** treasure
+  chests (coins, golden letters), villagers, shrines that unlock features
+  (Swap, bigger rack, music...), ruins rebuilt with a themed word, rivers
+  crossed only by a word long enough to span them, boulders with a fixed
+  letter to spell through, golden double-XP squares, big landmarks
+  (waterfall, castle, lighthouse).
+- **XP for every new word** (more for long words, rare letters, first
+  discoveries); levels give small treats, the map gives the big goals.
+- **Little people:** connect a word to one and they move in, wander your
+  word paths (later with purpose: home, job), can be named, and have
+  wishes ("a word about cats"); this replaces "village orders".
+- **Later:** day/night and seasons, Mr. W story quests, a discovery
+  journal of everything found, a family fog map.
+- **Build order:** spec-15 Explore (fog, regions, special tiles, XP),
+  spec-16 Villagers, spec-17 day/night, seasons, quests, family map.
+- Keep it gentle: no region locked forever; a hint when stuck.
+
 The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
 (https://claude.ai/artifact/C4fYPKs7owUmfUDfM1VK7L): rows for the family
 concept, each spec's proposal, and dated real-phone screenshots.
