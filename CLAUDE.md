@@ -402,6 +402,12 @@ game for this, then mock everything up on the canvas.
 - Keep it gentle: no region locked forever; a hint when stuck.
 - **Canvas row "Chapter 1 ... and the game wheel"** (boards M161-M168,
   2026-11-19): Ryan likes the concept; the art is placeholder.
+- **spec-15 decisions (Ryan, 2026-11-19):** faint outlines of special
+  tiles show through the fog; the existing village becomes the starting
+  meadow (nothing lost); region lengths Meadow 3+, Forest 4+, River 5+ to
+  cross, Hills 6+, Mountains 7+ (Sprout capped at 4); XP levels give small
+  treats (bigger rack, free Swap, decorations), shrines unlock features;
+  the middle landmark is a lighthouse for now.
 - **Art, later (Ryan, 2026-11-19: mock-ups look "AI slop"; functionality
   first, looks after).** Plan: Ryan picks one of ~4 style directions on
   the canvas (soft 3D toy, low-poly diorama, hand-painted storybook,
