@@ -3,6 +3,8 @@ import '../components/valid_word_check.dart' show initSpellCheck;
 import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
 import '../dictionary/definition_service.dart';
+import '../explore/fog.dart';
+import '../explore/island_map.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
@@ -75,6 +77,9 @@ class InfiniteEstateScreen extends StatelessWidget {
   // tappable without the lazily-built board needing to know anything
   // about the viewport's own dimensions.
   static const double cellSize = 44.0;
+  // Board centre cell index: the village starts here and the island map
+  // is seeded around it.
+  static const int homeIndex = boardSize ~/ 2 * boardSize + boardSize ~/ 2;
   // Comfortably more than a long session will draw through; the letter
   // pool repeats its weighted distribution to cover any size (see
   // LetterGenerator.generateLetters), so this just needs to be "a lot".
@@ -140,6 +145,16 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   final _saveController = VillageSaveController();
   bool _restoring = true;
+
+  // ── spec-15 explore state ────────────────────────────────────────────────
+  late IslandMap _islandMap;
+  FogMap _fog = FogMap.empty(); // replaced once the save loads
+  int _mapSeed = VillageSaveData.kDefaultMapSeed;
+  int _mapVersion = VillageSaveData.kDefaultMapVersion;
+  Set<int> _everUsed = {};
+  Set<String> _foundSpecials = {};
+  Set<ShrineKind> _shrines = {};
+  Set<int> _levelTreats = {};
   // Kept as both an ordered list (so the Bridge jump dialog can number
   // landmarks in a stable, meaningful order) and a Set (for the O(1)
   // membership checks GridTileWidget/IsoVillageView need every build).
@@ -204,6 +219,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       InfiniteEstateScreen.boardSize,
     );
     _landmarkIndices = _landmarkOrder.toSet();
+    _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
       if (mounted) setState(() => _spriteMeta = meta);
@@ -250,6 +266,20 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   bool _hasStructure(String magicWord) => _structures.any((s) => s.def.word == magicWord);
 
+  // spec-15: returns a fog overlay color for a board cell index.
+  //   - Solid fog (can't see): dark grey, mostly opaque.
+  //   - Fuzzy edge (canSee but not cleared): lighter grey, semi-transparent.
+  //   - Cleared: null (no overlay); water cells get a subtle blue tint.
+  Color? _fogOverlay(int index) {
+    if (!_fog.isCleared(index)) {
+      if (_fog.canSee(index)) return const Color(0x55888888); // edge haze
+      return const Color(0xCC555555); // solid fog
+    }
+    // Subtle ring tint for cleared cells (water = blue; others uncolored).
+    if (_islandMap.isWaterIndex(index)) return const Color(0x44448BCA);
+    return null;
+  }
+
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
     if (!mounted) return;
@@ -270,6 +300,20 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       _lastCashedOutScore = migrated.lastCashedOutScore;
       _reachedLandmarks = migrated.reachedLandmarks;
       _discoveredWords = migrated.discoveredWords;
+      // ── spec-15: restore explore state ──────────────────────────────────
+      _mapSeed = migrated.mapSeed;
+      _mapVersion = migrated.mapVersion;
+      _everUsed = Set<int>.from(migrated.everUsed);
+      _foundSpecials = Set<String>.from(migrated.foundSpecials);
+      _shrines = Set<ShrineKind>.from(migrated.shrines);
+      _levelTreats = Set<int>.from(migrated.levelTreats);
+      // Build the island map for the restored seed.
+      _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+      // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
+      final clearedB64 = migrated.cleared;
+      _fog = clearedB64 != null
+          ? FogMap.fromBase64(clearedB64)
+          : FogMap.empty();
       needsSave = saved.saveVersion != migrated.saveVersion;
     }
     setState(() => _restoring = false);
@@ -293,6 +337,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       lastCashedOutScore: _lastCashedOutScore,
       reachedLandmarks: _reachedLandmarks,
       discoveredWords: _discoveredWords,
+      // spec-15 explore state
+      mapSeed: _mapSeed,
+      mapVersion: _mapVersion,
+      cleared: _fog.toBase64(),
+      everUsed: Set<int>.unmodifiable(_everUsed),
+      foundSpecials: Set<String>.unmodifiable(_foundSpecials),
+      shrines: Set<ShrineKind>.unmodifiable(_shrines),
+      levelTreats: Set<int>.unmodifiable(_levelTreats),
     ));
   }
 
@@ -971,6 +1023,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                       transformController: _transformController,
                                       cellSize: InfiniteEstateScreen.cellSize,
                                       stripes: stripes,
+                                      // spec-15: fog overlay and drop gate.
+                                      cellOverlay: _fogOverlay,
+                                      canDropAt: _fog.canSee,
                                     )
                                   : Builder(builder: (context) {
                                       final scene = _villageScene();

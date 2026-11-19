@@ -78,6 +78,8 @@ class GridTileWidget extends ConsumerWidget {
     this.isPinned = false,
     this.onTogglePin,
     this.stripe,
+    this.cellOverlay,
+    this.canDropAt,
   });
 
   final TileLocation location;
@@ -97,6 +99,13 @@ class GridTileWidget extends ConsumerWidget {
   final ValueChanged<int>? onTogglePin;
   // Building stripe color for this board cell, if it's part of one.
   final Color? stripe;
+  // spec-15 explore: overlay color for fog/ring tinting. Null = no overlay.
+  // Drawn as a semi-transparent layer on top of the cell content.
+  final Color? cellOverlay;
+  // spec-15 explore: when non-null, gates whether a drop is accepted here.
+  // If the callback returns false the drop is silently refused (tile bounces
+  // back). Only meaningful for board cells; rack cells ignore it.
+  final bool Function(int boardIndex)? canDropAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -142,7 +151,7 @@ class GridTileWidget extends ConsumerWidget {
 
     Widget placed(Widget tile) => isBoardStyle ? Padding(padding: const EdgeInsets.all(2), child: tile) : tile;
 
-    return DragTarget<TileLocation>(
+    return _withOverlay(DragTarget<TileLocation>(
       builder: (context, candidateData, rejectedData) {
         final Widget content;
         if (showLandmarkGlow) {
@@ -196,11 +205,29 @@ class GridTileWidget extends ConsumerWidget {
         final currentLetter = (isBoard
             ? ref.read(gridGameControllerProvider).boardCells
             : ref.read(gridGameControllerProvider).rackCells)[location.index];
-        return currentLetter == null;
+        if (currentLetter != null) return false;
+        // spec-15: board cells behind solid fog refuse drops.
+        if (isBoard && canDropAt != null && !canDropAt!(location.index)) return false;
+        return true;
       },
       onAcceptWithDetails: (details) {
         controller.moveTile(details.data, location);
       },
+    ));
+  }
+
+  // Wraps [child] with an optional semi-transparent fog overlay. Called
+  // by build() when cellOverlay is set.
+  Widget _withOverlay(Widget child) {
+    if (cellOverlay == null) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        IgnorePointer(
+          child: ColoredBox(color: cellOverlay!),
+        ),
+      ],
     );
   }
 }
@@ -223,6 +250,8 @@ class GridBoardView extends ConsumerWidget {
     this.cellSize,
     this.cellGap = 0,
     this.stripes = const {},
+    this.cellOverlay,
+    this.canDropAt,
   });
 
   final GridTheme theme;
@@ -257,6 +286,12 @@ class GridBoardView extends ConsumerWidget {
   // Board index -> building stripe color (Infinite Estate's built magic
   // words). Empty for every other mode.
   final Map<int, Color> stripes;
+  // spec-15 explore: returns overlay color for a board cell index.
+  // Null return = no overlay (cleared / in-view). Used for fog and ring tints.
+  final Color? Function(int boardIndex)? cellOverlay;
+  // spec-15 explore: returns false for cells that must not accept drops
+  // (solid fog). Null = all board cells accept drops.
+  final bool Function(int boardIndex)? canDropAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -296,6 +331,8 @@ class GridBoardView extends ConsumerWidget {
                       isLandmark: landmarkIndices.contains(index),
                       theme: theme,
                       stripe: stripes[index],
+                      cellOverlay: cellOverlay?.call(index),
+                      canDropAt: canDropAt,
                     ),
                   ),
                 );
@@ -337,6 +374,8 @@ class GridBoardView extends ConsumerWidget {
                       isLandmark: landmarkIndices.contains(row * config.boardWidth + col),
                       theme: theme,
                       stripe: stripes[row * config.boardWidth + col],
+                      cellOverlay: cellOverlay?.call(row * config.boardWidth + col),
+                      canDropAt: canDropAt,
                     ),
                   ),
             ],
