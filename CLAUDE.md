@@ -381,7 +381,21 @@ game for this, then mock everything up on the canvas.
 - **Play together (approved 2026-11-19):** live co-op mini-games when two
   family members are on at once, like Clash Royale's friendly battle but
   family vs the puzzle. Ryan's seed: given a meaning and some letters,
-  spell the word together. Details still to design.
+  spell the word together. Co-op ideas: Split Letters (letters split
+  across phones), Picture and Letters (kid sees a picture, grown-up the
+  letters), Word Bridge, Word Chain, Hot and Cold. **Picking a game:** a
+  wheel spins, lands on 4, everyone votes (2026-11-19). Ryan also wants
+  friendly versus modes for 1v1, 1v2, 1v3 and 2v2 (ideas: Tug of Words,
+  Letter Snatch, Territory, Bridge Race, Word Dragon boss; handicaps by
+  word level).
+- **Chapters, so the game never ends (2026-11-19):** 1 Explore (ends at a
+  wall around the center that opens only when the whole family is joined
+  by roads); 2 Rebuild the town (a set number of buildings, vote picks
+  the order); 3 Protect the town (gentle: fog creeps back, a weekly fog
+  creature the family drives off together; nothing is ever destroyed);
+  4 Sail to a new island (new biome, harder words), which repeats.
+  Joining villages should also give real bonuses, not only the moment.
+  Watch out: one family member who stops playing must not block the wall.
 - **Build order:** spec-15 Explore (fog, regions, special tiles, XP; map
   made ready for several villages), spec-16 Villagers, spec-17 Shared
   island, spec-18 Play together, spec-19 day/night, seasons, quests.
