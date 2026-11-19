@@ -47,6 +47,10 @@ class VillageSaveData {
   /// Board cell indices that have ever held a letter. Prevents XP farming.
   final Set<int> everUsed;
 
+  /// Every valid word the player has ever placed on the board. Used by the
+  /// XP formula to decide the word-discovery bonus (+5 for a new word).
+  final Set<String> everWords;
+
   /// Special tile IDs (e.g. 's3') that the player has activated.
   final Set<String> foundSpecials;
 
@@ -75,6 +79,7 @@ class VillageSaveData {
     this.mapVersion = kDefaultMapVersion,
     this.cleared,
     this.everUsed = const {},
+    this.everWords = const {},
     this.foundSpecials = const {},
     this.shrines = const {},
     this.levelTreats = const {},
@@ -94,6 +99,7 @@ class VillageSaveData {
         'mapVersion': mapVersion,
         if (cleared != null) 'cleared': cleared,
         'everUsed': everUsed.toList(),
+        'everWords': everWords.toList(),
         'foundSpecials': foundSpecials.toList(),
         'shrines': shrines.map((s) => s.name).toList(),
         'levelTreats': levelTreats.toList(),
@@ -115,6 +121,7 @@ class VillageSaveData {
         mapVersion: json['mapVersion'] as int? ?? kDefaultMapVersion,
         cleared: json['cleared'] as String?,
         everUsed: (json['everUsed'] as List?)?.map((e) => e as int).toSet() ?? const {},
+        everWords: (json['everWords'] as List?)?.map((e) => e as String).toSet() ?? const {},
         foundSpecials:
             (json['foundSpecials'] as List?)?.map((e) => e as String).toSet() ?? const {},
         shrines: (json['shrines'] as List?)

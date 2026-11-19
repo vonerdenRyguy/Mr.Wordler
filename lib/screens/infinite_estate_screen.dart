@@ -3,8 +3,10 @@ import '../components/valid_word_check.dart' show initSpellCheck;
 import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
 import '../dictionary/definition_service.dart';
+import '../explore/explore_rules.dart';
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
+import '../settings/settings_controller.dart' show settingsProvider;
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
@@ -152,6 +154,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   int _mapSeed = VillageSaveData.kDefaultMapSeed;
   int _mapVersion = VillageSaveData.kDefaultMapVersion;
   Set<int> _everUsed = {};
+  Set<String> _everWords = {};
   Set<String> _foundSpecials = {};
   Set<ShrineKind> _shrines = {};
   Set<int> _levelTreats = {};
@@ -280,6 +283,95 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     return null;
   }
 
+  // spec-15: golden special tile cells, for the XP multiplier.
+  late final Set<int> _goldenCells = {
+    for (final s in _islandMap.specials)
+      if (s.kind == SpecialKind.goldenSquare) s.cell,
+  };
+
+  // spec-15: process fog clearing, XP, and special tile activation after
+  // any board change. Called from _refreshStructures once currentWordRuns
+  // has the latest valid words.
+  //
+  // - Clears fog around any run that satisfies wordClearsFog.
+  // - Awards XP for newly-covered cells (via xpFor from explore_rules.dart).
+  // - Activates special tiles that sit under any new cell:
+  //     treasure chest  → 20 coins
+  //     golden square   → marks the cell as golden (boosts XP formula)
+  //     shrine          → unlocks the shrine kind (ability visible in later commits)
+  //     boulder/landmark → noted in foundSpecials (rewards in later commits)
+  // - Updates _everUsed and _everWords so each reward fires only once.
+  Future<void> _processExploreRewards(List<WordRun> runs) async {
+    if (runs.isEmpty) return;
+    final level = ref.read(settingsProvider).wordLevel;
+    final radius = clearRadius(level);
+
+    var fogChanged = false;
+    var newXp = 0;
+    var newCoins = 0;
+    final newlyActivated = <String>[];
+
+    for (final run in runs) {
+      final newCells = run.positions.where((p) => !_everUsed.contains(p)).toList();
+      if (newCells.isEmpty) continue;
+
+      // ── XP ──────────────────────────────────────────────────────────────
+      newXp += xpFor(
+        run: run,
+        everUsed: _everUsed,
+        everWords: _everWords,
+        goldenCells: _goldenCells,
+        hasGoldenLetter: false, // golden letter tiles tracked in a later commit
+      );
+
+      // ── Fog clearing ────────────────────────────────────────────────────
+      final clears = wordClearsFog(
+        run,
+        ringAt: _islandMap.ringAtIndex,
+        isWater: _islandMap.isWaterIndex,
+        level: level,
+      );
+      if (clears) {
+        final before = _fog.clearedCount;
+        _fog = _fog.clearAround(run.positions, radius: radius);
+        if (_fog.clearedCount != before) fogChanged = true;
+      }
+
+      // ── Specials ────────────────────────────────────────────────────────
+      for (final cell in newCells) {
+        final special = _islandMap.specialAt(cell);
+        if (special == null) continue;
+        if (_foundSpecials.contains(special.id)) continue;
+        _foundSpecials = {..._foundSpecials, special.id};
+        newlyActivated.add(special.id);
+        switch (special.kind) {
+          case SpecialKind.chest:
+            newCoins += 20;
+          case SpecialKind.goldenSquare:
+            _goldenCells.add(cell); // already there, but ensures mutable set
+          case SpecialKind.boulder:
+            break; // boulder rewards handled in hint commit (7)
+          case SpecialKind.landmark:
+            break; // landmark rewards handled in hint commit (7)
+          case SpecialKind.shrine:
+            final kind = special.shrine!;
+            _shrines = {..._shrines, kind};
+        }
+      }
+
+      // ── Track usage ─────────────────────────────────────────────────────
+      _everUsed = {..._everUsed, ...run.positions};
+      _everWords = {..._everWords, run.word};
+    }
+
+    if (newXp <= 0 && newCoins <= 0 && !fogChanged && newlyActivated.isEmpty) return;
+
+    if (newXp > 0) ref.read(portfolioProvider.notifier).addXp(newXp);
+    if (newCoins > 0) ref.read(portfolioProvider.notifier).addCurrency(newCoins);
+    if (fogChanged) setState(() {}); // redraw fog overlay
+    await _saveVillage();
+  }
+
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
     if (!mounted) return;
@@ -304,6 +396,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       _mapSeed = migrated.mapSeed;
       _mapVersion = migrated.mapVersion;
       _everUsed = Set<int>.from(migrated.everUsed);
+      _everWords = Set<String>.from(migrated.everWords);
       _foundSpecials = Set<String>.from(migrated.foundSpecials);
       _shrines = Set<ShrineKind>.from(migrated.shrines);
       _levelTreats = Set<int>.from(migrated.levelTreats);
@@ -342,6 +435,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       mapVersion: _mapVersion,
       cleared: _fog.toBase64(),
       everUsed: Set<int>.unmodifiable(_everUsed),
+      everWords: Set<String>.unmodifiable(_everWords),
       foundSpecials: Set<String>.unmodifiable(_foundSpecials),
       shrines: Set<ShrineKind>.unmodifiable(_shrines),
       levelTreats: Set<int>.unmodifiable(_levelTreats),
@@ -506,6 +600,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         await _saveVillage();
         _celebrateNewBuildings(newlyDiscovered);
       }
+      await _processExploreRewards(runs);
       await _claimWordOfDay(runs);
     } finally {
       _computingStructures = false;
@@ -882,8 +977,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     final isNewHighScore = ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(_score);
     if (earned > 0) {
       final portfolioController = ref.read(portfolioProvider.notifier);
+      // spec-15: XP is now earned per-word on placement, not at cash-out.
       portfolioController.addCurrency(earned ~/ 20);
-      portfolioController.addXp(earned ~/ 10);
       _lastCashedOutScore = _score;
       await _saveVillage();
     }
