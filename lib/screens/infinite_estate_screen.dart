@@ -1339,6 +1339,8 @@ class _ViewToggle extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               alignment: Alignment.center,
+              // Keeps the two labels apart when big text shrinks them.
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               decoration: BoxDecoration(
                 color: selected ? WColors.sun : Colors.transparent,
                 borderRadius: BorderRadius.circular(10),
@@ -1430,9 +1432,9 @@ class _VillageActionBar extends StatelessWidget {
         PillChip(
           icon: Icons.star,
           value: 'Lv ${lvInfo.level}',
-          label: '${lvInfo.xpIntoLevel}/${lvInfo.xpForNextLevel} XP',
+          label: '${lvInfo.xpIntoLevel}/${lvInfo.xpForNextLevel}',
           badgeColor: WColors.sun,
-          tooltip: 'Your explorer level',
+          tooltip: 'Level ${lvInfo.level}: ${lvInfo.xpIntoLevel} of ${lvInfo.xpForNextLevel} XP',
         ),
         if (buildingCount != null)
           PillChip(
@@ -1443,8 +1445,9 @@ class _VillageActionBar extends StatelessWidget {
           ),
         PillChip(
           icon: Icons.menu_book,
-          value: 'Journal $discoveredCount/$totalMagicWords',
+          value: '$discoveredCount/$totalMagicWords',
           badgeColor: WColors.sun,
+          tooltip: 'Journal',
           onTap: onJournal,
         ),
         if (showStripeHint)
