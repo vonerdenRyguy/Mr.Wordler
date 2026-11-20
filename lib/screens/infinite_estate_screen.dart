@@ -341,6 +341,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       for (final cell in newCells) {
         final special = _islandMap.specialAt(cell);
         if (special == null) continue;
+        if (special.kind == SpecialKind.villager) continue; // spec-16: the villager book handles them
         if (_foundSpecials.contains(special.id)) continue;
         _foundSpecials = {..._foundSpecials, special.id};
         newlyActivated.add(special.id);
@@ -356,6 +357,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
           case SpecialKind.shrine:
             final kind = special.shrine!;
             _shrines = {..._shrines, kind};
+          case SpecialKind.villager:
+            break;
         }
       }
 

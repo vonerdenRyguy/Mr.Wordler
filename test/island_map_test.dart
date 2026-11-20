@@ -153,16 +153,50 @@ void main() {
             expect(ring, isNot(Ring.coast));
             expect(ring, isNot(Ring.meadow));
           }
+        case SpecialKind.villager:
+          expect(ring, isNot(Ring.coast));
+          expect(ring, isNot(Ring.river));
       }
     }
   });
 
-  test('meadow has exactly 1 chest and no other specials', () {
+  test('meadow has exactly 1 chest and the first villager', () {
     final map = mapFor(42);
     final meadowSpecials =
         map.specials.where((s) => map.ringAtIndex(s.cell) == Ring.meadow);
-    expect(meadowSpecials.length, 1);
-    expect(meadowSpecials.single.kind, SpecialKind.chest);
+    expect(meadowSpecials.map((s) => s.kind).toSet(), {SpecialKind.chest, SpecialKind.villager});
+    expect(meadowSpecials.where((s) => s.kind == SpecialKind.chest).length, 1);
+    expect(meadowSpecials.where((s) => s.kind == SpecialKind.villager).length, 1);
+  });
+
+  test('12 villagers: first near home in the meadow, none in water, ids v0..v11', () {
+    for (final seed in [42, 15001]) {
+      final map = mapFor(seed);
+      final v = map.villagers;
+      expect(v.length, 12);
+      expect([for (final s in v) s.id], [for (var i = 0; i < 12; i++) 'v$i']);
+      final first = v.first;
+      expect(map.ringAtIndex(first.cell), Ring.meadow);
+      final d = [(first.cell ~/ bw - 250).abs(), (first.cell % bw - 250).abs()].reduce((a, b) => a > b ? a : b);
+      expect(d, inInclusiveRange(4, 8));
+      for (final s in v) {
+        expect(map.isWaterIndex(s.cell), isFalse);
+      }
+      final byRing = <Ring, int>{};
+      for (final s in v) {
+        byRing[map.ringAtIndex(s.cell)] = (byRing[map.ringAtIndex(s.cell)] ?? 0) + 1;
+      }
+      expect(byRing, {Ring.meadow: 1, Ring.forest: 4, Ring.hills: 4, Ring.mountains: 3});
+    }
+  });
+
+  test('adding villagers does not move any earlier special', () {
+    final map = mapFor(15001);
+    final others = map.specials.where((s) => s.kind != SpecialKind.villager).toList();
+    // Ids stay s0..sN-1 in placement order, as they were before spec-16.
+    expect([for (final s in others) s.id], [for (var i = 0; i < others.length; i++) 's$i']);
+    // Villagers come last.
+    expect(map.specials.sublist(others.length).every((s) => s.kind == SpecialKind.villager), isTrue);
   });
 
   test('river has exactly 1 special (the waterfall landmark)', () {

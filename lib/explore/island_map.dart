@@ -23,7 +23,16 @@ enum Ring {
 }
 
 /// A special tile on the island.
-enum SpecialKind { chest, goldenSquare, boulder, shrine, landmark }
+enum SpecialKind {
+  chest,
+  goldenSquare,
+  boulder,
+  shrine,
+  landmark,
+
+  /// A villager waiting to be brought home (spec-16). Their id is `v0`..`v11`.
+  villager,
+}
 
 /// Which shrine a [SpecialKind.shrine] tile represents.
 enum ShrineKind {
@@ -311,8 +320,55 @@ class IslandMap {
     placeGolden(Ring.mountains, 6);
     placeBoulders(Ring.mountains, 3);
 
+    _placeVillagers(result, used);
+
     return result;
   }
+
+  /// How many villagers wait on the island (spec-16).
+  static const villagerCount = 12;
+
+  /// Villagers per ring: the first stands a few squares from home.
+  static const _villagersPerRing = {
+    Ring.meadow: 1,
+    Ring.forest: 4,
+    Ring.hills: 4,
+    Ring.mountains: 3,
+  };
+
+  /// Adds the 12 villagers after every other special, from their own random
+  /// stream, so no earlier chest, shrine or landmark ever moves.
+  void _placeVillagers(List<SpecialTile> result, Set<int> used) {
+    final rng = math.Random(seed ^ 0x16F);
+    var n = 0;
+    void add(int cell) {
+      result.add(SpecialTile(id: 'v${n++}', kind: SpecialKind.villager, cell: cell));
+      used.add(cell);
+    }
+
+    // The first one: 4..8 squares from the (first) home, inside the meadow.
+    final hr = homes.first ~/ boardWidth, hc = homes.first % boardWidth;
+    final near = <int>[];
+    for (var r = hr - 8; r <= hr + 8; r++) {
+      for (var c = hc - 8; c <= hc + 8; c++) {
+        if (r < 0 || c < 0 || r >= boardHeight || c >= boardWidth) continue;
+        final d = math.max((r - hr).abs(), (c - hc).abs());
+        final cell = r * boardWidth + c;
+        if (d >= 4 && !used.contains(cell)) near.add(cell);
+      }
+    }
+    if (near.isNotEmpty) add(near[rng.nextInt(near.length)]);
+
+    for (final entry in _villagersPerRing.entries) {
+      if (entry.key == Ring.meadow) continue;
+      for (final cell in _pickCells(rng, entry.key, entry.value, used, waterOk: false)) {
+        add(cell);
+      }
+    }
+  }
+
+  /// The villager tiles, in id order (the meadow one is first).
+  List<SpecialTile> get villagers => [for (final s in specials) if (s.kind == SpecialKind.villager) s];
 
   // ── Cell selection helpers ───────────────────────────────────────────────
 

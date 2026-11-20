@@ -271,6 +271,7 @@ class _IslandMapPainter extends CustomPainter {
       SpecialKind.boulder => Colors.grey,
       SpecialKind.shrine => const Color(0xFFB06FFF),
       SpecialKind.landmark => const Color(0xFFFF8C42),
+      SpecialKind.villager => const Color(0xFFE2557A),
     }.withOpacity(opacity);
     const r = 5.0;
     if (found) {
