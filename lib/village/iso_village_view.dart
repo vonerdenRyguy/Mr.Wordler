@@ -1,11 +1,14 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
 import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../ui/tokens.dart';
+import '../villagers/villager_look.dart';
+import '../villagers/walkers.dart';
 import 'building_art.dart';
 import 'iso_math.dart';
 import 'structures.dart';
@@ -58,6 +61,13 @@ class VillageScene {
 
   /// Board indices holding a letter.
   final List<int> occupied = [];
+
+  /// The flat slabs villagers may walk on: letters that are not building
+  /// blocks. A village with only buildings lets them walk on those instead.
+  late final Set<int> walkable = () {
+    final slabs = {for (final i in occupied) if (!blockOf.containsKey(i)) i};
+    return slabs.isNotEmpty ? slabs : occupied.toSet();
+  }();
 
   /// Cell -> the (first) building whose word uses it. Those cells are
   /// blocks; every other letter is a slab.
@@ -190,6 +200,29 @@ class VillageScene {
   }
 }
 
+/// A villager who has moved in, as the Village view draws them.
+class VillagerSprite {
+  const VillagerSprite({required this.id, required this.name, this.best = false});
+  final String id;
+  final String name;
+  final bool best;
+}
+
+/// A special tile not found yet (and a villager not met yet), drawn as a
+/// faint outline through the fog.
+class SpecialMarker {
+  const SpecialMarker(this.cell, this.kind);
+  final int cell;
+  final SpecialKind kind;
+}
+
+/// Where a villager stands right now, for tapping.
+class VillagerSpot {
+  const VillagerSpot(this.id, this.ground);
+  final String id;
+  final Offset ground;
+}
+
 /// The angled village map. Pan/zoom like Words view; [onTapContent] gets
 /// taps in content coordinates (null = not tappable).
 class IsoVillageView extends StatefulWidget {
@@ -206,6 +239,9 @@ class IsoVillageView extends StatefulWidget {
     this.interactive = true,
     this.fog,
     this.islandMap,
+    this.villagers = const [],
+    this.walkers,
+    this.markers = const [],
   });
 
   final VillageScene scene;
@@ -222,18 +258,71 @@ class IsoVillageView extends StatefulWidget {
   // spec-15 explore: fog state and island map for drawing fog overlays.
   final FogMap? fog;
   final IslandMap? islandMap;
+  // spec-16: villagers who have moved in, who walks where, and what to
+  // outline in the fog.
+  final List<VillagerSprite> villagers;
+  final VillagerWalkers? walkers;
+  final List<SpecialMarker> markers;
 
   @override
   State<IsoVillageView> createState() => _IsoVillageViewState();
 }
 
-class _IsoVillageViewState extends State<IsoVillageView> {
+class _IsoVillageViewState extends State<IsoVillageView> with SingleTickerProviderStateMixin {
   late final TransformationController _ownController = TransformationController();
+  Ticker? _ticker;
+  Duration _last = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.walkers?.addListener(_updateTicker);
+  }
+
+  @override
+  void didUpdateWidget(IsoVillageView old) {
+    super.didUpdateWidget(old);
+    if (old.walkers != widget.walkers) {
+      old.walkers?.removeListener(_updateTicker);
+      widget.walkers?.addListener(_updateTicker);
+    }
+    _updateTicker();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateTicker();
+  }
+
+  // Villagers only stroll when there is someone to move and Reduce motion
+  // is off; with no villagers no ticker runs at all.
+  void _updateTicker() {
+    final walkers = widget.walkers;
+    final run = walkers != null &&
+        !walkers.isEmpty &&
+        widget.interactive &&
+        !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+    if (run && _ticker == null) {
+      _last = Duration.zero;
+      _ticker = createTicker((elapsed) {
+        final dt = (elapsed - _last).inMicroseconds / 1e6;
+        _last = elapsed;
+        widget.walkers?.tick(dt.clamp(0.0, 0.1));
+      })
+        ..start();
+    } else if (!run && _ticker != null) {
+      _ticker!.dispose();
+      _ticker = null;
+    }
+  }
 
   TransformationController get _controller => widget.transformController ?? _ownController;
 
   @override
   void dispose() {
+    widget.walkers?.removeListener(_updateTicker);
+    _ticker?.dispose();
     _ownController.dispose();
     super.dispose();
   }
@@ -258,6 +347,9 @@ class _IsoVillageViewState extends State<IsoVillageView> {
           highlightBuilding: widget.highlightBuilding,
           fog: widget.fog,
           islandMap: widget.islandMap,
+          villagers: widget.villagers,
+          walkers: widget.walkers,
+          markers: widget.markers,
         );
         final paint = SizedBox(width: size.width, height: size.height, child: CustomPaint(painter: painter));
         if (widget.onTapContent == null) return paint;
@@ -280,7 +372,10 @@ class IsoVillagePainter extends CustomPainter {
     required this.highlightBuilding,
     this.fog,
     this.islandMap,
-  });
+    this.villagers = const [],
+    this.walkers,
+    this.markers = const [],
+  }) : super(repaint: walkers);
 
   final VillageScene scene;
   final Rect visible;
@@ -291,6 +386,9 @@ class IsoVillagePainter extends CustomPainter {
   // uncleared cells and water gets a blue tint over cleared cells.
   final FogMap? fog;
   final IslandMap? islandMap;
+  final List<VillagerSprite> villagers;
+  final VillagerWalkers? walkers;
+  final List<SpecialMarker> markers;
 
   // One TextPainter per letter per style, shared across frames.
   static final Map<String, TextPainter> _letterCache = {};
@@ -333,6 +431,7 @@ class IsoVillagePainter extends CustomPainter {
 
     _paintGrass(canvas, area, rMin, rMax, cMin, cMax);
     if (fog != null) _paintFog(canvas, area, rMin, rMax, cMin, cMax);
+    _paintMarkers(canvas, area);
 
     bool inView(int index) {
       final r = scene.rowOf(index), c = scene.colOf(index);
@@ -351,6 +450,16 @@ class IsoVillagePainter extends CustomPainter {
         block != null
             ? () => _paintBlock(canvas, scene.groundOf(index), letter, block, lit)
             : () => _paintSlab(canvas, scene.groundOf(index), letter, lit),
+      ));
+    }
+    for (final v in villagers) {
+      final pos = walkers?.positionOf(v.id);
+      if (pos == null) continue;
+      final g = grid.ground(pos.r, pos.c);
+      if (!area.contains(g)) continue;
+      items.add((
+        (pos.r + pos.c) * 100000.0 + pos.c + 0.4,
+        () => paintVillagerFigure(canvas, g - const Offset(0, _slabHeight), v.id, v.name, best: v.best),
       ));
     }
     for (final s in scene.structures) {
@@ -417,6 +526,32 @@ class IsoVillagePainter extends CustomPainter {
     }
     if (!waterPath.getBounds().isEmpty) {
       canvas.drawPath(waterPath, Paint()..color = const Color(0x44448BCA));
+    }
+  }
+
+  // Faint outlines of things not found yet, drawn over the fog so they show
+  // through it; a villager not met yet is a pale figure once you can see them.
+  void _paintMarkers(Canvas canvas, Rect area) {
+    if (markers.isEmpty) return;
+    final f = fog;
+    for (final m in markers) {
+      final g = grid.ground(m.cell ~/ grid.boardWidth, m.cell % grid.boardWidth);
+      if (!area.contains(g)) continue;
+      final seen = f == null || f.canSee(m.cell);
+      final color = specialMarkerColor(m.kind);
+      if (m.kind == SpecialKind.villager && seen) {
+        paintVillagerFigure(canvas, g, 'waiting', '?', faded: true);
+        continue;
+      }
+      final ring = Rect.fromCenter(center: g - const Offset(0, 4), width: isoTileW * 0.55, height: isoTileH * 0.55);
+      canvas.drawOval(
+        ring,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..color = color.withOpacity(seen ? 0.95 : 0.5),
+      );
+      canvas.drawOval(ring.deflate(5), Paint()..color = color.withOpacity(seen ? 0.35 : 0.18));
     }
   }
 
@@ -524,6 +659,9 @@ class IsoVillagePainter extends CustomPainter {
       oldDelegate.zoom != zoom ||
       !identical(oldDelegate.scene, scene) ||
       oldDelegate.highlight != highlight ||
+      !identical(oldDelegate.villagers, villagers) ||
+      !identical(oldDelegate.markers, markers) ||
+      oldDelegate.fog != fog ||
       !identical(oldDelegate.highlightBuilding, highlightBuilding);
 }
 
@@ -542,6 +680,11 @@ class CellHit extends VillageHit {
   final int index;
 }
 
+class VillagerHit extends VillageHit {
+  const VillagerHit(this.id);
+  final String id;
+}
+
 class NoHit extends VillageHit {
   const NoHit();
 }
@@ -550,7 +693,13 @@ class NoHit extends VillageHit {
 /// letter blocks under it). Otherwise the letter under the tap, trying the
 /// point itself and then the point shifted down by the block height, so
 /// the top of a raised block hits its own cell.
-VillageHit hitTestVillage(Offset p, VillageScene scene) {
+VillageHit hitTestVillage(Offset p, VillageScene scene, {List<VillagerSpot> villagers = const []}) {
+  // Villagers first: they stand on top of the slabs.
+  for (final v in villagers.reversed) {
+    if (Rect.fromLTRB(v.ground.dx - 20, v.ground.dy - 54, v.ground.dx + 20, v.ground.dy + 4).contains(p)) {
+      return VillagerHit(v.id);
+    }
+  }
   final front = [...scene.structures]..sort((a, b) => scene.buildingDepth(b).compareTo(scene.buildingDepth(a)));
   for (final s in front) {
     if (scene.buildingOutline(s)?.contains(p) ?? false) return BuildingHit(s);
@@ -562,4 +711,49 @@ VillageHit hitTestVillage(Offset p, VillageScene scene) {
     if (scene.boardCells[index] != null) return CellHit(index);
   }
   return const NoHit();
+}
+
+Color specialMarkerColor(SpecialKind kind) => switch (kind) {
+      SpecialKind.chest => const Color(0xFFFFC107),
+      SpecialKind.goldenSquare => const Color(0xFFFFEB3B),
+      SpecialKind.boulder => const Color(0xFF9E9E9E),
+      SpecialKind.shrine => const Color(0xFFB06FFF),
+      SpecialKind.landmark => const Color(0xFFFF8C42),
+      SpecialKind.villager => const Color(0xFFE2557A),
+    };
+
+/// A small villager standing with their feet at [base] (placeholder art).
+void paintVillagerFigure(Canvas canvas, Offset base, String id, String name,
+    {bool best = false, bool faded = false}) {
+  final opacity = faded ? 0.55 : 1.0;
+  final body = (best ? const Color(0xFFE3A6C8) : (faded ? const Color(0xFFD7D0C4) : villagerColor(id))).withOpacity(opacity);
+  final outline = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2
+    ..color = WColors.ink.withOpacity(opacity);
+  canvas.drawOval(
+    Rect.fromCenter(center: base + const Offset(0, 1), width: 26, height: 9),
+    Paint()..color = const Color(0x33000000),
+  );
+  final torso = RRect.fromRectAndCorners(
+    Rect.fromLTWH(base.dx - 10, base.dy - 22, 20, 22),
+    topLeft: const Radius.circular(10),
+    topRight: const Radius.circular(10),
+    bottomLeft: const Radius.circular(4),
+    bottomRight: const Radius.circular(4),
+  );
+  canvas.drawRRect(torso, Paint()..color = body);
+  canvas.drawRRect(torso, outline);
+  final head = Offset(base.dx, base.dy - 31);
+  canvas.drawCircle(head, 10, Paint()..color = villagerSkin.withOpacity(opacity));
+  canvas.drawCircle(head, 10, outline);
+  final tp = TextPainter(
+    text: TextSpan(
+      text: villagerInitial(name),
+      style: TextStyle(fontFamily: WFonts.display, fontSize: 13, color: WColors.ink.withOpacity(opacity), height: 1.0),
+    ),
+    textDirection: TextDirection.ltr,
+    textScaler: TextScaler.noScaling,
+  )..layout();
+  tp.paint(canvas, head - Offset(tp.width / 2, tp.height / 2));
 }

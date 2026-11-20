@@ -34,6 +34,8 @@ import '../village/village_rewards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 import '../villagers/village_book.dart';
+import '../villagers/villager_look.dart';
+import '../villagers/walkers.dart';
 import '../villagers/villager_names.dart';
 import '../villagers/wish.dart';
 import '../settings/word_level.dart' show WordLevel;
@@ -172,6 +174,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   // Your villagers page update live; saved with the village.
   final ValueNotifier<VillagerBook> _bookNotifier = ValueNotifier(const VillagerBook());
   VillagerBook get _book => _bookNotifier.value;
+  final VillagerWalkers _walkers = VillagerWalkers();
   // Bridge ability: ordered list of reached old landmarks, kept for the
   // jump menu. Only index matters; never re-computed from scratch.
   late final List<int> _landmarkOrder;
@@ -277,6 +280,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     _transformController.dispose();
     _villageTransform.dispose();
     _bookNotifier.dispose();
+    _walkers.dispose();
     super.dispose();
   }
 
@@ -406,7 +410,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   void _setBook(VillagerBook book) {
     if (!mounted) return;
     setState(() => _bookNotifier.value = book);
+    _syncWalkers();
     _saveVillage();
+  }
+
+  // Tells the walkers who lives where and which slabs they may use.
+  void _syncWalkers() {
+    if (!mounted) return;
+    _walkers.sync({for (final v in _book.villagers) v.id: v.cell}, _villageScene().walkable);
   }
 
   // The rings the player can already see (fog cleared somewhere), for wishes
@@ -525,7 +536,85 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   @override
   void findVillager(String id) {
     final v = _book.byId(id);
-    if (v != null) _centerOn(v.cell);
+    if (v != null) _centerOn(_walkers.cellOf(id) ?? v.cell);
+  }
+
+  // Outlines through the fog for everything not found yet, and villagers not
+  // met yet (they wave once you can see them).
+  List<SpecialMarker> _markers() => [
+        for (final sp in _islandMap.specials)
+          if (sp.kind == SpecialKind.villager ? !_book.isMet(sp.id) : !_foundSpecials.contains(sp.id))
+            SpecialMarker(sp.cell, sp.kind),
+      ];
+
+  List<VillagerSprite> _sprites() => [
+        for (final v in _book.villagers) VillagerSprite(id: v.id, name: v.name, best: v.bestFriend),
+      ];
+
+  List<VillagerSpot> _villagerSpots() => [
+        for (final v in _book.villagers)
+          VillagerSpot(v.id, () {
+            final p = _walkers.positionOf(v.id);
+            return _isoGrid.ground(p.r, p.c) - const Offset(0, 6);
+          }()),
+      ];
+
+  // Words view: a villager stands still on an empty square beside their word.
+  Map<int, String> _standCells() {
+    final board = ref.read(gridGameControllerProvider).boardCells;
+    const bw = InfiniteEstateScreen.boardSize;
+    final out = <int, String>{};
+    for (final v in _book.villagers) {
+      var spot = v.cell;
+      if (board[v.cell] != null) {
+        for (final d in const [1, bw, -1, -bw, bw + 1, bw - 1, -bw + 1, -bw - 1]) {
+          final n = v.cell + d;
+          if (n >= 0 && n < board.length && board[n] == null && !out.containsKey(n)) {
+            spot = n;
+            break;
+          }
+        }
+      }
+      out[spot] = v.id;
+    }
+    return out;
+  }
+
+  Widget? _wordsMarker(int index, Map<int, String> standing) {
+    final id = standing[index];
+    if (id != null) {
+      final v = _book.byId(id)!;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => openVillagerCard(id),
+        child: Semantics(
+          button: true,
+          label: '${v.name}, villager. Tap for their wish.',
+          child: FittedBox(child: Padding(padding: const EdgeInsets.all(4), child: VillagerFace(id: v.id, name: v.name, size: 44, happy: v.bestFriend))),
+        ),
+      );
+    }
+    final sp = _islandMap.specialAt(index);
+    if (sp == null) return null;
+    final unfound = sp.kind == SpecialKind.villager ? !_book.isMet(sp.id) : !_foundSpecials.contains(sp.id);
+    if (!unfound) return null;
+    final seen = _fog.canSee(index);
+    final color = specialMarkerColor(sp.kind);
+    return IgnorePointer(
+      child: Center(
+        child: FractionallySizedBox(
+          widthFactor: 0.6,
+          heightFactor: 0.6,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withOpacity(seen ? 0.3 : 0.15),
+              border: Border.all(color: color.withOpacity(seen ? 0.95 : 0.5), width: 2.5),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _openVillagersPage() {
@@ -746,6 +835,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
       setState(() {
         _structures = structures;
         _wordRuns = runs;
+        _scene = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
         }
@@ -754,6 +844,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
         await _saveVillage();
         _celebrateNewBuildings(newlyDiscovered);
       }
+      _syncWalkers();
       await _processExploreRewards(runs);
       await _processVillagers(runs);
       await _claimWordOfDay(runs);
@@ -1074,8 +1165,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   Future<String?> _loadDefinition(String word) => ref.read(definitionServiceProvider).getDefinition(word);
 
   void _onVillageTap(Offset contentPoint) {
-    final hit = hitTestVillage(contentPoint, _villageScene());
+    final hit = hitTestVillage(contentPoint, _villageScene(), villagers: _villagerSpots());
     switch (hit) {
+      case VillagerHit(:final id):
+        openVillagerCard(id);
       case BuildingHit(:final structure):
         _openBuildingCard(structure);
       case CellHit(:final index):
@@ -1278,6 +1371,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     }
 
     final stripes = buildingStripes(_structures);
+    final standing = _standCells();
 
     // Leaving never needs a confirm: the village saves after every change.
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -1376,6 +1470,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
                                       // spec-15: fog overlay and drop gate.
                                       cellOverlay: _fogOverlay,
                                       canDropAt: _fog.canSee,
+                                      cellMarker: (i) => _wordsMarker(i, standing),
                                     )
                                   : Builder(builder: (context) {
                                       final scene = _villageScene();
@@ -1392,6 +1487,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
                                         boundaryMargin: const EdgeInsets.all(400),
                                         fog: _fog,
                                         islandMap: _islandMap,
+                                        villagers: _sprites(),
+                                        walkers: _walkers,
+                                        markers: _markers(),
                                       );
                                     }),
                             ),

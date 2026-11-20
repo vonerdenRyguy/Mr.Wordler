@@ -99,6 +99,22 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(container.read(portfolioProvider).currency, 0);
 
+    // In Words view they stand beside the word; tap for the card.
+    final standing = find.byWidgetPredicate((w) => w is Semantics && (w.properties.label ?? '').startsWith('Captain Zed, villager'));
+    expect(standing, findsOneWidget);
+    await tester.tap(standing);
+    await tester.pumpAndSettle();
+    expect(find.text('Captain Zed wishes for'), findsOneWidget);
+    expect(find.text('Another idea'), findsOneWidget);
+    await tester.tap(find.text('Another idea'));
+    await tester.pump();
+    expect(find.text('Idea:'), findsOneWidget);
+    await tester.tap(find.text('Different wish'));
+    await tester.pump();
+    expect(find.text('Captain Zed wishes for'), findsOneWidget);
+    await tester.tap(find.textContaining('try!'));
+    await tester.pumpAndSettle();
+
     // The Your villagers page lists them, with the fog count for the rest.
     await tester.tap(find.text('1/12'));
     await tester.pumpAndSettle();

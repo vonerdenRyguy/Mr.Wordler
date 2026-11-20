@@ -79,6 +79,7 @@ class GridTileWidget extends ConsumerWidget {
     this.stripe,
     this.cellOverlay,
     this.canDropAt,
+    this.marker,
   });
 
   final TileLocation location;
@@ -100,6 +101,9 @@ class GridTileWidget extends ConsumerWidget {
   // If the callback returns false the drop is silently refused (tile bounces
   // back). Only meaningful for board cells; rack cells ignore it.
   final bool Function(int boardIndex)? canDropAt;
+  // spec-16: drawn over an empty cell, above the fog: a faint outline of a
+  // special tile, or a villager standing there.
+  final Widget? marker;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -198,14 +202,16 @@ class GridTileWidget extends ConsumerWidget {
   // Wraps [child] with an optional semi-transparent fog overlay. Called
   // by build() when cellOverlay is set.
   Widget _withOverlay(Widget child) {
-    if (cellOverlay == null) return child;
+    if (cellOverlay == null && marker == null) return child;
     return Stack(
       fit: StackFit.expand,
       children: [
         child,
-        IgnorePointer(
-          child: ColoredBox(color: cellOverlay!),
-        ),
+        if (cellOverlay != null)
+          IgnorePointer(
+            child: ColoredBox(color: cellOverlay!),
+          ),
+        if (marker != null) marker!,
       ],
     );
   }
@@ -230,6 +236,7 @@ class GridBoardView extends ConsumerWidget {
     this.stripes = const {},
     this.cellOverlay,
     this.canDropAt,
+    this.cellMarker,
   });
 
   final GridTheme theme;
@@ -266,6 +273,8 @@ class GridBoardView extends ConsumerWidget {
   // spec-15 explore: returns false for cells that must not accept drops
   // (solid fog). Null = all board cells accept drops.
   final bool Function(int boardIndex)? canDropAt;
+  // spec-16: a widget for an empty board cell (outline or villager), or null.
+  final Widget? Function(int boardIndex)? cellMarker;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -306,6 +315,7 @@ class GridBoardView extends ConsumerWidget {
                       stripe: stripes[index],
                       cellOverlay: cellOverlay?.call(index),
                       canDropAt: canDropAt,
+                      marker: cellMarker?.call(index),
                     ),
                   ),
                 );
@@ -348,6 +358,7 @@ class GridBoardView extends ConsumerWidget {
                       stripe: stripes[row * config.boardWidth + col],
                       cellOverlay: cellOverlay?.call(row * config.boardWidth + col),
                       canDropAt: canDropAt,
+                      marker: cellMarker?.call(row * config.boardWidth + col),
                     ),
                   ),
             ],
