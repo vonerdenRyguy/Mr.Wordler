@@ -458,7 +458,9 @@ class IsoVillagePainter extends CustomPainter {
       final g = grid.ground(pos.r, pos.c);
       if (!area.contains(g)) continue;
       items.add((
-        (pos.r + pos.c) * 100000.0 + pos.c + 0.4,
+        // In front of the flat slabs on the next diagonal (so a mid-step head
+        // is never hidden under the slab being walked to), behind buildings.
+        (pos.r + pos.c + 0.95) * 100000.0 + pos.c,
         () => paintVillagerFigure(canvas, g - const Offset(0, _slabHeight), v.id, v.name, best: v.best),
       ));
     }
