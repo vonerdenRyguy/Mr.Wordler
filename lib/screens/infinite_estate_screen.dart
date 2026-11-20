@@ -25,7 +25,6 @@ import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
-import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
@@ -175,9 +174,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   final ValueNotifier<VillagerBook> _bookNotifier = ValueNotifier(const VillagerBook());
   VillagerBook get _book => _bookNotifier.value;
   final VillagerWalkers _walkers = VillagerWalkers();
-  // Bridge ability: ordered list of reached old landmarks, kept for the
-  // jump menu. Only index matters; never re-computed from scratch.
-  late final List<int> _landmarkOrder;
   Set<int> _reachedLandmarks = {};
   Set<String> _discoveredWords = {};
   // Rack pinning is a pure UI affordance (no mechanical effect), so it's
@@ -234,10 +230,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   void initState() {
     super.initState();
     initSpellCheck();
-    _landmarkOrder = landmarkBoardIndices(
-      InfiniteEstateScreen.boardSize,
-      InfiniteEstateScreen.boardSize,
-    );
     _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
@@ -809,6 +801,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
         rackCells: rackCells,
         discoveredWords: _discoveredWords,
         foundLandmarks: foundLandmarks,
+        villagersMet: _book.count,
+        villagersTotal: _islandMap.villagers.length,
+        onVillagers: () {
+          Navigator.of(context).pop();
+          _openVillagersPage();
+        },
       ),
     );
   }
@@ -1077,23 +1075,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     if (gotLetter) setState(() => _wellUsedThisVisit = true);
   }
 
-  // Pans/zooms the Words-view board to center a reached landmark. Switches
-  // to Words view first since only GridBoardView (not IsoVillageView) is
-  // wired to a TransformationController -- Village view has no meaningful
-  // "zoom in on one spot" reading anyway, it's the whole-estate overview.
-  void _jumpToLandmark(int boardIndex) {
-    setState(() => _viewMode = _ViewMode.words);
-    final viewportSize = _boardViewportSize;
-    if (viewportSize == null) return;
-    _transformController.value = computeCenterTransform(
-      viewportSize: viewportSize,
-      boardIndex: boardIndex,
-      boardWidth: InfiniteEstateScreen.boardSize,
-      cellSize: InfiniteEstateScreen.cellSize,
-      scale: 1.5,
-    );
-  }
-
   // Runs once, the first time the board area's real size is known, to
   // start the player looking at the village's origin instead of the
   // board's empty top-left corner (InteractiveViewer's default).
@@ -1192,8 +1173,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
         );
       case 'BRIDGE':
         return BuildingAbility(
-          'Jump to a landmark',
-          _reachedLandmarks.isEmpty
+          'Jump to a place',
+          _foundPlaces().isEmpty
               ? null
               : () {
                   Navigator.of(sheetContext).pop();
@@ -1258,35 +1239,51 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     if (mounted) setState(() => _highlight = const {});
   }
 
+  // Landmarks and shrines found so far, in the order the map lists them.
+  List<SpecialTile> _foundPlaces() => [
+        for (final sp in _islandMap.specials)
+          if ((sp.kind == SpecialKind.landmark || sp.kind == SpecialKind.shrine) && _foundSpecials.contains(sp.id)) sp,
+      ];
+
+  // Bridge: jump to the landmarks and shrines you have found (spec-16).
   void _openBridgeJumpMenu() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => WordlerDialog(
-        title: 'Jump to Landmark',
-        body: Column(
+    final places = _foundPlaces();
+    showVillageSheet<void>(
+      context,
+      Builder(
+        builder: (sheetContext) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            for (final entry in _landmarkOrder.asMap().entries)
-              if (_reachedLandmarks.contains(entry.value))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: WSize.gap2),
-                  child: ChunkyButton(
-                    label: 'Landmark ${entry.key + 1}',
-                    icon: Icons.star,
-                    kind: ChunkyKind.mode,
-                    modeColor: WColors.sun,
-                    expand: true,
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      _jumpToLandmark(entry.value);
-                    },
-                  ),
+            Semantics(header: true, child: const Text('Bridge: jump to...', style: WText.heading)),
+            const SizedBox(height: 4),
+            const Text('Your Bridge takes you straight to places you\'ve found on the island.', style: WText.label),
+            const SizedBox(height: WSize.gap3),
+            if (places.isEmpty)
+              const Text('Nothing found yet. Landmarks and shrines show up here once you reach them.', style: WText.body),
+            for (final sp in places)
+              Padding(
+                padding: const EdgeInsets.only(bottom: WSize.gap2),
+                child: ChunkyButton(
+                  label: sp.kind == SpecialKind.landmark ? sp.landmark!.displayName : sp.shrine!.displayName,
+                  icon: sp.kind == SpecialKind.landmark ? Icons.flag : Icons.auto_awesome,
+                  kind: ChunkyKind.mode,
+                  modeColor: sp.kind == SpecialKind.landmark ? WColors.sun : WColors.lilac,
+                  expand: true,
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    _centerOn(sp.cell);
+                  },
                 ),
+              ),
+            ChunkyButton(
+              label: 'Close',
+              kind: ChunkyKind.secondary,
+              expand: true,
+              onPressed: () => Navigator.pop(sheetContext),
+            ),
           ],
         ),
-        actions: [
-          WordlerDialogAction('Close', () => Navigator.pop(dialogContext), kind: ChunkyKind.secondary),
-        ],
       ),
     );
   }
@@ -1426,7 +1423,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
                   showWell: _hasStructure('WELL'),
                   wellUsed: _wellUsedThisVisit,
                   onWell: _drawFromWell,
-                  showBridge: _hasStructure('BRIDGE') && _reachedLandmarks.isNotEmpty,
+                  showBridge: _hasStructure('BRIDGE') && _foundPlaces().isNotEmpty,
                   onBridge: _openBridgeJumpMenu,
                   buildingCount: _viewMode == _ViewMode.village ? _structures.length : null,
                   // Explains the stripes until there are a few buildings.

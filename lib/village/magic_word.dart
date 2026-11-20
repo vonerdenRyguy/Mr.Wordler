@@ -45,7 +45,7 @@ const List<MagicWordDef> kMagicWords = [
     displayName: 'Bridge',
     icon: Icons.architecture,
     color: Color(0xFFBCAAA4),
-    description: 'Quick-pan to a landmark you\'ve already discovered.',
+    description: 'Jump straight to landmarks and shrines you\'ve found.',
     hasAbility: true,
   ),
   MagicWordDef(

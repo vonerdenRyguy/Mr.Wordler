@@ -41,12 +41,19 @@ class DiscoveryJournalView extends StatelessWidget {
     required this.discoveredWords,
     this.foundLandmarks = const {},
     this.loadDefinition,
+    this.villagersMet = 0,
+    this.villagersTotal = 0,
+    this.onVillagers,
   });
 
   final List<String?> rackCells;
   final Set<String> discoveredWords;
   // spec-15: landmarks found on the island.
   final Set<LandmarkKind> foundLandmarks;
+  // spec-16: a row that opens Your villagers; hidden when [onVillagers] is null.
+  final int villagersMet;
+  final int villagersTotal;
+  final VoidCallback? onVillagers;
   // For each row's "What it means" link; null hides the link.
   final DefinitionLoader? loadDefinition;
 
@@ -71,6 +78,22 @@ class DiscoveryJournalView extends StatelessWidget {
               Semantics(header: true, child: const Text('Discovery Journal', style: WText.heading)),
               const SizedBox(height: 4),
               const Text('Magic words and island discoveries.', style: WText.label),
+              if (onVillagers != null) ...[
+                const SizedBox(height: 12),
+                ChunkyCard(
+                  onTap: onVillagers,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.people, color: WColors.ink),
+                      const SizedBox(width: 10),
+                      const Expanded(child: Text('Villagers', style: WText.bodyBold)),
+                      Text('$villagersMet/$villagersTotal', style: WText.button),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.chevron_right, color: WColors.ink),
+                    ],
+                  ),
+                ),
+              ],
               if (foundLandmarks.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 const Text('Landmarks', style: WText.bodyBold),
