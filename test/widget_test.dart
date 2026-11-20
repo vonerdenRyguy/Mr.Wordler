@@ -345,7 +345,7 @@ void main() {
     expect(find.byIcon(Icons.push_pin), findsOneWidget);
 
     // The Discovery Journal should open and list the magic word catalog.
-    await tester.tap(find.text('Journal 0/8'));
+    await tester.tap(find.byTooltip('Journal'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
