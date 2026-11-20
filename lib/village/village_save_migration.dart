@@ -19,6 +19,8 @@ import 'village_save.dart';
 ///   - [foundSpecials], [shrines], [levelTreats] start empty; the
 ///     explore controller rewards specials already under old letters on
 ///     the first scan after migration.
+///
+/// Version 3 → 4 (spec-16): an empty villager book.
 VillageSaveData migrateVillageSave(
   VillageSaveData data, {
   required int rackSize,
@@ -80,6 +82,13 @@ VillageSaveData migrateVillageSave(
       shrines: const {},
       levelTreats: const {},
     );
+  }
+
+  // ── v3 → v4 (spec-16) ───────────────────────────────────────────────────
+  // Villagers start as an empty book; nothing else changes. A villager whose
+  // square already holds a word joins on the village screen's first scan.
+  if (data.saveVersion < 4) {
+    data = data.copyWith(saveVersion: 4);
   }
 
   return data;

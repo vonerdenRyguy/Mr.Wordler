@@ -355,6 +355,32 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     `GridBoardView`, `VillageScene`, and `IsoVillagePainter`; `_landmarkOrder`
     is kept only for the Bridge jump menu.
 
+- **spec-16 Villagers** (branch `claude/spec-16-villagers-83d9b3`, merged
+  2026-11-20 after Claude Code walked it on the Pixel; Samsung not checked).
+  Spec: `Desktop\MrWordlerScreenshots\specs\spec-16-villagers.md`.
+  - 12 villagers are a special tile on the island map (`SpecialKind.villager`,
+    ids `v0`..`v11`, placed last from `seed ^ 0x16F` so older specials don't
+    move; the first is 4-8 squares from home). A letter of any valid word on
+    their square brings them home (`_processVillagers`), also for a word
+    already on the board: reward moment, then a naming sheet (4 ready names
+    or any typed name, max 12 letters).
+  - `lib/villagers/`: `Villager`/`VillagerBook` (`village_book.dart`, saved in
+    the village save, **saveVersion 4**), `Wish` kinds topic/length/letter/
+    place by word level (`wish.dart`), 8 bundled topic lists
+    (`topic_words.dart`, checked against `lib_assests/words.txt` in a test),
+    names, `VillagerWalkers` (slab-only strolling; ticker runs only when
+    villagers exist and Reduce motion is off).
+  - A wish met = +1 heart, +5 coins, +10 XP; next wish the next Daily day;
+    5 hearts = best friend + one-time 25 coins. Card (Rename, Another idea,
+    Different wish) and Your villagers page: `lib/screens/villagers_screens.dart`
+    (`VillagerHost` is implemented by the village screen).
+  - Faint outlines of unfound specials now show through fog in Words view
+    (`GridBoardView.cellMarker`) and Village view (`SpecialMarker`), and on
+    Home's picture. Bridge menu lists found landmarks and shrines.
+  - Not done: homes and jobs (later spec). Move-in fires on any valid word
+    (even 2 letters), which can interrupt a longer word being built; Ryan
+    may want it delayed.
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -575,7 +601,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 300 tests as of spec-15 (242 as of spec-14).
+- `flutter test` — 336 tests as of spec-16 (300 as of spec-15).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the

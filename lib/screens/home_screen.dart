@@ -28,6 +28,8 @@ import '../ui/home_nav.dart';
 import '../ui/min_height_box.dart';
 import '../ui/tokens.dart';
 import '../ui/wallpaper.dart';
+import '../explore/fog.dart';
+import '../explore/island_map.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
@@ -36,6 +38,7 @@ import '../village/structures.dart';
 import '../village/village_art.dart';
 import '../village/village_cards.dart';
 import '../village/village_save.dart';
+import '../village/village_save_migration.dart';
 import 'daily_challenge_screen.dart';
 import 'family_online_screens.dart';
 import 'family_screens.dart';
@@ -58,6 +61,9 @@ typedef _Village = ({
   ({int r, int c}) focus,
   List<String?> rack,
   Set<String> discovered,
+  // spec-16: the same fog and outlines as inside the village.
+  FogMap? fog,
+  List<SpecialMarker> markers,
 });
 
 // The app's one entry screen (spec-11): three pages you swipe between,
@@ -113,6 +119,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             focus: (r: 0, c: 0),
             rack: saved?.rackCells ?? const [],
             discovered: saved?.discoveredWords ?? const {},
+            fog: null,
+            markers: const [],
           ));
       return;
     }
@@ -134,6 +142,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       structures: structures,
       spriteMeta: meta,
     );
+    // The same fog and outlines as the village (spec-16): an old save gets its
+    // fog worked out the way the village does when it opens.
+    final migrated = migrateVillageSave(saved, rackSize: InfiniteEstateScreen.rackSize);
+    final fog = migrated.cleared == null ? null : FogMap.fromBase64(migrated.cleared!);
+    final islandMap = IslandMap(seed: migrated.mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+    final markers = [
+      for (final sp in islandMap.specials)
+        if (sp.kind == SpecialKind.villager ? !migrated.villagers.isMet(sp.id) : !migrated.foundSpecials.contains(sp.id))
+          SpecialMarker(sp.cell, sp.kind),
+    ];
     setState(() => _village = (
           hasSave: true,
           journal: saved.discoveredWords.length,
@@ -142,6 +160,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           focus: _focusOf(scene, saved.discoveredWords),
           rack: saved.rackCells,
           discovered: saved.discoveredWords,
+          fog: fog,
+          markers: markers,
         ));
   }
 
@@ -1683,7 +1703,13 @@ class _VillageBackdropState extends State<_VillageBackdrop> {
                   _aim(village!.focus, Size(full.width, full.height * 0.8), scene.grid);
                   return ColoredBox(
                     color: WColors.grassField,
-                    child: IsoVillageView(scene: scene, transformController: _camera, interactive: false),
+                    child: IsoVillageView(
+                      scene: scene,
+                      transformController: _camera,
+                      interactive: false,
+                      fog: village.fog,
+                      markers: village.markers,
+                    ),
                   );
                 }),
               ),
