@@ -58,30 +58,25 @@ class IslandMapPage extends StatelessWidget {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: GestureDetector(
-                  onTapUp: (details) {
-                    final box = context.findRenderObject() as RenderBox?;
-                    if (box == null) return;
-                    // Convert tap local offset to board index
-                    final cellIndex = _tapToCell(
-                      details.localPosition,
-                      box.size,
-                      islandMap,
-                    );
-                    if (cellIndex != null) {
+                // The tap is read in the picture's own box, so it matches
+                // what the painter drew.
+                child: LayoutBuilder(
+                  builder: (context, constraints) => GestureDetector(
+                    onTapUp: (details) {
+                      final cell = cellAtMapPoint(details.localPosition, constraints.biggest, islandMap);
                       Navigator.of(context).pop();
-                      onJumpTo(cellIndex);
-                    }
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: CustomPaint(
-                      painter: _IslandMapPainter(
-                        islandMap: islandMap,
-                        fog: fog,
-                        foundSpecialIds: foundSpecialIds,
+                      onJumpTo(cell);
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: CustomPaint(
+                        painter: _IslandMapPainter(
+                          islandMap: islandMap,
+                          fog: fog,
+                          foundSpecialIds: foundSpecialIds,
+                        ),
+                        child: const SizedBox.expand(),
                       ),
-                      child: const SizedBox.expand(),
                     ),
                   ),
                 ),
@@ -91,7 +86,7 @@ class IslandMapPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Text(
                 'Tap a spot to jump there',
-                style: WText.label.copyWith(color: WColors.muted),
+                style: WText.label.copyWith(color: WColors.white),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -100,32 +95,19 @@ class IslandMapPage extends StatelessWidget {
       ),
     );
   }
+}
 
-  static int? _tapToCell(Offset localOffset, Size widgetSize, IslandMap map) {
-    // The CustomPaint fills the GestureDetector's render box minus padding;
-    // use 12px padding from each side.
-    const pad = 12.0;
-    final paintW = widgetSize.width - pad * 2;
-    final paintH = widgetSize.height - pad * 2;
-    final adjustedOffset = localOffset - const Offset(pad, pad);
-
-    final bw = map.boardWidth;
-    final bh = map.boardHeight;
-    final homeR = map.homes.first ~/ bw;
-    final homeC = map.homes.first % bw;
-    const cellsShown = _IslandMapPainter.halfCells * 2;
-
-    final scale = math.min(paintW, paintH) / cellsShown;
-    final centerX = paintW / 2;
-    final centerY = paintH / 2;
-
-    final dc = ((adjustedOffset.dx - centerX) / scale).round();
-    final dr = ((adjustedOffset.dy - centerY) / scale).round();
-
-    final row = (homeR + dr).clamp(0, bh - 1);
-    final col = (homeC + dc).clamp(0, bw - 1);
-    return row * bw + col;
-  }
+/// The board cell under [point] in a map picture of [size].
+int cellAtMapPoint(Offset point, Size size, IslandMap map) {
+  final bw = map.boardWidth;
+  final homeR = map.homes.first ~/ bw;
+  final homeC = map.homes.first % bw;
+  final scale = math.min(size.width, size.height) / (_IslandMapPainter.halfCells * 2);
+  final dc = ((point.dx - size.width / 2) / scale).floor();
+  final dr = ((point.dy - size.height / 2) / scale).floor();
+  final row = (homeR + dr).clamp(0, map.boardHeight - 1);
+  final col = (homeC + dc).clamp(0, bw - 1);
+  return row * bw + col;
 }
 
 class _ExploredChip extends StatelessWidget {
@@ -210,8 +192,9 @@ class _IslandMapPainter extends CustomPainter {
     // Drawing order: Mountains → Hills → (redraw Hills to cover river outer edge) →
     // Forest outer circle → River band → Forest inner circle → Meadow.
     void drawRingOval(Ring ring, double maxDist) {
-      final r = maxDist * scale;
-      canvas.drawOval(
+      // Rings are squares in the game (distance is the larger of row/col).
+      final r = (maxDist + 0.5) * scale;
+      canvas.drawRect(
         Rect.fromCenter(center: Offset(cx, cy), width: r * 2, height: r * 2),
         Paint()..color = _ringColors[ring]!,
       );
@@ -235,7 +218,7 @@ class _IslandMapPainter extends CustomPainter {
         final r = (homeR + dr).clamp(0, bh - 1);
         final c = (homeC + dc).clamp(0, bw - 1);
         final idx = r * bw + c;
-        if (fog.isCleared(idx)) continue;
+        if (fog.isCleared(idx) || islandMap.ringAt(r, c) == Ring.coast) continue;
         final px = cx + dc * scale;
         final py = cy + dr * scale;
         final rect = Rect.fromLTWH(px, py, stepPx, stepPx);
@@ -280,8 +263,8 @@ class _IslandMapPainter extends CustomPainter {
   }
 
   void _paintSpecial(Canvas canvas, Offset center, SpecialKind kind, {required bool found, required bool visible}) {
-    if (!visible && !found) return;
-    final opacity = found ? 1.0 : (visible ? 0.6 : 0.2);
+    // Faint outlines show through the fog (spec-15 decision).
+    final opacity = found ? 1.0 : (visible ? 0.8 : 0.45);
     final color = switch (kind) {
       SpecialKind.chest => Colors.amber,
       SpecialKind.goldenSquare => Colors.yellow,
@@ -289,7 +272,7 @@ class _IslandMapPainter extends CustomPainter {
       SpecialKind.shrine => const Color(0xFFB06FFF),
       SpecialKind.landmark => const Color(0xFFFF8C42),
     }.withOpacity(opacity);
-    const r = 3.0;
+    const r = 5.0;
     if (found) {
       canvas.drawCircle(center, r, Paint()..color = color);
     } else {
