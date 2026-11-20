@@ -74,20 +74,16 @@ class GridTileWidget extends ConsumerWidget {
     required this.location,
     required this.isBoardStyle,
     this.theme = GridTheme.classic,
-    this.isLandmark = false,
     this.isPinned = false,
     this.onTogglePin,
     this.stripe,
+    this.cellOverlay,
+    this.canDropAt,
   });
 
   final TileLocation location;
   final bool isBoardStyle;
   final GridTheme theme;
-  // Marks this as a landmark spot (Infinite Estate/Village only -- every
-  // other mode leaves this false). Only shows the glow/star while the
-  // tile is still empty; once a letter lands here it renders normally,
-  // and the landmark-reached event is handled by the caller, not here.
-  final bool isLandmark;
   // Rack "pin" (Infinite Estate/Village only): a UI-only marker the
   // player toggles via long-press to remind themselves they're saving
   // this letter for something -- it doesn't affect gameplay at all.
@@ -97,6 +93,13 @@ class GridTileWidget extends ConsumerWidget {
   final ValueChanged<int>? onTogglePin;
   // Building stripe color for this board cell, if it's part of one.
   final Color? stripe;
+  // spec-15 explore: overlay color for fog/ring tinting. Null = no overlay.
+  // Drawn as a semi-transparent layer on top of the cell content.
+  final Color? cellOverlay;
+  // spec-15 explore: when non-null, gates whether a drop is accepted here.
+  // If the callback returns false the drop is silently refused (tile bounces
+  // back). Only meaningful for board cells; rack cells ignore it.
+  final bool Function(int boardIndex)? canDropAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -107,7 +110,6 @@ class GridTileWidget extends ConsumerWidget {
     final isBoard = location.zone == TileZone.board;
     // Only the tiles a landing actually involves rebuild (see fxFor).
     final fx = isBoard ? ref.watch(tileLandingProvider.select((l) => fxFor(l, location.index))) : null;
-    final showLandmarkGlow = isLandmark && letter == null;
     final showPin = !isBoard && isPinned && letter != null;
 
     // The cell is just the slot; the letter is drawn by LetterTile inside.
@@ -118,13 +120,6 @@ class GridTileWidget extends ConsumerWidget {
           color: Colors.blue.shade50,
           border: Border.all(color: Colors.blue.shade700, width: 3),
           borderRadius: radius,
-        );
-      }
-      if (showLandmarkGlow) {
-        return BoxDecoration(
-          color: WColors.sun,
-          border: Border.all(color: WColors.ink, width: 2.5),
-          boxShadow: [BoxShadow(color: WColors.sun.withOpacity(0.7), blurRadius: 6, spreadRadius: 1)],
         );
       }
       if (isBoardStyle) {
@@ -142,17 +137,10 @@ class GridTileWidget extends ConsumerWidget {
 
     Widget placed(Widget tile) => isBoardStyle ? Padding(padding: const EdgeInsets.all(2), child: tile) : tile;
 
-    return DragTarget<TileLocation>(
+    return _withOverlay(DragTarget<TileLocation>(
       builder: (context, candidateData, rejectedData) {
         final Widget content;
-        if (showLandmarkGlow) {
-          content = Center(
-            child: LayoutBuilder(
-              builder: (context, c) =>
-                  Icon(Icons.star, color: WColors.ink, size: (c.maxWidth * 0.5).clamp(10.0, 22.0)),
-            ),
-          );
-        } else if (letter != null) {
+        if (letter != null) {
           content = Draggable<TileLocation>(
             data: location,
             // A fixed, big tile under the finger, so it stays readable
@@ -196,11 +184,29 @@ class GridTileWidget extends ConsumerWidget {
         final currentLetter = (isBoard
             ? ref.read(gridGameControllerProvider).boardCells
             : ref.read(gridGameControllerProvider).rackCells)[location.index];
-        return currentLetter == null;
+        if (currentLetter != null) return false;
+        // spec-15: board cells behind solid fog refuse drops.
+        if (isBoard && canDropAt != null && !canDropAt!(location.index)) return false;
+        return true;
       },
       onAcceptWithDetails: (details) {
         controller.moveTile(details.data, location);
       },
+    ));
+  }
+
+  // Wraps [child] with an optional semi-transparent fog overlay. Called
+  // by build() when cellOverlay is set.
+  Widget _withOverlay(Widget child) {
+    if (cellOverlay == null) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        IgnorePointer(
+          child: ColoredBox(color: cellOverlay!),
+        ),
+      ],
     );
   }
 }
@@ -218,21 +224,18 @@ class GridBoardView extends ConsumerWidget {
     this.minScale = 0.2,
     this.maxScale = 2.5,
     this.boundaryMargin = EdgeInsets.zero,
-    this.landmarkIndices = const {},
     this.transformController,
     this.cellSize,
     this.cellGap = 0,
     this.stripes = const {},
+    this.cellOverlay,
+    this.canDropAt,
   });
 
   final GridTheme theme;
   final double minScale;
   final double maxScale;
   final EdgeInsets boundaryMargin;
-  // Board indices to render as landmark spots (empty ones get a glow/star
-  // -- see GridTileWidget.isLandmark). Empty by default for every mode
-  // except Infinite Estate/Village, which passes its own set.
-  final Set<int> landmarkIndices;
   // Bridge structure ability: lets the caller programmatically pan/zoom
   // (e.g. jump to a landmark) by driving this controller. Null (the
   // default, every other mode) lets InteractiveViewer manage its own
@@ -257,6 +260,12 @@ class GridBoardView extends ConsumerWidget {
   // Board index -> building stripe color (Infinite Estate's built magic
   // words). Empty for every other mode.
   final Map<int, Color> stripes;
+  // spec-15 explore: returns overlay color for a board cell index.
+  // Null return = no overlay (cleared / in-view). Used for fog and ring tints.
+  final Color? Function(int boardIndex)? cellOverlay;
+  // spec-15 explore: returns false for cells that must not accept drops
+  // (solid fog). Null = all board cells accept drops.
+  final bool Function(int boardIndex)? canDropAt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -293,9 +302,10 @@ class GridBoardView extends ConsumerWidget {
                     child: GridTileWidget(
                       location: TileLocation(TileZone.board, index),
                       isBoardStyle: true,
-                      isLandmark: landmarkIndices.contains(index),
                       theme: theme,
                       stripe: stripes[index],
+                      cellOverlay: cellOverlay?.call(index),
+                      canDropAt: canDropAt,
                     ),
                   ),
                 );
@@ -334,9 +344,10 @@ class GridBoardView extends ConsumerWidget {
                     child: GridTileWidget(
                       location: TileLocation(TileZone.board, row * config.boardWidth + col),
                       isBoardStyle: true,
-                      isLandmark: landmarkIndices.contains(row * config.boardWidth + col),
                       theme: theme,
                       stripe: stripes[row * config.boardWidth + col],
+                      cellOverlay: cellOverlay?.call(row * config.boardWidth + col),
+                      canDropAt: canDropAt,
                     ),
                   ),
             ],

@@ -18,7 +18,6 @@ import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
-import '../village/landmark.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
@@ -496,7 +495,6 @@ class _VisitVillageScreenState extends ConsumerState<VisitVillageScreen> {
         grid: const IsoGrid(boardWidth: size, boardHeight: size),
         boardCells: saved.boardCells,
         structures: computeStructures(runs),
-        landmarkIndices: landmarkBoardIndices(size, size).toSet(),
         spriteMeta: meta,
       );
     }

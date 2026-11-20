@@ -48,9 +48,9 @@ design, architecture, tricky bugs) or Sonnet (building from a spec, tests,
 installs, small fixes). If I'm on the wrong one, tell me to switch with
 `/model`.
 
-## Current state (as of 2026-11-17)
+## Current state (as of 2026-11-19)
 
-Built from specs 01-14, **all merged to master**. Specs 04 and 05 were
+Built from specs 01-15, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
 (spec-05's branch sat on top of spec-04's):
 - **spec-01:** Infinite Estate's 10-tile rack with balanced refill
@@ -321,6 +321,39 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     `WordlerScaffold` page and the offline Family page; `hills` behind Me
     and `ModeStartView`. Home's floating bars show the same picture
     (`WallpaperSlice`).
+- **spec-15 Explore** (branch `spec-15-explore`, merged 2026-11-19 after
+  Ryan's phone check). Fog, island rings, special tiles, XP.
+  - `lib/explore/island_map.dart`: `IslandMap` (deterministic from seed),
+    `Ring` (meadow/forest/river/hills/mountains/coast), `SpecialTile`,
+    `SpecialKind`, `ShrineKind`, `LandmarkKind`. Ring boundaries: Meadow
+    ≤12, Forest 13–28, River 29–31, Hills 32–50, Mountains 51–75.
+    `reachableCellCount` for explored-fraction. 4 shrines, 4 landmarks,
+    plus chests, golden squares, boulders in every ring.
+  - `lib/explore/fog.dart`: `FogMap` (Uint8List bit-set), `clearAround`,
+    `canSee`, `isCleared`, `exploredFraction`.
+  - `lib/explore/explore_controller.dart`: `minLength(Ring, WordLevel)`,
+    `_processExploreRewards` in `InfiniteEstateScreen` clears fog, finds
+    specials, awards XP (3/cell, +5 first, +2 rare letter, ×2 golden,
+    boulder +10 XP, landmark +50 coins).
+  - **XP replaces score chip** (`lib/portfolio/level_info.dart`,
+    `levelInfoForXp`): `_VillageActionBar` shows Lv N + XP bar; level-up
+    triggers `showRewardMoment` (once per level, persisted in `_levelTreats`).
+  - **Fog overlay** on both Words view (`cellOverlay` / `canDropAt` on
+    `GridBoardView`) and Village view (`IsoVillagePainter` fog diamonds +
+    ring tints). Save v3 adds `fogBits`, `foundSpecials`, `totalXp`,
+    `levelTreats`; migrates v2 saves.
+  - **Hint button** (1/visit, 3 with Shrine of Sight): shows minimum word
+    length for nearest fog-edge ring. `_HintButton` widget in
+    `infinite_estate_screen.dart`.
+  - **Island map page** (`lib/screens/island_map_screen.dart`): full-screen
+    overview with ring colors, fog overlay, special dots; tap to jump.
+    Map icon in the village top bar.
+  - **Discovery Journal** shows found landmarks (`_LandmarkEntry` in
+    `discovery_journal_view.dart`, `foundLandmarks` parameter).
+  - Old pre-spec-15 landmark stars (golden-angle formula from
+    `lib/village/landmark.dart`) removed from `GridTileWidget`,
+    `GridBoardView`, `VillageScene`, and `IsoVillagePainter`; `_landmarkOrder`
+    is kept only for the Bridge jump menu.
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -542,7 +575,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 242 tests as of spec-14 (220 as of spec-12b).
+- `flutter test` — 300 tests as of spec-15 (242 as of spec-14).
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the

@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../explore/fog.dart';
+import '../explore/island_map.dart';
 import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../ui/tokens.dart';
 import 'building_art.dart';
@@ -29,8 +31,6 @@ const _slabOutline = Color(0xFF6B5A48);
 const _slabLeft = Color(0xFFA8987C);
 const _slabRight = Color(0xFF8F8068);
 const _slabLetter = Color(0xFF4A3A2C);
-const _landmarkFill = Color(0xFFFDF1D6);
-const _landmarkOutline = Color(0xFFB7791F);
 
 /// Everything the Village view draws, worked out from the board: pure, so
 /// painting and tapping agree and both can be tested.
@@ -39,7 +39,6 @@ class VillageScene {
     required this.grid,
     required this.boardCells,
     required this.structures,
-    required this.landmarkIndices,
     this.spriteMeta = const {},
   }) {
     for (int i = 0; i < boardCells.length; i++) {
@@ -55,7 +54,6 @@ class VillageScene {
   final IsoGrid grid;
   final List<String?> boardCells;
   final List<BoardStructure> structures;
-  final Set<int> landmarkIndices;
   final Map<String, SpriteMeta> spriteMeta;
 
   /// Board indices holding a letter.
@@ -206,6 +204,8 @@ class IsoVillageView extends StatefulWidget {
     this.highlightBuilding,
     this.onTapContent,
     this.interactive = true,
+    this.fog,
+    this.islandMap,
   });
 
   final VillageScene scene;
@@ -219,6 +219,9 @@ class IsoVillageView extends StatefulWidget {
   final ValueChanged<Offset>? onTapContent;
   // False for Home's preview: a still picture.
   final bool interactive;
+  // spec-15 explore: fog state and island map for drawing fog overlays.
+  final FogMap? fog;
+  final IslandMap? islandMap;
 
   @override
   State<IsoVillageView> createState() => _IsoVillageViewState();
@@ -253,6 +256,8 @@ class _IsoVillageViewState extends State<IsoVillageView> {
           zoom: transformScale(_controller.value),
           highlight: widget.highlight,
           highlightBuilding: widget.highlightBuilding,
+          fog: widget.fog,
+          islandMap: widget.islandMap,
         );
         final paint = SizedBox(width: size.width, height: size.height, child: CustomPaint(painter: painter));
         if (widget.onTapContent == null) return paint;
@@ -273,6 +278,8 @@ class IsoVillagePainter extends CustomPainter {
     required this.zoom,
     required this.highlight,
     required this.highlightBuilding,
+    this.fog,
+    this.islandMap,
   });
 
   final VillageScene scene;
@@ -280,6 +287,10 @@ class IsoVillagePainter extends CustomPainter {
   final double zoom;
   final Set<int> highlight;
   final BoardStructure? highlightBuilding;
+  // spec-15 explore: when both are provided, fog diamonds are drawn over
+  // uncleared cells and water gets a blue tint over cleared cells.
+  final FogMap? fog;
+  final IslandMap? islandMap;
 
   // One TextPainter per letter per style, shared across frames.
   static final Map<String, TextPainter> _letterCache = {};
@@ -321,6 +332,7 @@ class IsoVillagePainter extends CustomPainter {
     final cMax = corners.map((p) => p.c).reduce(max).ceil().clamp(0, grid.boardWidth - 1);
 
     _paintGrass(canvas, area, rMin, rMax, cMin, cMax);
+    if (fog != null) _paintFog(canvas, area, rMin, rMax, cMin, cMax);
 
     bool inView(int index) {
       final r = scene.rowOf(index), c = scene.colOf(index);
@@ -329,11 +341,6 @@ class IsoVillagePainter extends CustomPainter {
 
     // Everything standing on the grass, back to front.
     final items = <(double, void Function())>[];
-    for (final index in scene.landmarkIndices) {
-      if (scene.boardCells[index] == null && inView(index)) {
-        items.add((scene.depthOf(index), () => _paintLandmark(canvas, scene.groundOf(index))));
-      }
-    }
     for (final index in scene.occupied) {
       if (!inView(index)) continue;
       final block = scene.blockOf[index];
@@ -380,34 +387,37 @@ class IsoVillagePainter extends CustomPainter {
     canvas.drawPath(checker, Paint()..color = _grassB);
   }
 
-  void _paintLandmark(Canvas canvas, Offset g) {
-    final shape = _diamond(g, 0.85);
-    canvas.drawPath(shape, Paint()..color = _landmarkFill);
-    canvas.drawPath(
-        shape,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = _landmarkOutline);
-    final star = _starPath(g - const Offset(0, 14 + 10), 11, 5);
-    canvas.drawPath(star, Paint()..color = WColors.sun);
-    canvas.drawPath(
-        star,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2
-          ..color = WColors.ink);
-  }
-
-  Path _starPath(Offset c, double outer, double inner) {
-    final path = Path();
-    for (int i = 0; i < 10; i++) {
-      final radius = i.isEven ? outer : inner;
-      final angle = -pi / 2 + i * pi / 5;
-      final p = c + Offset(cos(angle) * radius, sin(angle) * radius);
-      i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
+  void _paintFog(Canvas canvas, Rect area, int rMin, int rMax, int cMin, int cMax) {
+    final f = fog!;
+    final map = islandMap;
+    // Three passes: solid fog, edge haze, water tint (cleared river cells).
+    final solidPath = Path(), hazePath = Path(), waterPath = Path();
+    for (int r = rMin; r <= rMax; r++) {
+      for (int c = cMin; c <= cMax; c++) {
+        final g = grid.ground(r, c);
+        if (!area.contains(g)) continue;
+        final index = r * grid.boardWidth + c;
+        if (!f.isCleared(index)) {
+          final d = _diamond(g, 1.0);
+          if (f.canSee(index)) {
+            hazePath.addPath(d, Offset.zero);
+          } else {
+            solidPath.addPath(d, Offset.zero);
+          }
+        } else if (map != null && map.isWaterIndex(index)) {
+          waterPath.addPath(_diamond(g, 1.0), Offset.zero);
+        }
+      }
     }
-    return path..close();
+    if (!solidPath.getBounds().isEmpty) {
+      canvas.drawPath(solidPath, Paint()..color = const Color(0xCC555555));
+    }
+    if (!hazePath.getBounds().isEmpty) {
+      canvas.drawPath(hazePath, Paint()..color = const Color(0x88888888));
+    }
+    if (!waterPath.getBounds().isEmpty) {
+      canvas.drawPath(waterPath, Paint()..color = const Color(0x44448BCA));
+    }
   }
 
   // The four corners of a cell's diamond at [scale], lifted by [lift].

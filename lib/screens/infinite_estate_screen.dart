@@ -3,6 +3,12 @@ import '../components/valid_word_check.dart' show initSpellCheck;
 import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
 import '../dictionary/definition_service.dart';
+import '../explore/explore_rules.dart';
+import '../explore/fog.dart';
+import '../explore/island_map.dart';
+import '../portfolio/level_info.dart';
+import '../settings/settings_controller.dart' show settingsProvider;
+import 'island_map_screen.dart';
 import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
@@ -75,6 +81,9 @@ class InfiniteEstateScreen extends StatelessWidget {
   // tappable without the lazily-built board needing to know anything
   // about the viewport's own dimensions.
   static const double cellSize = 44.0;
+  // Board centre cell index: the village starts here and the island map
+  // is seeded around it.
+  static const int homeIndex = boardSize ~/ 2 * boardSize + boardSize ~/ 2;
   // Comfortably more than a long session will draw through; the letter
   // pool repeats its weighted distribution to cover any size (see
   // LetterGenerator.generateLetters), so this just needs to be "a lot".
@@ -140,11 +149,20 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   final _saveController = VillageSaveController();
   bool _restoring = true;
-  // Kept as both an ordered list (so the Bridge jump dialog can number
-  // landmarks in a stable, meaningful order) and a Set (for the O(1)
-  // membership checks GridTileWidget/IsoVillageView need every build).
+
+  // ── spec-15 explore state ────────────────────────────────────────────────
+  late IslandMap _islandMap;
+  FogMap _fog = FogMap.empty(); // replaced once the save loads
+  int _mapSeed = VillageSaveData.kDefaultMapSeed;
+  int _mapVersion = VillageSaveData.kDefaultMapVersion;
+  Set<int> _everUsed = {};
+  Set<String> _everWords = {};
+  Set<String> _foundSpecials = {};
+  Set<ShrineKind> _shrines = {};
+  Set<int> _levelTreats = {};
+  // Bridge ability: ordered list of reached old landmarks, kept for the
+  // jump menu. Only index matters; never re-computed from scratch.
   late final List<int> _landmarkOrder;
-  late final Set<int> _landmarkIndices;
   Set<int> _reachedLandmarks = {};
   Set<String> _discoveredWords = {};
   // Rack pinning is a pure UI affordance (no mechanical effect), so it's
@@ -163,6 +181,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   // Free Swaps used this visit (1 each visit, 2 with a Farm). Works like
   // the Well's limit: session-only, reset when the screen is reopened.
   int _freeSwapsUsed = 0;
+  // spec-15: hints used this visit (1 normally, 3 with Shrine of Sight).
+  int _hintsUsedThisVisit = 0;
 
   // Bridge structure ability: drives GridBoardView's InteractiveViewer to
   // jump/pan to a reached landmark. _boardViewportSize is captured by the
@@ -203,7 +223,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       InfiniteEstateScreen.boardSize,
       InfiniteEstateScreen.boardSize,
     );
-    _landmarkIndices = _landmarkOrder.toSet();
+    _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
       if (mounted) setState(() => _spriteMeta = meta);
@@ -222,7 +242,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         grid: _isoGrid,
         boardCells: board,
         structures: _structures,
-        landmarkIndices: _landmarkIndices,
         spriteMeta: _spriteMeta,
       );
     }
@@ -250,6 +269,122 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   bool _hasStructure(String magicWord) => _structures.any((s) => s.def.word == magicWord);
 
+  // spec-15: returns a fog overlay color for a board cell index.
+  //   - Solid fog (can't see): dark grey, mostly opaque.
+  //   - Fuzzy edge (canSee but not cleared): lighter grey, semi-transparent.
+  //   - Cleared: null (no overlay); water cells get a subtle blue tint.
+  Color? _fogOverlay(int index) {
+    if (!_fog.isCleared(index)) {
+      if (_fog.canSee(index)) return const Color(0x55888888); // edge haze
+      return const Color(0xCC555555); // solid fog
+    }
+    // Subtle ring tint for cleared cells (water = blue; others uncolored).
+    if (_islandMap.isWaterIndex(index)) return const Color(0x44448BCA);
+    return null;
+  }
+
+  // spec-15: golden special tile cells, for the XP multiplier.
+  late final Set<int> _goldenCells = {
+    for (final s in _islandMap.specials)
+      if (s.kind == SpecialKind.goldenSquare) s.cell,
+  };
+
+  // spec-15: process fog clearing, XP, and special tile activation after
+  // any board change. Called from _refreshStructures once currentWordRuns
+  // has the latest valid words.
+  //
+  // - Clears fog around any run that satisfies wordClearsFog.
+  // - Awards XP for newly-covered cells (via xpFor from explore_rules.dart).
+  // - Activates special tiles that sit under any new cell:
+  //     treasure chest  → 20 coins
+  //     golden square   → marks the cell as golden (boosts XP formula)
+  //     shrine          → unlocks the shrine kind (ability visible in later commits)
+  //     boulder/landmark → noted in foundSpecials (rewards in later commits)
+  // - Updates _everUsed and _everWords so each reward fires only once.
+  Future<void> _processExploreRewards(List<WordRun> runs) async {
+    if (runs.isEmpty) return;
+    final level = ref.read(settingsProvider).wordLevel;
+    final radius = clearRadius(level);
+
+    var fogChanged = false;
+    var newXp = 0;
+    var newCoins = 0;
+    final newlyActivated = <String>[];
+
+    for (final run in runs) {
+      final newCells = run.positions.where((p) => !_everUsed.contains(p)).toList();
+      if (newCells.isEmpty) continue;
+
+      // ── XP ──────────────────────────────────────────────────────────────
+      newXp += xpFor(
+        run: run,
+        everUsed: _everUsed,
+        everWords: _everWords,
+        goldenCells: _goldenCells,
+        hasGoldenLetter: false, // golden letter tiles tracked in a later commit
+      );
+
+      // ── Fog clearing ────────────────────────────────────────────────────
+      final clears = wordClearsFog(
+        run,
+        ringAt: _islandMap.ringAtIndex,
+        isWater: _islandMap.isWaterIndex,
+        level: level,
+      );
+      if (clears) {
+        final before = _fog.clearedCount;
+        _fog = _fog.clearAround(run.positions, radius: radius);
+        if (_fog.clearedCount != before) fogChanged = true;
+      }
+
+      // ── Specials ────────────────────────────────────────────────────────
+      for (final cell in newCells) {
+        final special = _islandMap.specialAt(cell);
+        if (special == null) continue;
+        if (_foundSpecials.contains(special.id)) continue;
+        _foundSpecials = {..._foundSpecials, special.id};
+        newlyActivated.add(special.id);
+        switch (special.kind) {
+          case SpecialKind.chest:
+            newCoins += 20;
+          case SpecialKind.goldenSquare:
+            _goldenCells.add(cell); // already there, but ensures mutable set
+          case SpecialKind.boulder:
+            newXp += 10;
+          case SpecialKind.landmark:
+            newCoins += 50;
+          case SpecialKind.shrine:
+            final kind = special.shrine!;
+            _shrines = {..._shrines, kind};
+        }
+      }
+
+      // ── Track usage ─────────────────────────────────────────────────────
+      _everUsed = {..._everUsed, ...run.positions};
+      _everWords = {..._everWords, run.word};
+    }
+
+    if (newXp <= 0 && newCoins <= 0 && !fogChanged && newlyActivated.isEmpty) return;
+
+    final portfolio = ref.read(portfolioProvider);
+    final levelBefore = levelInfoForXp(portfolio.totalXp).level;
+    if (newXp > 0) {
+      ref.read(portfolioProvider.notifier).addXp(newXp);
+      _showXpFloat(newXp);
+    }
+    if (newCoins > 0) ref.read(portfolioProvider.notifier).addCurrency(newCoins);
+    if (fogChanged) setState(() {}); // redraw fog overlay
+    await _saveVillage();
+
+    // Level-up treats (fire at most once per level, in order).
+    if (newXp > 0) {
+      final levelAfter = levelInfoForXp(ref.read(portfolioProvider).totalXp).level;
+      for (var lv = levelBefore + 1; lv <= levelAfter; lv++) {
+        if (!_levelTreats.contains(lv)) await _doLevelTreat(lv);
+      }
+    }
+  }
+
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
     if (!mounted) return;
@@ -270,6 +405,21 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       _lastCashedOutScore = migrated.lastCashedOutScore;
       _reachedLandmarks = migrated.reachedLandmarks;
       _discoveredWords = migrated.discoveredWords;
+      // ── spec-15: restore explore state ──────────────────────────────────
+      _mapSeed = migrated.mapSeed;
+      _mapVersion = migrated.mapVersion;
+      _everUsed = Set<int>.from(migrated.everUsed);
+      _everWords = Set<String>.from(migrated.everWords);
+      _foundSpecials = Set<String>.from(migrated.foundSpecials);
+      _shrines = Set<ShrineKind>.from(migrated.shrines);
+      _levelTreats = Set<int>.from(migrated.levelTreats);
+      // Build the island map for the restored seed.
+      _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+      // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
+      final clearedB64 = migrated.cleared;
+      _fog = clearedB64 != null
+          ? FogMap.fromBase64(clearedB64)
+          : FogMap.empty();
       needsSave = saved.saveVersion != migrated.saveVersion;
     }
     setState(() => _restoring = false);
@@ -293,6 +443,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       lastCashedOutScore: _lastCashedOutScore,
       reachedLandmarks: _reachedLandmarks,
       discoveredWords: _discoveredWords,
+      // spec-15 explore state
+      mapSeed: _mapSeed,
+      mapVersion: _mapVersion,
+      cleared: _fog.toBase64(),
+      everUsed: Set<int>.unmodifiable(_everUsed),
+      everWords: Set<String>.unmodifiable(_everWords),
+      foundSpecials: Set<String>.unmodifiable(_foundSpecials),
+      shrines: Set<ShrineKind>.unmodifiable(_shrines),
+      levelTreats: Set<int>.unmodifiable(_levelTreats),
     ));
   }
 
@@ -386,6 +545,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
 
   void _openJournal() {
     final rackCells = ref.read(gridGameControllerProvider).rackCells;
+    final foundLandmarks = {
+      for (final s in _islandMap.specials)
+        if (s.kind == SpecialKind.landmark && _foundSpecials.contains(s.id)) s.landmark!,
+    };
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -394,34 +557,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         loadDefinition: _loadDefinition,
         rackCells: rackCells,
         discoveredWords: _discoveredWords,
+        foundLandmarks: foundLandmarks,
       ),
     );
-  }
-
-  // A landmark is "reached" the instant a letter lands on its tile.
-  // One-time and always positive: a bonus letter draw plus a celebratory
-  // message, never a penalty. reachedLandmarks (persisted) guards against
-  // firing again on a later visit.
-  Future<void> _checkLandmarks() async {
-    final boardCells = ref.read(gridGameControllerProvider).boardCells;
-    for (final index in _landmarkIndices) {
-      if (_reachedLandmarks.contains(index)) continue;
-      if (boardCells[index] == null) continue;
-
-      _reachedLandmarks = {..._reachedLandmarks, index};
-      final gotLetter = ref.read(gridGameControllerProvider.notifier).drawBonusLetter();
-      await _saveVillage();
-      if (!mounted) return;
-      showWordlerDialog<void>(
-        context,
-        title: 'Landmark discovered!',
-        icon: const Icon(Icons.star, color: WColors.sun, size: 32),
-        bodyText: gotLetter
-            ? 'Your village has grown to reach a landmark. A bonus letter has been added to the end of your rack!'
-            : 'Your village has grown to reach a landmark. Wonderful exploring!',
-        actions: [WordlerDialogAction('Wonderful!', () {})],
-      );
-    }
   }
 
   // Re-derives which magic words are currently built (see BoardStructure's
@@ -454,6 +592,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         await _saveVillage();
         _celebrateNewBuildings(newlyDiscovered);
       }
+      await _processExploreRewards(runs);
       await _claimWordOfDay(runs);
     } finally {
       _computingStructures = false;
@@ -509,6 +648,98 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   }
 
   int get _freeSwapsLeft => freeSwapsLeft(used: _freeSwapsUsed, hasFarm: _hasStructure('FARM'));
+
+  // spec-15: hints remaining this visit (Shrine of Sight triples them).
+  int get _hintsLeft =>
+      (_shrines.contains(ShrineKind.sight) ? 3 : 1) - _hintsUsedThisVisit;
+
+  // spec-15: show a hint SnackBar telling the player the minimum word
+  // length needed to push fog into the nearest ring.
+  void _doHint() {
+    if (_hintsLeft <= 0) return;
+    final level = ref.read(settingsProvider).wordLevel;
+    const bw = InfiniteEstateScreen.boardSize;
+    const homeR = InfiniteEstateScreen.homeIndex ~/ bw;
+    const homeC = InfiniteEstateScreen.homeIndex % bw;
+    const halfCells = 100;
+
+    Ring? nearestRing;
+    var minLen = 999;
+    for (var dr = -halfCells; dr <= halfCells; dr++) {
+      for (var dc = -halfCells; dc <= halfCells; dc++) {
+        final r = homeR + dr;
+        final c = homeC + dc;
+        if (r < 0 || r >= bw || c < 0 || c >= bw) continue;
+        final idx = r * bw + c;
+        if (!_fog.canSee(idx)) continue;
+        final ring = _islandMap.ringAtIndex(idx);
+        if (ring == Ring.coast) continue;
+        final len = minLength(ring, level);
+        if (len < minLen) {
+          minLen = len;
+          nearestRing = ring;
+        }
+      }
+    }
+
+    setState(() => _hintsUsedThisVisit++);
+    if (!mounted) return;
+    final msg = nearestRing == null
+        ? 'Keep spelling to clear the fog!'
+        : 'Spell a $minLen+ letter word to push into the ${nearestRing.displayName}!';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  // spec-15: flash a small "+N XP" SnackBar after a word rewards XP.
+  void _showXpFloat(int xp) {
+    if (!mounted || xp <= 0) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('+$xp XP', style: WText.bodyBold.copyWith(color: WColors.white)),
+        duration: const Duration(seconds: 1),
+        backgroundColor: const Color(0xFF6A4FB6),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // spec-15: show a level-up reward moment for reaching [level] and apply
+  // any treat (larger rack for Shrine of Plenty is handled on shrine
+  // activation; here we just celebrate).
+  Future<void> _doLevelTreat(int level) async {
+    _levelTreats = {..._levelTreats, level};
+    await _saveVillage();
+    if (!mounted) return;
+    await _rewardsShowing;
+    if (!mounted) return;
+    _rewardsShowing = showRewardMoment(
+      context,
+      ribbon: 'Level up!',
+      title: 'Level $level!',
+      message: 'Your village is growing. Keep exploring!',
+      coins: 0,
+      buttonLabel: 'Onward!',
+    );
+  }
+
+  // spec-15: open the whole-island map page.
+  void _openIslandMap() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => IslandMapPage(
+          islandMap: _islandMap,
+          fog: _fog,
+          foundSpecialIds: _foundSpecials,
+          onJumpTo: (boardIndex) {
+            _centerWordsOn(boardIndex, transformScale(_transformController.value));
+          },
+        ),
+      ),
+    );
+  }
 
   // +10 coins the first time each building is ever built, with the new
   // building moment (spec-12). Words already discovered (older saves
@@ -830,8 +1061,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     final isNewHighScore = ref.read(modeStatsProvider.notifier).reportInfiniteEstateScore(_score);
     if (earned > 0) {
       final portfolioController = ref.read(portfolioProvider.notifier);
+      // spec-15: XP is now earned per-word on placement, not at cash-out.
       portfolioController.addCurrency(earned ~/ 20);
-      portfolioController.addXp(earned ~/ 10);
       _lastCashedOutScore = _score;
       await _saveVillage();
     }
@@ -869,7 +1100,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     ref.listen(gridGameControllerProvider, (previous, next) {
       if (previous?.boardCells != next.boardCells) {
         _refreshStructures();
-        if (!_restoring) _checkLandmarks();
       }
       if (previous != null && previous.rackCells != next.rackCells) {
         _updatePinsAfterRackChange(previous, next);
@@ -914,6 +1144,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                       ),
                     ),
                     const SizedBox(width: WSize.gap2),
+                    ChunkyIconButton(
+                      icon: Icons.map,
+                      tooltip: 'Island map',
+                      onPressed: _openIslandMap,
+                    ),
+                    const SizedBox(width: WSize.gap2),
                     ChunkyButton(label: 'End', kind: ChunkyKind.danger, size: ChunkySize.small, onPressed: _endSession),
                   ],
                 ),
@@ -923,6 +1159,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                 child: _VillageActionBar(
                   score: _score,
                   onScoreTap: _refreshScore,
+                  totalXp: ref.watch(portfolioProvider.select((p) => p.totalXp)),
                   discoveredCount: _discoveredWords.length,
                   totalMagicWords: kMagicWords.length,
                   onJournal: _openJournal,
@@ -967,10 +1204,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                       minScale: 0.2,
                                       maxScale: 2.5,
                                       boundaryMargin: const EdgeInsets.all(400),
-                                      landmarkIndices: _landmarkIndices,
                                       transformController: _transformController,
                                       cellSize: InfiniteEstateScreen.cellSize,
                                       stripes: stripes,
+                                      // spec-15: fog overlay and drop gate.
+                                      cellOverlay: _fogOverlay,
+                                      canDropAt: _fog.canSee,
                                     )
                                   : Builder(builder: (context) {
                                       final scene = _villageScene();
@@ -985,6 +1224,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                         minScale: 0.2,
                                         maxScale: 2.5,
                                         boundaryMargin: const EdgeInsets.all(400),
+                                        fog: _fog,
+                                        islandMap: _islandMap,
                                       );
                                     }),
                             ),
@@ -1038,14 +1279,26 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                                 const SizedBox(width: gap),
                                 SizedBox(
                                   width: swapWidth,
-                                  height: rackHeight,
-                                  child: _SwapColumn(
-                                    allPinned: _allBaseSlotsPinned(
-                                        ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                                    freeLeft: _freeSwapsLeft,
-                                    canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
-                                        InfiniteEstateScreen.swapCost,
-                                    onSwap: _swapRack,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _HintButton(
+                                        hintsLeft: _hintsLeft,
+                                        onHint: _doHint,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      SizedBox(
+                                        height: rackHeight,
+                                        child: _SwapColumn(
+                                          allPinned: _allBaseSlotsPinned(
+                                              ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                                          freeLeft: _freeSwapsLeft,
+                                          canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
+                                              InfiniteEstateScreen.swapCost,
+                                          onSwap: _swapRack,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1138,6 +1391,7 @@ class _VillageActionBar extends StatelessWidget {
   const _VillageActionBar({
     required this.score,
     required this.onScoreTap,
+    required this.totalXp,
     required this.discoveredCount,
     required this.totalMagicWords,
     required this.onJournal,
@@ -1152,6 +1406,8 @@ class _VillageActionBar extends StatelessWidget {
 
   final int score;
   final VoidCallback onScoreTap;
+  // spec-15: total XP for the XP chip (replaces the score chip).
+  final int totalXp;
   final int discoveredCount;
   final int totalMagicWords;
   final VoidCallback onJournal;
@@ -1166,17 +1422,17 @@ class _VillageActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lvInfo = levelInfoForXp(totalXp);
     return Wrap(
       spacing: WSize.gap2,
       runSpacing: WSize.gap1,
       children: [
         PillChip(
-          icon: Icons.landscape,
-          value: '$score',
-          label: 'pts',
-          badgeColor: WColors.leaf,
-          tooltip: 'Village score (tap to recount)',
-          onTap: onScoreTap,
+          icon: Icons.star,
+          value: 'Lv ${lvInfo.level}',
+          label: '${lvInfo.xpIntoLevel}/${lvInfo.xpForNextLevel} XP',
+          badgeColor: WColors.sun,
+          tooltip: 'Your explorer level',
         ),
         if (buildingCount != null)
           PillChip(
@@ -1210,6 +1466,50 @@ class _VillageActionBar extends StatelessWidget {
             onTap: onBridge,
           ),
       ],
+    );
+  }
+}
+
+// "Hint" button above the Swap column: tells the player the minimum word
+// length needed to push fog into the nearest visible ring.
+class _HintButton extends StatelessWidget {
+  const _HintButton({required this.hintsLeft, required this.onHint});
+
+  final int hintsLeft;
+  final VoidCallback onHint;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = hintsLeft > 0;
+    final ink = enabled ? WColors.ink : WColors.muted;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: 'Hint${enabled ? ", $hintsLeft left" : " used"}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onHint : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          decoration: BoxDecoration(
+            color: enabled ? WColors.skyTint : WColors.boardCell,
+            border: Border.all(color: ink, width: WSize.outline),
+            borderRadius: BorderRadius.circular(WSize.radiusButton),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lightbulb_outline, color: enabled ? WColors.sky : WColors.muted, size: 22),
+              Text('Hint', style: WText.buttonSmall.copyWith(color: ink)),
+              Text(
+                enabled ? (hintsLeft > 1 ? 'x$hintsLeft' : '1 left') : 'used',
+                style: WText.label.copyWith(color: ink, height: 1.1),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
