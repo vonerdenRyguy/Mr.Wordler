@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/village/village_save.dart';
 import 'package:namer_app/village/village_save_migration.dart';
+import 'package:namer_app/villagers/village_book.dart';
+import 'package:namer_app/villagers/wish.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -37,7 +41,7 @@ void main() {
 
     final migrated = migrateVillageSave(old, rackSize: 10);
 
-    expect(migrated.saveVersion, 3); // v1→v2→v3 in one pass
+    expect(migrated.saveVersion, 4); // v1→v2→v3→v4 in one pass
     expect(migrated.rackCells.length, 10);
     expect(migrated.rackCells.every((c) => c != null), isTrue);
     expect(migrated.rackCells, rack.whereType<String>().take(10).toList());
@@ -83,7 +87,7 @@ void main() {
       saveVersion: 2,
     );
     final migrated = migrateVillageSave(v2, rackSize: 10);
-    expect(migrated.saveVersion, 3);
+    expect(migrated.saveVersion, 4);
     expect(migrated.boardCells, v2.boardCells);
     expect(migrated.rackCells, v2.rackCells);
     expect(migrated.pool, v2.pool);
@@ -117,7 +121,7 @@ void main() {
     expect(migrated.everUsed.contains(0), isTrue);
   });
 
-  test('a v3 save comes back unchanged', () {
+  test('v3→v4 (spec-16): nothing lost, an empty villager book, and loading twice changes nothing', () {
     final v3 = VillageSaveData(
       boardCells: const ['A', null],
       rackCells: List<String?>.filled(10, 'E'),
@@ -127,7 +131,38 @@ void main() {
       saveVersion: 3,
       cleared: 'AAAA', // arbitrary non-null base64
     );
-    expect(identical(migrateVillageSave(v3, rackSize: 10), v3), isTrue);
+    final v4 = migrateVillageSave(v3, rackSize: 10);
+    expect(v4.saveVersion, 4);
+    expect(v4.villagers.isEmpty, isTrue);
+    expect(v4.boardCells, v3.boardCells);
+    expect(v4.rackCells, v3.rackCells);
+    expect(v4.pool, v3.pool);
+    expect(v4.cleared, 'AAAA');
+    expect(v4.lastCashedOutScore, 1);
+    // Already current: comes back as it is.
+    expect(identical(migrateVillageSave(v4, rackSize: 10), v4), isTrue);
+  });
+
+  test('a v4 save round-trips its villagers', () {
+    const wish = Wish.topic('water');
+    final v4 = VillageSaveData(
+      boardCells: const ['A', null],
+      rackCells: List<String?>.filled(10, 'E'),
+      pool: const ['B'],
+      dealtLetters: const ['A'],
+      lastCashedOutScore: 1,
+      villagers: const VillagerBook([
+        Villager(id: 'v0', name: 'Pip', cell: 77, hearts: 2, wish: wish, granted: 2, movedInWord: 'SIPS'),
+        Villager(id: 'v3', name: 'Moss', cell: 88, hearts: 5, nextWishOn: '2026-11-22', presentClaimed: true),
+      ]),
+    );
+    final loaded = VillageSaveData.fromJson(jsonDecode(jsonEncode(v4.toJson())) as Map<String, dynamic>);
+    expect(loaded.saveVersion, 4);
+    expect(loaded.villagers.count, 2);
+    final pip = loaded.villagers.byId('v0')!;
+    expect((pip.name, pip.cell, pip.hearts, pip.wish, pip.granted, pip.movedInWord), ('Pip', 77, 2, wish, 2, 'SIPS'));
+    final moss = loaded.villagers.byId('v3')!;
+    expect((moss.hearts, moss.wish, moss.nextWishOn, moss.presentClaimed, moss.bestFriend), (5, null, '2026-11-22', true, true));
   });
 
   test('round trip: save, load, migrate, save, load -- version 3 and stable', () async {
@@ -145,7 +180,7 @@ void main() {
     await controller.save(migrated);
 
     final reloaded = (await controller.load())!;
-    expect(reloaded.saveVersion, 3);
+    expect(reloaded.saveVersion, 4);
     expect(reloaded.rackCells, migrated.rackCells);
     expect(reloaded.pool, migrated.pool);
     // Migrating a v3 save is a no-op.

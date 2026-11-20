@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../explore/island_map.dart';
 import '../players/players.dart';
+import '../villagers/village_book.dart';
 
 // Everything needed to resume a village exactly where it was left: the
 // board/rack/pool (so structures can be re-derived and play continues
@@ -19,6 +20,9 @@ import '../players/players.dart';
 //   foundSpecials       — special tile IDs already activated.
 //   shrines             — shrine kinds unlocked.
 //   levelTreats         — XP levels at which treats have been claimed.
+//
+// spec-16 (saveVersion 4) adds villagers:
+//   villagers           — the villagers who have moved in (name, hearts, wish).
 class VillageSaveData {
   final List<String?> boardCells;
   final List<String?> rackCells;
@@ -28,7 +32,8 @@ class VillageSaveData {
   final Set<int> reachedLandmarks; // kept; no longer shown as landmark stars (spec-15 commit 8)
   final Set<String> discoveredWords;
   // Format version. 1 = original 21-letter rack; 2 = 10-letter rack;
-  // 3 = explore (fog + island map + XP tracking). See village_save_migration.dart.
+  // 3 = explore (fog + island map + XP tracking); 4 = villagers.
+  // See village_save_migration.dart.
   final int saveVersion;
 
   // ── spec-15 explore fields ───────────────────────────────────────────────
@@ -60,7 +65,10 @@ class VillageSaveData {
   /// XP levels at which the level-up treat has already been claimed.
   final Set<int> levelTreats;
 
-  static const int currentVersion = 3;
+  /// spec-16: the villagers who have moved in.
+  final VillagerBook villagers;
+
+  static const int currentVersion = 4;
 
   /// The fixed seed for the spec-15 island map.
   static const int kDefaultMapSeed = 15001;
@@ -83,7 +91,28 @@ class VillageSaveData {
     this.foundSpecials = const {},
     this.shrines = const {},
     this.levelTreats = const {},
+    this.villagers = const VillagerBook(),
   });
+
+  VillageSaveData copyWith({int? saveVersion, VillagerBook? villagers}) => VillageSaveData(
+        boardCells: boardCells,
+        rackCells: rackCells,
+        pool: pool,
+        dealtLetters: dealtLetters,
+        lastCashedOutScore: lastCashedOutScore,
+        reachedLandmarks: reachedLandmarks,
+        discoveredWords: discoveredWords,
+        saveVersion: saveVersion ?? this.saveVersion,
+        mapSeed: mapSeed,
+        mapVersion: mapVersion,
+        cleared: cleared,
+        everUsed: everUsed,
+        everWords: everWords,
+        foundSpecials: foundSpecials,
+        shrines: shrines,
+        levelTreats: levelTreats,
+        villagers: villagers ?? this.villagers,
+      );
 
   Map<String, dynamic> toJson() => {
         'boardCells': boardCells,
@@ -103,6 +132,8 @@ class VillageSaveData {
         'foundSpecials': foundSpecials.toList(),
         'shrines': shrines.map((s) => s.name).toList(),
         'levelTreats': levelTreats.toList(),
+        // spec-16
+        'villagers': villagers.toJson(),
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -129,6 +160,7 @@ class VillageSaveData {
                 .toSet() ??
             const {},
         levelTreats: (json['levelTreats'] as List?)?.map((e) => e as int).toSet() ?? const {},
+        villagers: VillagerBook.fromJson(json['villagers']),
       );
 }
 

@@ -27,7 +27,7 @@ class Wish {
         place = null;
 
   /// [exactly] = exactly [number] letters; otherwise [number] or more.
-  const Wish.length(int this.number, {bool exactly = true})
+  const Wish.length(this.number, {bool exactly = true})
       : kind = WishKind.length,
         flag = exactly,
         topic = null,
