@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../components/bananagramsTiles.dart';
 import '../components/valid_word_check.dart' show initSpellCheck;
 import '../daily/word_of_the_day.dart';
@@ -31,6 +33,11 @@ import '../village/village_cards.dart';
 import '../village/village_rewards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
+import '../villagers/village_book.dart';
+import '../villagers/villager_names.dart';
+import '../villagers/wish.dart';
+import '../settings/word_level.dart' show WordLevel;
+import 'villagers_screens.dart';
 
 import '../ui/chunky_button.dart';
 import '../sound/sound_service.dart';
@@ -40,6 +47,7 @@ import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -137,7 +145,7 @@ class _InfiniteEstateBody extends ConsumerStatefulWidget {
   ConsumerState<_InfiniteEstateBody> createState() => _InfiniteEstateBodyState();
 }
 
-class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
+class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implements VillagerHost {
   int _score = 0;
   // Score value already paid out as currency/XP -- End Session only
   // rewards growth past this, so re-visiting an unchanged village and
@@ -160,6 +168,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   Set<String> _foundSpecials = {};
   Set<ShrineKind> _shrines = {};
   Set<int> _levelTreats = {};
+  // spec-16: the villagers who have moved in. A notifier so the card and the
+  // Your villagers page update live; saved with the village.
+  final ValueNotifier<VillagerBook> _bookNotifier = ValueNotifier(const VillagerBook());
+  VillagerBook get _book => _bookNotifier.value;
   // Bridge ability: ordered list of reached old landmarks, kept for the
   // jump menu. Only index matters; never re-computed from scratch.
   late final List<int> _landmarkOrder;
@@ -264,6 +276,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
   void dispose() {
     _transformController.dispose();
     _villageTransform.dispose();
+    _bookNotifier.dispose();
     super.dispose();
   }
 
@@ -388,6 +401,150 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
     }
   }
 
+  // ── spec-16 villagers ────────────────────────────────────────────────────
+
+  void _setBook(VillagerBook book) {
+    if (!mounted) return;
+    setState(() => _bookNotifier.value = book);
+    _saveVillage();
+  }
+
+  // The rings the player can already see (fog cleared somewhere), for wishes
+  // about places. Looks at the area around home, where all the rings are.
+  Set<Ring> _seenRings() {
+    const bw = InfiniteEstateScreen.boardSize;
+    const homeR = InfiniteEstateScreen.homeIndex ~/ bw;
+    const homeC = InfiniteEstateScreen.homeIndex % bw;
+    final seen = <Ring>{};
+    for (var dr = -80; dr <= 80 && seen.length < 4; dr += 2) {
+      for (var dc = -80; dc <= 80; dc += 2) {
+        final idx = (homeR + dr) * bw + homeC + dc;
+        if (!_fog.isCleared(idx)) continue;
+        seen.add(_islandMap.ringAtIndex(idx));
+      }
+    }
+    return seen;
+  }
+
+  Wish _newWishFor(int homeCell, List<WordRun> runs, {Wish? previous}) {
+    return chooseWish(
+      ref.read(settingsProvider).wordLevel,
+      math.Random(),
+      seenRings: _seenRings(),
+      previous: previous,
+      alreadyMet: (w) => runs.any((r) => wishMetBy(w, r, homeCell: homeCell, ringAt: _islandMap.ringAtIndex)),
+    );
+  }
+
+  // Villagers: anyone whose square now holds a letter of a real word moves
+  // in; wishes whose day has come arrive; wishes the board now answers come
+  // true. All three work from the words on the board, so an older village
+  // (or a word that was already there) counts too.
+  Future<void> _processVillagers(List<WordRun> runs) async {
+    // 1. Move in.
+    for (final tile in _islandMap.villagers) {
+      if (_book.isMet(tile.id)) continue;
+      final hit = runs.where((r) => r.positions.contains(tile.cell)).toList();
+      if (hit.isEmpty) continue;
+      final names = nameChoicesFor(tile.id, taken: _book.names);
+      final villager = Villager(
+        id: tile.id,
+        name: names.first,
+        cell: tile.cell,
+        movedInWord: hit.first.word,
+        wish: _newWishFor(tile.cell, runs),
+      );
+      _setBook(_book.moveIn(villager));
+      await _rewardsShowing; // one moment at a time
+      if (!mounted) return;
+      final name = await showMoveIn(context, villager: villager, word: hit.first.word, nameChoices: names);
+      if (!mounted) return;
+      _setBook(_book.rename(villager.id, name));
+    }
+    if (_book.isEmpty) return;
+
+    // 2. Wishes that were waiting for today.
+    final now = DateTime.now();
+    final refreshed = _book.refreshWishes(now, (v) => _newWishFor(v.cell, runs));
+    if (refreshed.villagers.where((v) => v.wish != null).length != _book.villagers.where((v) => v.wish != null).length) {
+      _setBook(refreshed);
+    }
+
+    // 3. Wishes that came true.
+    final result = _book.checkWishes(runs, now: now, ringAt: _islandMap.ringAtIndex);
+    if (result.granted.isEmpty) return;
+    _setBook(result.book);
+    final portfolio = ref.read(portfolioProvider.notifier);
+    for (final g in result.granted) {
+      portfolio.addCurrency(g.coins); // paid first, as a moment requires
+    }
+    for (final g in result.granted) {
+      await _rewardsShowing;
+      if (!mounted) return;
+      await showWishGranted(context, g);
+    }
+    for (final g in result.granted) {
+      await _giveXp(g.xp);
+    }
+  }
+
+  // XP outside a word (a wish), with the same level-up treats.
+  Future<void> _giveXp(int xp) async {
+    if (!mounted || xp <= 0) return;
+    final levelBefore = levelInfoForXp(ref.read(portfolioProvider).totalXp).level;
+    ref.read(portfolioProvider.notifier).addXp(xp);
+    final levelAfter = levelInfoForXp(ref.read(portfolioProvider).totalXp).level;
+    for (var lv = levelBefore + 1; lv <= levelAfter; lv++) {
+      if (!_levelTreats.contains(lv)) await _doLevelTreat(lv);
+    }
+  }
+
+  // VillagerHost: what the card and the Your villagers page ask of the screen.
+  @override
+  ValueListenable<VillagerBook> get villagerBook => _bookNotifier;
+
+  @override
+  WordLevel get wordLevel => ref.read(settingsProvider).wordLevel;
+
+  @override
+  IslandMap get islandMap => _islandMap;
+
+  @override
+  void renameVillager(String id, String name) => _setBook(_book.rename(id, name));
+
+  @override
+  void differentWish(String id) {
+    final v = _book.byId(id);
+    if (v == null || v.wish == null) return;
+    _setBook(_book.swapWish(id, _newWishFor(v.cell, _wordRuns, previous: v.wish)));
+  }
+
+  @override
+  void openVillagerCard(String id) => showVillagerCard(context, this, id);
+
+  @override
+  void findVillager(String id) {
+    final v = _book.byId(id);
+    if (v != null) _centerOn(v.cell);
+  }
+
+  void _openVillagersPage() {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => VillagersPage(host: this)));
+  }
+
+  // Centers whichever view is showing on board cell [index].
+  void _centerOn(int index) {
+    if (_viewMode == _ViewMode.words) {
+      _centerWordsOn(index, transformScale(_transformController.value));
+      return;
+    }
+    final viewport = _boardViewportSize;
+    if (viewport == null) return;
+    const bw = InfiniteEstateScreen.boardSize;
+    _villageTransform.value =
+        isoTransformCenteredOn(index ~/ bw, index % bw, viewport, transformScale(_villageTransform.value), _isoGrid);
+  }
+
   Future<void> _loadSavedVillage() async {
     final saved = await _saveController.load();
     if (!mounted) return;
@@ -416,6 +573,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       _foundSpecials = Set<String>.from(migrated.foundSpecials);
       _shrines = Set<ShrineKind>.from(migrated.shrines);
       _levelTreats = Set<int>.from(migrated.levelTreats);
+      _bookNotifier.value = migrated.villagers;
       // Build the island map for the restored seed.
       _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
       // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
@@ -455,6 +613,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
       foundSpecials: Set<String>.unmodifiable(_foundSpecials),
       shrines: Set<ShrineKind>.unmodifiable(_shrines),
       levelTreats: Set<int>.unmodifiable(_levelTreats),
+      villagers: _book,
     ));
   }
 
@@ -596,6 +755,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         _celebrateNewBuildings(newlyDiscovered);
       }
       await _processExploreRewards(runs);
+      await _processVillagers(runs);
       await _claimWordOfDay(runs);
     } finally {
       _computingStructures = false;
@@ -735,7 +895,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
         builder: (_) => IslandMapPage(
           islandMap: _islandMap,
           fog: _fog,
-          foundSpecialIds: _foundSpecials,
+          foundSpecialIds: {..._foundSpecials, for (final v in _book.villagers) v.id},
           onJumpTo: (boardIndex) {
             _centerWordsOn(boardIndex, transformScale(_transformController.value));
           },
@@ -1166,6 +1326,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> {
                   discoveredCount: _discoveredWords.length,
                   totalMagicWords: kMagicWords.length,
                   onJournal: _openJournal,
+                  villagersMet: _book.count,
+                  villagersTotal: _islandMap.villagers.length,
+                  onVillagers: _openVillagersPage,
                   showWell: _hasStructure('WELL'),
                   wellUsed: _wellUsedThisVisit,
                   onWell: _drawFromWell,
@@ -1400,6 +1563,9 @@ class _VillageActionBar extends StatelessWidget {
     required this.discoveredCount,
     required this.totalMagicWords,
     required this.onJournal,
+    required this.villagersMet,
+    required this.villagersTotal,
+    required this.onVillagers,
     required this.showWell,
     required this.wellUsed,
     required this.onWell,
@@ -1416,6 +1582,10 @@ class _VillageActionBar extends StatelessWidget {
   final int discoveredCount;
   final int totalMagicWords;
   final VoidCallback onJournal;
+  // spec-16: shown once someone has moved in.
+  final int villagersMet;
+  final int villagersTotal;
+  final VoidCallback onVillagers;
   final bool showWell;
   final bool wellUsed;
   final VoidCallback onWell;
@@ -1453,6 +1623,14 @@ class _VillageActionBar extends StatelessWidget {
           tooltip: 'Journal',
           onTap: onJournal,
         ),
+        if (villagersMet > 0)
+          PillChip(
+            icon: Icons.people,
+            value: '$villagersMet/$villagersTotal',
+            badgeColor: const Color(0xFFF2A0B8),
+            tooltip: 'Your villagers',
+            onTap: onVillagers,
+          ),
         if (showStripeHint)
           const PillChip(icon: Icons.horizontal_rule, value: 'Stripe = building', badgeColor: WColors.leaf),
         if (showWell)
