@@ -124,6 +124,15 @@ void main() {
     expect(find.text('4 in the Forest, 4 in the Hills, 3 in the Mountains'), findsOneWidget);
   });
 
+  testWidgets('a 2-letter word on their square does not bring them home yet', (tester) async {
+    final tile = _map.villagers.first;
+    final board = List<String?>.filled(_size * _size, null);
+    _across(board, tile.cell, 'SI');
+    await openVillage(tester, _save(board), {'SI'});
+    expect(find.text('Someone moved in!'), findsNothing);
+    expect(find.text('1/12'), findsNothing);
+  });
+
   testWidgets('a wish already answered by a word on the board comes true once: heart, coins, XP', (tester) async {
     final tile = _map.villagers.first;
     final board = List<String?>.filled(_size * _size, null);
