@@ -447,7 +447,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     // 1. Move in.
     for (final tile in _islandMap.villagers) {
       if (_book.isMet(tile.id)) continue;
-      final hit = runs.where((r) => r.positions.contains(tile.cell)).toList();
+      // A word of 3+ letters, so a 2-letter word on the way to a longer one
+      // doesn't interrupt the player.
+      final hit = runs.where((r) => r.word.length >= 3 && r.positions.contains(tile.cell)).toList();
       if (hit.isEmpty) continue;
       final names = nameChoicesFor(tile.id, taken: _book.names);
       final villager = Villager(
