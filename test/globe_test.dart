@@ -67,7 +67,7 @@ void main() {
   group('the Hush by reach', () {
     test('land above your reach is hushed, below it is clear, sea never', () {
       // Whisper Woods cell straight above slot 0's harbor.
-      final woods = kLanternRow + 80;
+      const woods = kLanternRow + 80;
       expect(bandAt(woods, kLanternCol), Band.whisperWoods);
       expect(hushedByReach(woods, kLanternCol, 1), isTrue); // reached the Meadow
       expect(hushedByReach(woods, kLanternCol, 2), isFalse); // reached the Woods
