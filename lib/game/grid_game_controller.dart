@@ -86,6 +86,7 @@ class GridGameController extends StateNotifier<GridGameState> {
         from.zone == TileZone.rack &&
         to.zone == TileZone.board &&
         from.index < state.config.rackSize &&
+        rack.whereType<String>().length < state.config.rackSize &&
         state.pool.isNotEmpty) {
       final newPool = List<String>.from(state.pool);
       // `rack` still has this slot empty, which is exactly what
@@ -309,13 +310,46 @@ class GridGameController extends StateNotifier<GridGameState> {
   // (unlike currentWordPositions, where a second copy of a word
   // overwrites the first). Village view and building detection use this.
   // [isValid] defaults to the dictionary.
-  Future<List<WordRun>> currentWordRuns({Future<bool> Function(String word)? isValid}) {
-    return _validator.findValidRuns(
+  Future<List<WordRun>> currentWordRuns({Future<bool> Function(String word)? isValid}) async =>
+      (await settledBoard(isValid: isValid)).settledRuns;
+
+  // The board split into settled words, misspelled runs and loose letters
+  // (spec-17: only settled words count).
+  Future<BoardWords> settledBoard({Future<bool> Function(String word)? isValid}) {
+    return settle(
       state.boardCells,
       state.config.boardWidth,
       state.config.boardHeight,
-      isValid: isValid,
+      isValid ?? _validator.isValidWord,
     );
+  }
+
+  // Board indices of letters that aren't in a real word, or that sit in a
+  // run with one that isn't.
+  Future<Set<int>> looseCells({Future<bool> Function(String word)? isValid}) async =>
+      (await settledBoard(isValid: isValid)).looseCells;
+
+  // Moves every loose letter from the board back to the rack: empty rack
+  // slots first, then new bonus slots past the end (so the rack may hold
+  // more than its usual size). Returns how many went back.
+  Future<int> returnLooseToRack({Future<bool> Function(String word)? isValid}) async {
+    final loose = await looseCells(isValid: isValid);
+    if (loose.isEmpty) return 0;
+    final board = List<String?>.from(state.boardCells);
+    final rack = List<String?>.from(state.rackCells);
+    for (final i in loose.toList()..sort()) {
+      final letter = board[i];
+      if (letter == null) continue;
+      board[i] = null;
+      final empty = rack.indexWhere((c) => c == null);
+      if (empty == -1) {
+        rack.add(letter);
+      } else {
+        rack[empty] = letter;
+      }
+    }
+    state = state.copyWith(boardCells: board, rackCells: rack);
+    return loose.length;
   }
 
   Future<Map<String, Set<int>>> currentWordPositions() async {

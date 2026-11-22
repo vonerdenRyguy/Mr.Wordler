@@ -213,14 +213,14 @@ void main() {
     expect(state.pool.length, 2);
   });
 
-  test('placing a base rack letter still refills its slot', () {
+  test('placing a base rack letter refills its slot once the rack is under its size', () {
     final container = buildContainer();
     final controller = container.read(gridGameControllerProvider.notifier);
     controller.restoreState(
       boardCells: [null, null, null],
-      rackCells: ['B', 'C', 'D', 'E'],
+      rackCells: ['B', 'C', 'D'],
       pool: ['X'],
-      dealtLetters: ['B', 'C', 'D', 'E'],
+      dealtLetters: ['B', 'C', 'D'],
     );
 
     controller.moveTile(
@@ -229,7 +229,27 @@ void main() {
     );
 
     final state = container.read(gridGameControllerProvider);
-    expect(state.rackCells, ['X', 'C', 'D', 'E']);
+    expect(state.rackCells, ['X', 'C', 'D']);
+  });
+
+  test('with extra letters in the rack (gifts, returned letters) a refill waits', () {
+    final container = buildContainer();
+    final controller = container.read(gridGameControllerProvider.notifier);
+    controller.restoreState(
+      boardCells: [null, null, null],
+      rackCells: ['B', 'C', 'D', 'E', 'F'],
+      pool: ['X'],
+      dealtLetters: ['B', 'C', 'D', 'E', 'F'],
+    );
+
+    controller.moveTile(
+      const TileLocation(TileZone.rack, 0),
+      const TileLocation(TileZone.board, 0),
+    );
+
+    final state = container.read(gridGameControllerProvider);
+    expect(state.rackCells, [null, 'C', 'D', 'E', 'F']);
+    expect(state.pool, ['X']);
   });
 
   test('a saved rack holding unplaced bonus letters restores', () {
