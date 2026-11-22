@@ -335,21 +335,9 @@ class GridGameController extends StateNotifier<GridGameState> {
   Future<int> returnLooseToRack({Future<bool> Function(String word)? isValid}) async {
     final loose = await looseCells(isValid: isValid);
     if (loose.isEmpty) return 0;
-    final board = List<String?>.from(state.boardCells);
-    final rack = List<String?>.from(state.rackCells);
-    for (final i in loose.toList()..sort()) {
-      final letter = board[i];
-      if (letter == null) continue;
-      board[i] = null;
-      final empty = rack.indexWhere((c) => c == null);
-      if (empty == -1) {
-        rack.add(letter);
-      } else {
-        rack[empty] = letter;
-      }
-    }
-    state = state.copyWith(boardCells: board, rackCells: rack);
-    return loose.length;
+    final moved = returnLoose(state.boardCells, state.rackCells, loose);
+    state = state.copyWith(boardCells: moved.board, rackCells: moved.rack);
+    return moved.count;
   }
 
   Future<Map<String, Set<int>>> currentWordPositions() async {

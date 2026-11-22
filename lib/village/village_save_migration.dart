@@ -21,6 +21,10 @@ import 'village_save.dart';
 ///     the first scan after migration.
 ///
 /// Version 3 → 4 (spec-16): an empty villager book.
+///
+/// Version 4 → 5 (spec-17): only the version changes here. The village
+/// screen does the one-time tidy of loose letters (it has the dictionary)
+/// and records it as `tidiedLoose`.
 VillageSaveData migrateVillageSave(
   VillageSaveData data, {
   required int rackSize,
@@ -89,6 +93,11 @@ VillageSaveData migrateVillageSave(
   // square already holds a word joins on the village screen's first scan.
   if (data.saveVersion < 4) {
     data = data.copyWith(saveVersion: 4);
+  }
+
+  // ── v4 → v5 (spec-17) ───────────────────────────────────────────────────────────────────────
+  if (data.saveVersion < 5) {
+    data = data.copyWith(saveVersion: 5);
   }
 
   return data;

@@ -131,3 +131,29 @@ Future<BoardWords> settle(
   ];
   return BoardWords(settled, bad, loose);
 }
+
+/// Moves the [loose] letters from [board] into [rack]: empty rack slots
+/// first, then new slots past the end (so the rack may hold more than its
+/// usual size). Pure: returns new lists and leaves the inputs alone.
+({List<String?> board, List<String?> rack, int count}) returnLoose(
+  List<String?> board,
+  List<String?> rack,
+  Set<int> loose,
+) {
+  final newBoard = List<String?>.from(board);
+  final newRack = List<String?>.from(rack);
+  var count = 0;
+  for (final i in loose.toList()..sort()) {
+    final letter = newBoard[i];
+    if (letter == null) continue;
+    newBoard[i] = null;
+    final empty = newRack.indexWhere((c) => c == null);
+    if (empty == -1) {
+      newRack.add(letter);
+    } else {
+      newRack[empty] = letter;
+    }
+    count++;
+  }
+  return (board: newBoard, rack: newRack, count: count);
+}

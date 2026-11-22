@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:namer_app/daily/daily_puzzle.dart';
 import 'package:namer_app/daily/word_of_the_day.dart';
+import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -24,10 +25,11 @@ import 'home_test_helpers.dart';
 // setup the real app runs with -- HomeScreen/PortfolioScreen read
 // the global portfolioProvider directly and need an ancestor ProviderScope
 // to do that, the same as they would in production.
-Future<void> pumpApp(WidgetTester tester) async {
+Future<void> pumpApp(WidgetTester tester, {List<Override> overrides = const []}) async {
   await skipHomeIntro();
   await tester.pumpWidget(
     ProviderScope(
+      overrides: overrides,
       child: ChangeNotifierProvider(
         create: (_) => ThemeNotifier(),
         child: const MyApp(),
@@ -381,12 +383,12 @@ void main() {
     expect(find.text('End'), findsOneWidget);
   });
 
-  Future<void> openInfiniteEstate(WidgetTester tester) async {
+  Future<void> openInfiniteEstate(WidgetTester tester, {List<Override> overrides = const []}) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await pumpApp(tester);
+    await pumpApp(tester, overrides: overrides);
     await tester.tap(find.text('Visit your village'));
     await tester.pumpAndSettle();
   }
@@ -437,7 +439,8 @@ void main() {
       }),
     });
 
-    await openInfiniteEstate(tester);
+    // WELL must be a real word, or it would be loose and go back to the rack.
+    await openInfiniteEstate(tester, overrides: [wordCheckProvider.overrideWithValue((w) async => w == 'WELL')]);
 
     expect(tester.takeException(), isNull);
     // 4 board letters around the center (where the view opens) + 10 rack.
