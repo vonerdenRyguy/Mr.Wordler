@@ -213,6 +213,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   Map<String, SpriteMeta> _spriteMeta = const {};
   // Every valid word on the board (repeats included), for tap cards.
   List<WordRun> _wordRuns = const [];
+  // spec-17: runs that aren't words, and letters that aren't settled.
+  List<WordRun> _badRuns = const [];
+  Set<int> _looseCells = const {};
   // The word whose card is open, lit up on the map.
   Set<int> _highlight = const {};
   BoardStructure? _highlightBuilding;
@@ -828,13 +831,16 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     _computingStructures = true;
     try {
       final controller = ref.read(gridGameControllerProvider.notifier);
-      final runs = await controller.currentWordRuns(isValid: ref.read(wordCheckProvider));
+      final board = await controller.settledBoard(isValid: ref.read(wordCheckProvider));
+      final runs = board.settledRuns;
       if (!mounted) return;
       final structures = computeStructures(runs);
       final newlyDiscovered = newDiscoveries(structures, _discoveredWords);
       setState(() {
         _structures = structures;
         _wordRuns = runs;
+        _badRuns = board.badRuns;
+        _looseCells = board.looseCells;
         _scene = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
@@ -1219,8 +1225,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   Future<void> _openWordCard(int index) async {
     final runs = _wordRuns.where((r) => r.positions.contains(index)).toList()
       ..sort((a, b) => (a.across ? 0 : 1).compareTo(b.across ? 0 : 1));
-    if (runs.isEmpty) {
-      await showVillageSheet<void>(context, const NotAWordCard());
+    if (runs.isEmpty || _looseCells.contains(index)) {
+      final bad = _badRuns.where((r) => r.positions.contains(index)).toList();
+      await showVillageSheet<void>(context, NotAWordCard(run: bad.isEmpty ? null : bad.first.word));
       return;
     }
     setState(() => _highlight = runs.first.positions.toSet());
@@ -1470,6 +1477,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
                                       cellOverlay: _fogOverlay,
                                       canDropAt: _fog.canSee,
                                       cellMarker: (i) => _wordsMarker(i, standing),
+                                      looseCells: _looseCells,
+                                      onLooseTap: _openWordCard,
                                     )
                                   : Builder(builder: (context) {
                                       final scene = _villageScene();

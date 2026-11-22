@@ -437,7 +437,9 @@ class WordOfDayCard extends StatelessWidget {
 }
 
 class NotAWordCard extends StatelessWidget {
-  const NotAWordCard({super.key});
+  /// The misspelled run this letter is in ("AQ"), if any.
+  const NotAWordCard({super.key, this.run});
+  final String? run;
 
   @override
   Widget build(BuildContext context) {
@@ -447,8 +449,15 @@ class NotAWordCard extends StatelessWidget {
         Expanded(
           child: Text.rich(
             TextSpan(children: [
-              TextSpan(text: 'Not a word yet: ', style: WText.bodyBold),
-              TextSpan(text: "these letters don't spell a word on their own.", style: WText.body),
+              if (run != null) ...[
+                TextSpan(text: "$run isn't a word yet. ", style: WText.bodyBold),
+                TextSpan(
+                    text: 'Change a letter or move one away, and the words around it count again.',
+                    style: WText.body),
+              ] else ...[
+                TextSpan(text: 'Not a word yet: ', style: WText.bodyBold),
+                TextSpan(text: "this letter isn't part of a word on its own.", style: WText.body),
+              ],
             ]),
           ),
         ),

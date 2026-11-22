@@ -80,6 +80,8 @@ class GridTileWidget extends ConsumerWidget {
     this.cellOverlay,
     this.canDropAt,
     this.marker,
+    this.loose = false,
+    this.onLooseTap,
   });
 
   final TileLocation location;
@@ -104,6 +106,10 @@ class GridTileWidget extends ConsumerWidget {
   // spec-16: drawn over an empty cell, above the fog: a faint outline of a
   // special tile, or a villager standing there.
   final Widget? marker;
+  // spec-17: this board letter isn't in a real word yet; tapping it calls
+  // [onLooseTap] (the "Not a word yet" card).
+  final bool loose;
+  final ValueChanged<int>? onLooseTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -168,12 +174,13 @@ class GridTileWidget extends ConsumerWidget {
             // A faint face shows where the tile came from.
             childWhenDragging: placed(LetterTile.ghost()),
             child: GestureDetector(
+              onTap: isBoard && loose && onLooseTap != null ? () => onLooseTap!(location.index) : null,
               // Board tiles can be part of a placed word (long-press for a
               // definition); rack tiles can be pinned instead, if enabled.
               onLongPress: isBoard
                   ? () => _showDefinitionIfAny(context, ref, location.index)
                   : (onTogglePin != null ? () => onTogglePin!(location.index) : null),
-              child: placed(LetterTile(letter: letter, isBoard: isBoard, isPinned: showPin, fx: fx, stripe: stripe)),
+              child: placed(LetterTile(letter: letter, isBoard: isBoard, isPinned: showPin, fx: fx, stripe: stripe, loose: isBoard && loose)),
             ),
           );
         } else {
@@ -237,6 +244,8 @@ class GridBoardView extends ConsumerWidget {
     this.cellOverlay,
     this.canDropAt,
     this.cellMarker,
+    this.looseCells = const {},
+    this.onLooseTap,
   });
 
   final GridTheme theme;
@@ -275,6 +284,9 @@ class GridBoardView extends ConsumerWidget {
   final bool Function(int boardIndex)? canDropAt;
   // spec-16: a widget for an empty board cell (outline or villager), or null.
   final Widget? Function(int boardIndex)? cellMarker;
+  // spec-17: board indices of letters that aren't in a real word yet.
+  final Set<int> looseCells;
+  final ValueChanged<int>? onLooseTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -316,6 +328,8 @@ class GridBoardView extends ConsumerWidget {
                       cellOverlay: cellOverlay?.call(index),
                       canDropAt: canDropAt,
                       marker: cellMarker?.call(index),
+                      loose: looseCells.contains(index),
+                      onLooseTap: onLooseTap,
                     ),
                   ),
                 );
@@ -359,6 +373,8 @@ class GridBoardView extends ConsumerWidget {
                       cellOverlay: cellOverlay?.call(row * config.boardWidth + col),
                       canDropAt: canDropAt,
                       marker: cellMarker?.call(row * config.boardWidth + col),
+                      loose: looseCells.contains(row * config.boardWidth + col),
+                      onLooseTap: onLooseTap,
                     ),
                   ),
             ],

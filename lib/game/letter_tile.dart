@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../ui/tokens.dart' show WColors;
+
 /// What a tile should animate. Records give value equality for select().
 typedef TileFx = ({int seq, bool settle, int popOrder}); // popOrder -1 = not in a new word
 
@@ -32,6 +34,7 @@ class LetterTile extends StatefulWidget {
     this.faceColor,
     this.stripe,
     this.fontSize,
+    this.loose = false,
   });
 
   final String letter;
@@ -43,6 +46,10 @@ class LetterTile extends StatefulWidget {
   // Infinite Estate: a tile that's part of a built magic word gets a 6px
   // stripe in that building's color along its bottom edge.
   final Color? stripe;
+  // spec-17: a letter that isn't in a real word yet looks a little unsure:
+  // a soft dashed coral outline and a slight tilt (no tilt with Reduce
+  // motion). Nothing red, nothing blinks.
+  final bool loose;
   // Overrides the size worked out from the tile's size.
   final double? fontSize;
 
@@ -136,7 +143,9 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
           final tile = _buildTile(side, glow);
           // Centered, so a tall slot (the 10x10 modes' rack) shows its
           // color evenly around the tile instead of all below it.
-          return Center(child: scale == 1.0 ? tile : Transform.scale(scale: scale, child: tile));
+          final scaled = scale == 1.0 ? tile : Transform.scale(scale: scale, child: tile);
+          final tilted = widget.loose && !reduceMotion ? Transform.rotate(angle: 3 * pi / 180, child: scaled) : scaled;
+          return Center(child: tilted);
         },
       );
     });
@@ -170,7 +179,18 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
           alignment: Alignment.center,
           child: Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
+              if (widget.loose)
+                Positioned(
+                  left: -3,
+                  right: -3,
+                  top: -3,
+                  bottom: -3,
+                  child: IgnorePointer(
+                    child: CustomPaint(painter: _DashedOutline(WColors.coral, side * 0.18 + 3)),
+                  ),
+                ),
               if (widget.stripe != null)
                 Positioned(
                   left: 0,
@@ -199,7 +219,10 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
       ),
     );
 
-    final labeled = Semantics(label: 'Letter ${widget.letter}', excludeSemantics: true, child: tile);
+    final labeled = Semantics(
+        label: widget.loose ? 'Letter ${widget.letter}, not in a word yet' : 'Letter ${widget.letter}',
+        excludeSemantics: true,
+        child: tile);
     if (!pinned) return labeled;
     return Stack(
       clipBehavior: Clip.none,
@@ -222,4 +245,31 @@ class _LetterTileState extends State<LetterTile> with SingleTickerProviderStateM
       ],
     );
   }
+}
+
+/// A dashed rounded outline, for letters that aren't in a word yet.
+class _DashedOutline extends CustomPainter {
+  _DashedOutline(this.color, this.radius);
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    final path = Path()..addRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)));
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(metric.extractPath(d, min(d + 5, metric.length)), paint);
+        d += 9;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedOutline old) => old.color != color || old.radius != radius;
 }
