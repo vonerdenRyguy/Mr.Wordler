@@ -61,3 +61,99 @@ List<WordRun> runsThrough(List<String?> board, int width, int height, int index)
 
   return runs;
 }
+
+/// The result of [settle]: which runs count, which don't, and which
+/// letters are loose.
+class BoardWords {
+  /// Valid runs whose every letter is settled. Only these count.
+  final List<WordRun> settledRuns;
+
+  /// Runs of 2+ letters that are not words.
+  final List<WordRun> badRuns;
+
+  /// Board indices of letters that are not settled: in a misspelled run,
+  /// in a valid run that crosses one, or standing alone.
+  final Set<int> looseCells;
+
+  const BoardWords(this.settledRuns, this.badRuns, this.looseCells);
+}
+
+/// Splits the board into settled and loose letters. A letter is settled
+/// when every run through it (across and down, 2+ letters) is a real word
+/// and it belongs to at least one such run. Everything else is loose.
+Future<BoardWords> settle(
+  List<String?> cells,
+  int w,
+  int h,
+  Future<bool> Function(String word) isValid,
+) async {
+  assert(cells.length == w * h);
+  final valid = <WordRun>[];
+  final bad = <WordRun>[];
+
+  Future<void> scanLine(int count, int Function(int i) indexAt, bool across) async {
+    var positions = <int>[];
+    Future<void> flush() async {
+      if (positions.length > 1) {
+        final word = positions.map((i) => cells[i]!).join();
+        (await isValid(word) ? valid : bad).add(WordRun(word, positions, across));
+      }
+      positions = <int>[];
+    }
+
+    for (int i = 0; i < count; i++) {
+      final index = indexAt(i);
+      if (cells[index] != null) {
+        positions.add(index);
+      } else {
+        await flush();
+      }
+    }
+    await flush();
+  }
+
+  for (int row = 0; row < h; row++) {
+    await scanLine(w, (col) => row * w + col, true);
+  }
+  for (int col = 0; col < w; col++) {
+    await scanLine(h, (row) => row * w + col, false);
+  }
+
+  final tainted = <int>{for (final r in bad) ...r.positions};
+  final inValid = <int>{for (final r in valid) ...r.positions};
+  final loose = <int>{
+    for (int i = 0; i < cells.length; i++)
+      if (cells[i] != null && (tainted.contains(i) || !inValid.contains(i))) i,
+  };
+  final settled = [
+    for (final r in valid)
+      if (!r.positions.any(loose.contains)) r,
+  ];
+  return BoardWords(settled, bad, loose);
+}
+
+/// Moves the [loose] letters from [board] into [rack]: empty rack slots
+/// first, then new slots past the end (so the rack may hold more than its
+/// usual size). Pure: returns new lists and leaves the inputs alone.
+({List<String?> board, List<String?> rack, int count}) returnLoose(
+  List<String?> board,
+  List<String?> rack,
+  Set<int> loose,
+) {
+  final newBoard = List<String?>.from(board);
+  final newRack = List<String?>.from(rack);
+  var count = 0;
+  for (final i in loose.toList()..sort()) {
+    final letter = newBoard[i];
+    if (letter == null) continue;
+    newBoard[i] = null;
+    final empty = newRack.indexWhere((c) => c == null);
+    if (empty == -1) {
+      newRack.add(letter);
+    } else {
+      newRack[empty] = letter;
+    }
+    count++;
+  }
+  return (board: newBoard, rack: newRack, count: count);
+}

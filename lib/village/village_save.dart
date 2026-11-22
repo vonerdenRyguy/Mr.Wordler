@@ -23,6 +23,12 @@ import '../villagers/village_book.dart';
 //
 // spec-16 (saveVersion 4) adds villagers:
 //   villagers           — the villagers who have moved in (name, hearts, wish).
+//
+// spec-17 (saveVersion 5) real words only:
+//   tidiedLoose         — loose letters (not in a real word) have been sent
+//                         back to the rack once for this old village.
+//   looseNote           — how many letters Mr. W put back; shown once on the
+//                         next visit, then 0.
 class VillageSaveData {
   final List<String?> boardCells;
   final List<String?> rackCells;
@@ -32,7 +38,8 @@ class VillageSaveData {
   final Set<int> reachedLandmarks; // kept; no longer shown as landmark stars (spec-15 commit 8)
   final Set<String> discoveredWords;
   // Format version. 1 = original 21-letter rack; 2 = 10-letter rack;
-  // 3 = explore (fog + island map + XP tracking); 4 = villagers.
+  // 3 = explore (fog + island map + XP tracking); 4 = villagers;
+  // 5 = real words only (tidiedLoose, looseNote).
   // See village_save_migration.dart.
   final int saveVersion;
 
@@ -68,7 +75,14 @@ class VillageSaveData {
   /// spec-16: the villagers who have moved in.
   final VillagerBook villagers;
 
-  static const int currentVersion = 4;
+  /// spec-17: the one-time tidy of an old village has happened.
+  final bool tidiedLoose;
+
+  /// spec-17: letters put back in the rack that the player hasn't been told
+  /// about yet.
+  final int looseNote;
+
+  static const int currentVersion = 5;
 
   /// The fixed seed for the spec-15 island map.
   static const int kDefaultMapSeed = 15001;
@@ -92,6 +106,8 @@ class VillageSaveData {
     this.shrines = const {},
     this.levelTreats = const {},
     this.villagers = const VillagerBook(),
+    this.tidiedLoose = false,
+    this.looseNote = 0,
   });
 
   VillageSaveData copyWith({int? saveVersion, VillagerBook? villagers}) => VillageSaveData(
@@ -112,6 +128,8 @@ class VillageSaveData {
         shrines: shrines,
         levelTreats: levelTreats,
         villagers: villagers ?? this.villagers,
+        tidiedLoose: tidiedLoose,
+        looseNote: looseNote,
       );
 
   Map<String, dynamic> toJson() => {
@@ -134,6 +152,9 @@ class VillageSaveData {
         'levelTreats': levelTreats.toList(),
         // spec-16
         'villagers': villagers.toJson(),
+        // spec-17
+        'tidiedLoose': tidiedLoose,
+        'looseNote': looseNote,
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -161,6 +182,8 @@ class VillageSaveData {
             const {},
         levelTreats: (json['levelTreats'] as List?)?.map((e) => e as int).toSet() ?? const {},
         villagers: VillagerBook.fromJson(json['villagers']),
+        tidiedLoose: json['tidiedLoose'] as bool? ?? false,
+        looseNote: json['looseNote'] as int? ?? 0,
       );
 }
 

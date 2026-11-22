@@ -23,9 +23,11 @@ const _mid = _size ~/ 2;
 void main() {
   final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
 
-  Future<ProviderContainer> openVillageWith(WidgetTester tester, String wordOnBoard) async {
+  Future<ProviderContainer> openVillageWith(WidgetTester tester, String wordOnBoard,
+      {Map<int, String> extra = const {}}) async {
     final board = List<String?>.filled(_size * _size, null);
     wordOnBoard.split('').asMap().forEach((i, l) => board[_mid * _size + _mid - 3 + i] = l);
+    extra.forEach((index, l) => board[index] = l);
     SharedPreferences.setMockInitialValues({
       'infiniteEstateVillageSave': jsonEncode({
         'boardCells': board,
@@ -35,6 +37,7 @@ void main() {
         'lastCashedOutScore': 0,
         'discoveredWords': <String>[],
         'saveVersion': 2,
+        'tidiedLoose': true,
       }),
     });
     tester.view.physicalSize = const Size(1080, 2400);
@@ -44,7 +47,7 @@ void main() {
     await skipHomeIntro();
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        wordCheckProvider.overrideWithValue((w) async => w.toUpperCase() == wordOnBoard),
+        wordCheckProvider.overrideWithValue((w) async => w.toUpperCase() == wordOnBoard || w == 'EL'),
         wordsOfTheDayProvider.overrideWith((ref) async => words),
       ],
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
@@ -130,5 +133,21 @@ void main() {
     expect(container.read(portfolioProvider).currency, 0);
     expect(container.read(wordOfDayProvider.notifier).claimedToday(DateTime.now()), isFalse);
     expect(find.textContaining('Word of the day!'), findsNothing);
+  });
+
+  testWidgets('a word with a misspelled crossing builds nothing and pays nothing', (tester) async {
+    // WELL across, a Q under its E: "EQ" isn't a word, so WELL doesn't count.
+    final container = await openVillageWith(tester, 'WELL', extra: {(_mid + 1) * _size + _mid - 2: 'Q'});
+
+    expect(find.text('New building!'), findsNothing);
+    expect(container.read(portfolioProvider).currency, 0);
+  });
+
+  testWidgets('with a real crossing word the same building builds once and pays once', (tester) async {
+    // A 'L' under the E makes "EL", which the fake dictionary accepts.
+    final container = await openVillageWith(tester, 'WELL', extra: {(_mid + 1) * _size + _mid - 2: 'L'});
+
+    expect(find.text('New building!'), findsOneWidget);
+    expect(container.read(portfolioProvider).currency, 10);
   });
 }

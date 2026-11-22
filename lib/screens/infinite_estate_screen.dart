@@ -146,7 +146,9 @@ class _InfiniteEstateBody extends ConsumerStatefulWidget {
   ConsumerState<_InfiniteEstateBody> createState() => _InfiniteEstateBodyState();
 }
 
-class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implements VillagerHost {
+class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
+    with WidgetsBindingObserver
+    implements VillagerHost {
   int _score = 0;
   // Score value already paid out as currency/XP -- End Session only
   // rewards growth past this, so re-visiting an unchanged village and
@@ -213,6 +215,16 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   Map<String, SpriteMeta> _spriteMeta = const {};
   // Every valid word on the board (repeats included), for tap cards.
   List<WordRun> _wordRuns = const [];
+  // spec-17: runs that aren't words, and letters that aren't settled.
+  List<WordRun> _badRuns = const [];
+  Set<int> _looseCells = const {};
+  // spec-17: an old village is tidied once; the note about letters Mr. W put
+  // back waits here (and in the save) until the player has seen it.
+  bool _tidiedLoose = true;
+  // The latest board/rack/pool, kept so leaving can save without touching ref
+  // (which dispose() may not use).
+  GridGameState? _lastGrid;
+  int _looseNote = 0;
   // The word whose card is open, lit up on the map.
   Set<int> _highlight = const {};
   BoardStructure? _highlightBuilding;
@@ -230,6 +242,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   void initState() {
     super.initState();
     initSpellCheck();
+    WidgetsBinding.instance.addObserver(this);
     _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
@@ -269,6 +282,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _saveTidiedForLeaving();
     _transformController.dispose();
     _villageTransform.dispose();
     _bookNotifier.dispose();
@@ -657,6 +672,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
       _shrines = Set<ShrineKind>.from(migrated.shrines);
       _levelTreats = Set<int>.from(migrated.levelTreats);
       _bookNotifier.value = migrated.villagers;
+      _tidiedLoose = migrated.tidiedLoose;
+      _looseNote = migrated.looseNote;
       // Build the island map for the restored seed.
       _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
       // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
@@ -666,10 +683,22 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
           : FogMap.empty();
       needsSave = saved.saveVersion != migrated.saveVersion;
     }
+    // spec-17: the first time an old village loads, any letters that aren't
+    // in a real word go back to the rack. Nothing already earned is touched.
+    if (saved != null && !_tidiedLoose) {
+      final n = await ref
+          .read(gridGameControllerProvider.notifier)
+          .returnLooseToRack(isValid: ref.read(wordCheckProvider));
+      if (!mounted) return;
+      _looseNote += n;
+      _tidiedLoose = true;
+      needsSave = true;
+    }
     setState(() => _restoring = false);
     // Write the migrated save straight away so migration only ever runs
     // once.
     if (needsSave) await _saveVillage();
+    _showLooseNote();
     // Bring score/structures in sync with whatever board we ended up
     // with (restored or fresh).
     await _refreshStructures();
@@ -677,11 +706,50 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     await _takeGifts();
   }
 
+  // "Mr. W put 3 letters back in your rack", once.
+  void _showLooseNote() {
+    if (!mounted || _looseNote <= 0) return;
+    final n = _looseNote;
+    _looseNote = 0;
+    _saveVillage();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        n == 1
+            ? "Mr. W put 1 letter back in your rack: it wasn't in a word yet."
+            : "Mr. W put $n letters back in your rack: they weren't in a word yet.",
+      ),
+    ));
+  }
+
+  // spec-17: on leaving, loose letters go back to the rack. The village saves
+  // after every change, so this writes the tidied board straight to disk
+  // (using the last scan's loose cells; no dictionary needed, nothing waits).
+  // The note is kept in the save for the next visit.
+  void _saveTidiedForLeaving() {
+    if (_restoring || _looseCells.isEmpty) return;
+    final g = _lastGrid;
+    if (g == null) return;
+    final moved = returnLoose(g.boardCells, g.rackCells, _looseCells);
+    if (moved.count == 0) return;
+    _saveController.save(_snapshot(g, board: moved.board, rack: moved.rack, note: _looseNote + moved.count));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Going to the background may be for good: keep the tidied village on disk
+    // (the screen itself keeps its letters if the player comes straight back).
+    if (state == AppLifecycleState.paused) _saveTidiedForLeaving();
+  }
+
   Future<void> _saveVillage() async {
-    final gridState = ref.read(gridGameControllerProvider);
-    await _saveController.save(VillageSaveData(
-      boardCells: gridState.boardCells,
-      rackCells: gridState.rackCells,
+    await _saveController.save(_snapshot(ref.read(gridGameControllerProvider)));
+  }
+
+  VillageSaveData _snapshot(GridGameState gridState, {List<String?>? board, List<String?>? rack, int? note}) {
+    _lastGrid = gridState;
+    return (VillageSaveData(
+      boardCells: board ?? gridState.boardCells,
+      rackCells: rack ?? gridState.rackCells,
       pool: gridState.pool,
       dealtLetters: gridState.dealtLetters,
       lastCashedOutScore: _lastCashedOutScore,
@@ -697,6 +765,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
       shrines: Set<ShrineKind>.unmodifiable(_shrines),
       levelTreats: Set<int>.unmodifiable(_levelTreats),
       villagers: _book,
+      tidiedLoose: _tidiedLoose,
+      looseNote: note ?? _looseNote,
     ));
   }
 
@@ -828,13 +898,16 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     _computingStructures = true;
     try {
       final controller = ref.read(gridGameControllerProvider.notifier);
-      final runs = await controller.currentWordRuns(isValid: ref.read(wordCheckProvider));
+      final board = await controller.settledBoard(isValid: ref.read(wordCheckProvider));
+      final runs = board.settledRuns;
       if (!mounted) return;
       final structures = computeStructures(runs);
       final newlyDiscovered = newDiscoveries(structures, _discoveredWords);
       setState(() {
         _structures = structures;
         _wordRuns = runs;
+        _badRuns = board.badRuns;
+        _looseCells = board.looseCells;
         _scene = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
@@ -1219,8 +1292,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
   Future<void> _openWordCard(int index) async {
     final runs = _wordRuns.where((r) => r.positions.contains(index)).toList()
       ..sort((a, b) => (a.across ? 0 : 1).compareTo(b.across ? 0 : 1));
-    if (runs.isEmpty) {
-      await showVillageSheet<void>(context, const NotAWordCard());
+    if (runs.isEmpty || _looseCells.contains(index)) {
+      final bad = _badRuns.where((r) => r.positions.contains(index)).toList();
+      await showVillageSheet<void>(context, NotAWordCard(run: bad.isEmpty ? null : bad.first.word));
       return;
     }
     setState(() => _highlight = runs.first.positions.toSet());
@@ -1353,6 +1427,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
     // keeps the persisted village current without the player needing to
     // press anything or remember to save before leaving.
     ref.listen(gridGameControllerProvider, (previous, next) {
+      _lastGrid = next;
       if (previous?.boardCells != next.boardCells) {
         _refreshStructures();
       }
@@ -1470,6 +1545,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody> implem
                                       cellOverlay: _fogOverlay,
                                       canDropAt: _fog.canSee,
                                       cellMarker: (i) => _wordsMarker(i, standing),
+                                      looseCells: _looseCells,
+                                      onLooseTap: _openWordCard,
                                     )
                                   : Builder(builder: (context) {
                                       final scene = _villageScene();

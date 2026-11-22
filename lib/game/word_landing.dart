@@ -39,30 +39,87 @@ class TileLandingNotifier extends StateNotifier<TileLanding?> {
     if (prev.boardCells.length != next.boardCells.length) return;
     _boardVersion++;
 
-    // Exactly one empty cell must have gained a letter. Zero is a pick-up
-    // or rack-only change; more than one is a restore.
+    // At most one empty cell may have gained a letter. More than one is a
+    // restore. Letters that left a cell matter too: taking away a bad
+    // crossing can settle the word beside it.
     int? placed;
+    final removed = <int>[];
     for (int i = 0; i < next.boardCells.length; i++) {
-      if (prev.boardCells[i] == null && next.boardCells[i] != null) {
+      final before = prev.boardCells[i];
+      final after = next.boardCells[i];
+      if (before == null && after != null) {
         if (placed != null) return;
         placed = i;
+      } else if (before != null && after == null) {
+        removed.add(i);
       }
     }
-    if (placed == null) return;
+    if (placed == null && removed.isEmpty) return;
 
     final seq = ++_seq;
-    state = TileLanding(seq, placed, const []);
-    _checkWords(seq, _boardVersion, next, placed);
+    if (placed != null) state = TileLanding(seq, placed, const []);
+    _checkWords(seq, _boardVersion, prev, next, placed, removed);
   }
 
-  Future<void> _checkWords(int seq, int boardVersion, GridGameState board, int placed) async {
-    final runs = runsThrough(board.boardCells, board.config.boardWidth, board.config.boardHeight, placed);
-    final valid = <WordRun>[];
-    for (final run in runs) {
-      if (await _wordCheck(run.word)) valid.add(run);
+  Future<void> _checkWords(
+    int seq,
+    int boardVersion,
+    GridGameState before,
+    GridGameState board,
+    int? placed,
+    List<int> removed,
+  ) async {
+    final w = board.config.boardWidth;
+    final h = board.config.boardHeight;
+    final candidates = <int>[
+      if (placed != null) placed,
+      for (final r in removed) ..._neighbours(r, w, h).where((n) => board.boardCells[n] != null),
+    ];
+    // Only words that are settled now and weren't before count as landing:
+    // a word with a misspelled crossing stays quiet until it is fixed.
+    final now = await _settledThrough(board.boardCells, w, h, candidates);
+    final was = placed == null && removed.isEmpty
+        ? const <WordRun>[]
+        : await _settledThrough(before.boardCells, w, h, candidates);
+    final fresh = [
+      for (final run in now)
+        if (!was.contains(run)) run,
+    ];
+    if (!mounted || seq != _seq || boardVersion != _boardVersion || fresh.isEmpty) return;
+    state = TileLanding(seq, placed ?? fresh.first.positions.first, fresh);
+  }
+
+  Iterable<int> _neighbours(int i, int w, int h) sync* {
+    final r = i ~/ w, c = i % w;
+    if (r > 0) yield i - w;
+    if (r < h - 1) yield i + w;
+    if (c > 0) yield i - 1;
+    if (c < w - 1) yield i + 1;
+  }
+
+  // Valid runs through [indices] whose every letter is settled (every run
+  // through every letter is a real word).
+  Future<List<WordRun>> _settledThrough(List<String?> cells, int w, int h, Iterable<int> indices) async {
+    final cache = <String, bool>{};
+    Future<bool> ok(String word) async => cache[word] ??= await _wordCheck(word);
+    final out = <WordRun>[];
+    for (final idx in indices) {
+      for (final run in runsThrough(cells, w, h, idx)) {
+        if (out.contains(run) || !await ok(run.word)) continue;
+        var settled = true;
+        for (final p in run.positions) {
+          for (final cross in runsThrough(cells, w, h, p)) {
+            if (!await ok(cross.word)) {
+              settled = false;
+              break;
+            }
+          }
+          if (!settled) break;
+        }
+        if (settled) out.add(run);
+      }
     }
-    if (!mounted || seq != _seq || boardVersion != _boardVersion || valid.isEmpty) return;
-    state = TileLanding(seq, placed, valid);
+    return out;
   }
 }
 

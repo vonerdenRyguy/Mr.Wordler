@@ -53,6 +53,23 @@ void main() {
     expect(landing()!.words, [const WordRun('CAT', [0, 1, 2], true)]);
   });
 
+  test('CAT with a misspelled crossing stays quiet until the crossing is fixed', () async {
+    setUpWith((w) async => realWords.contains(w));
+    // C A T across row 0, then X under the A ("AX" is no word here).
+    place(0, 0);
+    place(1, 1);
+    place(2, 2);
+    await pumpEventQueue();
+    expect(landing()!.words, isNotEmpty); // CAT on its own settles
+    place(3, 6); // X under A
+    await pumpEventQueue();
+    expect(landing()!.words, isEmpty);
+    // Move X away: CAT settles again and lands.
+    controller.moveTile(const TileLocation(TileZone.board, 6), const TileLocation(TileZone.board, 20));
+    await pumpEventQueue();
+    expect(landing()!.words.map((r) => r.word), ['CAT']);
+  });
+
   test('an invalid run (CX) emits no words', () async {
     setUpWith((w) async => realWords.contains(w));
     place(0, 0);
