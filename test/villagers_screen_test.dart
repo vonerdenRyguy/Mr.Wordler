@@ -89,7 +89,7 @@ void main() {
     expect(find.text('1/12'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     final saved = jsonDecode(prefs.getString('infiniteEstateVillageSave')!) as Map<String, dynamic>;
-    expect(saved['saveVersion'], 5);
+    expect(saved['saveVersion'], 6);
     final v = (saved['villagers'] as List).single as Map<String, dynamic>;
     expect(v['id'], tile.id);
     expect(v['name'], 'Captain Zed');

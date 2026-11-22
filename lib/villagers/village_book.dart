@@ -68,6 +68,19 @@ class Villager {
         presentClaimed: presentClaimed ?? this.presentClaimed,
       );
 
+  /// The same villager with a new home cell (spec-18's move to Letterra).
+  Villager moved(int newCell) => Villager(
+        id: id,
+        name: name,
+        cell: newCell,
+        hearts: hearts,
+        wish: wish,
+        nextWishOn: nextWishOn,
+        granted: granted,
+        movedInWord: movedInWord,
+        presentClaimed: presentClaimed,
+      );
+
   static const _keep = Object();
 
   Map<String, dynamic> toJson() => {

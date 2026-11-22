@@ -83,14 +83,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a v4 village with a stray letter tidies once, saves v5 and says so', (tester) async {
+  testWidgets('a v4 village with a stray letter tidies once, saves the current version and says so', (tester) async {
     SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 4))});
     final container = await openVillage(tester);
 
     expect(sawNote, isTrue);
     expect(container.read(portfolioProvider).currency, 0); // nothing earned or lost
     var json = await savedJson();
-    expect(json['saveVersion'], 5);
+    expect(json['saveVersion'], 6);
     expect(json['tidiedLoose'], true);
     expect(json['looseNote'], 0); // told
     expect((json['boardCells'] as List)[_qCell], isNull);
