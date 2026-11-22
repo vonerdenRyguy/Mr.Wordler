@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../components/valid_word_check.dart' show WordValidator;
+import '../game/word_runs.dart' show settle;
 import '../daily/daily_challenge_controller.dart';
 import '../daily/daily_puzzle.dart';
 import '../daily/word_of_the_day.dart';
@@ -126,7 +126,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     const size = InfiniteEstateScreen.boardSize;
     final runs =
-        await WordValidator().findValidRuns(saved.boardCells, size, size, isValid: ref.read(wordCheckProvider));
+        (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
     final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
