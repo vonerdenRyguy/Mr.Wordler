@@ -35,6 +35,7 @@ Map<String, dynamic> _save({required int version, bool tidied = false, int note 
     'saveVersion': version,
     if (version >= 5) 'tidiedLoose': tidied,
     if (version >= 5) 'looseNote': note,
+    if (version >= 6) 'planet': {'slot': 0},
   };
 }
 
@@ -111,7 +112,7 @@ void main() {
   });
 
   testWidgets('leaving puts loose letters back in the rack; the next visit says so once', (tester) async {
-    SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 5, tidied: true))});
+    SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 6, tidied: true))});
     await openVillage(tester);
     // Already tidied, so the stray Q is still on the board and no note shows.
     expect(sawNote, isFalse);

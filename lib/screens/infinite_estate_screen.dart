@@ -8,6 +8,8 @@ import '../dictionary/definition_service.dart';
 import '../explore/explore_rules.dart';
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
+import '../letterra/band_info.dart';
+import '../letterra/planet.dart';
 import '../portfolio/level_info.dart';
 import '../settings/settings_controller.dart' show settingsProvider;
 import 'island_map_screen.dart';
@@ -166,6 +168,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   late IslandMap _islandMap;
   FogMap _fog = FogMap.empty(); // replaced once the save loads
   int _mapSeed = VillageSaveData.kDefaultMapSeed;
+  // spec-18: the harbor spot this village sits on, and (for a moved village)
+  // the save version it came from.
+  int _slot = 0;
+  int? _migratedFrom;
+  int get _harborIndex => harborCell(_slot);
   int _mapVersion = VillageSaveData.kDefaultMapVersion;
   Set<int> _everUsed = {};
   Set<String> _everWords = {};
@@ -248,7 +255,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     super.initState();
     initSpellCheck();
     WidgetsBinding.instance.addObserver(this);
-    _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+    _islandMap = IslandMap.letterra(seed: _mapSeed, slot: _slot);
     _loadSavedVillage();
     VillageArt.loadMeta().then((meta) {
       if (mounted) setState(() => _spriteMeta = meta);
@@ -278,7 +285,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   void _centerVillageIfNeeded(Size viewportSize, VillageScene scene) {
     if (_villageCentered) return;
     _villageCentered = true;
-    final center = scene.lettersCenter();
+    final center = scene.lettersCenter(emptyCell: _harborIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _villageTransform.value = isoTransformCenteredOn(center.r, center.c, viewportSize, 1.0, _isoGrid);
@@ -306,6 +313,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (!_fog.isCleared(index)) {
       if (_fog.canSee(index)) return const Color(0x55888888); // edge haze
       return const Color(0xCC555555); // solid fog
+    }
+    // spec-18: open sea is blue; a letter standing in it is a pier (wood).
+    if (_islandMap.isSeaIndex(index)) {
+      return ref.read(gridGameControllerProvider).boardCells[index] != null
+          ? const Color(0x88805A2A)
+          : const Color(0x99286FA8);
     }
     // Subtle ring tint for cleared cells (water = blue; others uncolored).
     if (_islandMap.isWaterIndex(index)) return const Color(0x44448BCA);
@@ -436,11 +449,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // about places. Looks at the area around home, where all the rings are.
   Set<Ring> _seenRings() {
     const bw = InfiniteEstateScreen.boardSize;
-    const homeR = InfiniteEstateScreen.homeIndex ~/ bw;
-    const homeC = InfiniteEstateScreen.homeIndex % bw;
+    final homeR = _harborIndex ~/ bw;
+    final homeC = _harborIndex % bw;
     final seen = <Ring>{};
-    for (var dr = -80; dr <= 80 && seen.length < 4; dr += 2) {
-      for (var dc = -80; dc <= 80; dc += 2) {
+    for (var dr = -110; dr <= 110 && seen.length < 4; dr += 2) {
+      for (var dc = -110; dc <= 110; dc += 2) {
+        if (homeR + dr < 0 || homeR + dr >= bw || homeC + dc < 0 || homeC + dc >= bw) continue;
         final idx = (homeR + dr) * bw + homeC + dc;
         if (!_fog.isCleared(idx)) continue;
         seen.add(_islandMap.ringAtIndex(idx));
@@ -655,7 +669,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (saved != null) {
       // Older saves (21-letter rack) are brought up to the current format
       // first; the extra letters go back to the pool, nothing is lost.
-      final migrated = migrateVillageSave(saved, rackSize: InfiniteEstateScreen.rackSize);
+      final migrated = migrateVillageSave(saved,
+          rackSize: InfiniteEstateScreen.rackSize, planetSlot: saved.planetSlot ?? 0);
       final controller = ref.read(gridGameControllerProvider.notifier);
       controller.restoreState(
         boardCells: migrated.boardCells,
@@ -682,7 +697,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _looseNote = migrated.looseNote;
       _keptRuns = migrated.keptRuns;
       // Build the island map for the restored seed.
-      _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+      _slot = migrated.planetSlot ?? 0;
+      _migratedFrom = migrated.migratedFrom;
+      _islandMap = IslandMap.letterra(seed: _mapSeed, slot: _slot);
       // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
       final clearedB64 = migrated.cleared;
       _fog = clearedB64 != null
@@ -707,6 +724,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _looseNote += n;
       _tidiedLoose = true;
       needsSave = true;
+    }
+    if (saved == null) {
+      // A brand-new village starts on the shore with a clear patch round it.
+      _fog = FogMap.empty().clearAround([_harborIndex], radius: 6);
     }
     setState(() => _restoring = false);
     // Write the migrated save straight away so migration only ever runs
@@ -794,6 +815,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       looseNote: note ?? _looseNote,
       bag: bag ?? gridState.bag,
       keptRuns: _keptRuns,
+      planetSlot: _slot,
+      migratedFrom: _migratedFrom,
     ));
   }
 
@@ -1020,9 +1043,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (_hintsLeft <= 0) return;
     final level = ref.read(settingsProvider).wordLevel;
     const bw = InfiniteEstateScreen.boardSize;
-    const homeR = InfiniteEstateScreen.homeIndex ~/ bw;
-    const homeC = InfiniteEstateScreen.homeIndex % bw;
-    const halfCells = 100;
+    final homeR = _harborIndex ~/ bw;
+    final homeC = _harborIndex % bw;
+    const halfCells = 110;
 
     Ring? nearestRing;
     var minLen = 999;
@@ -1033,6 +1056,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         if (r < 0 || r >= bw || c < 0 || c >= bw) continue;
         final idx = r * bw + c;
         if (!_fog.canSee(idx)) continue;
+        if (_islandMap.isSeaIndex(idx)) continue;
         final ring = _islandMap.ringAtIndex(idx);
         if (ring == Ring.coast) continue;
         final len = minLength(ring, level);
@@ -1082,6 +1106,31 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       message: 'Your village is growing. Keep exploring!',
       coins: 0,
       buttonLabel: 'Onward!',
+    );
+  }
+
+  // spec-18: the band under the centre of the view, with its word length.
+  Widget _bandChip(Size viewport) {
+    const bw = InfiniteEstateScreen.boardSize;
+    final cell = _viewMode == _ViewMode.words
+        ? centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
+            boardWidth: bw, boardHeight: bw)
+        : centerCellOfIsoView(_villageTransform.value, viewport, _isoGrid);
+    final index = cell.r * bw + cell.c;
+    final text = bandChipText(
+      _islandMap.bandAtIndex(index),
+      ref.read(settingsProvider).wordLevel,
+      bay: _islandMap.isSeaIndex(index) && _islandMap.bandAtIndex(index) != Band.deep,
+    );
+    return Container(
+      key: const ValueKey('band-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: WColors.white.withOpacity(0.92),
+        border: Border.all(color: WColors.ink, width: 2),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(text, style: WText.bodyBold.copyWith(fontSize: 14, color: WColors.ink)),
     );
   }
 
@@ -1191,7 +1240,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (_viewCentered) return;
     _viewCentered = true;
     // The middle of all the letters (the board center if there are none).
-    final center = _villageScene().lettersCenter();
+    final center = _villageScene().lettersCenter(emptyCell: _harborIndex);
     final centerIndex = center.r * InfiniteEstateScreen.boardSize + center.c;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1577,7 +1626,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                                       stripes: stripes,
                                       // spec-15: fog overlay and drop gate.
                                       cellOverlay: _fogOverlay,
-                                      canDropAt: _fog.canSee,
+                                      canDropAt: (i) => _fog.canSee(i) && !_islandMap.isSeaIndex(i),
                                       cellMarker: (i) => _wordsMarker(i, standing),
                                       looseCells: _looseCells,
                                       onLooseTap: _openWordCard,
@@ -1602,6 +1651,17 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                                         markers: _markers(),
                                       );
                                     }),
+                            ),
+                          ),
+                          // spec-18: which band is under the middle of the view.
+                          Positioned(
+                            left: 8,
+                            bottom: 8,
+                            child: IgnorePointer(
+                              child: ValueListenableBuilder<Matrix4>(
+                                valueListenable: _viewMode == _ViewMode.words ? _transformController : _villageTransform,
+                                builder: (context, _, __) => _bandChip(constraints.biggest),
+                              ),
                             ),
                           ),
                         ],

@@ -108,8 +108,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _loadVillage() async {
     final generation = ++_loadGeneration;
-    final saved = await VillageSaveController().load();
+    final raw = await VillageSaveController().load();
     if (!mounted || generation != _loadGeneration) return;
+    // Shown as it will be once the village opens on Letterra (spec-18); the
+    // stored save is only rewritten by the village screen.
+    final saved = raw == null
+        ? null
+        : migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
     if (saved == null || saved.boardCells.every((c) => c == null)) {
       setState(() => _village = (
             hasSave: saved != null,
@@ -144,9 +149,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     // The same fog and outlines as the village (spec-16): an old save gets its
     // fog worked out the way the village does when it opens.
-    final migrated = migrateVillageSave(saved, rackSize: InfiniteEstateScreen.rackSize);
+    final migrated = saved;
     final fog = migrated.cleared == null ? null : FogMap.fromBase64(migrated.cleared!);
-    final islandMap = IslandMap(seed: migrated.mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+    final islandMap = IslandMap.letterra(seed: migrated.mapSeed, slot: migrated.planetSlot ?? 0);
     final markers = [
       for (final sp in islandMap.specials)
         if (sp.kind == SpecialKind.villager ? !migrated.villagers.isMet(sp.id) : !migrated.foundSpecials.contains(sp.id))

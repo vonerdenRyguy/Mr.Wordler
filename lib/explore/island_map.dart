@@ -300,6 +300,19 @@ class IslandMap {
   Ring ringAtIndex(int index) =>
       ringAt(index ~/ boardWidth, index % boardWidth);
 
+  /// The Letterra band of cell [index] (legacy maps have none: the Deep
+  /// stands in for off-island cells).
+  Band bandAtIndex(int index) => bandAt(index ~/ boardWidth, index % boardWidth);
+
+  /// Letterra: whether cell [index] is open sea (the Deep, or an open bay of
+  /// an empty harbor spot). No new tile may go there; a letter already there
+  /// is a pier.
+  bool isSeaIndex(int index) {
+    if (!isLetterra) return false;
+    final r = index ~/ boardWidth, c = index % boardWidth;
+    return bandAt(r, c) == Band.deep || isBay(r, c, takenSlots);
+  }
+
   /// Whether ([row], [col]) is a water (river-ring) cell.
   bool isWater(int row, int col) => ringAt(row, col) == Ring.river;
 

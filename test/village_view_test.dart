@@ -41,7 +41,8 @@ void main() {
         'dealtLetters': [...'WELLCAT'.split(''), ...List<String>.filled(10, 'E')],
         'lastCashedOutScore': 0,
         'discoveredWords': ['WELL'],
-        'saveVersion': 2,
+        'saveVersion': 6,
+        'planet': {'slot': 0},
       }),
     });
   });

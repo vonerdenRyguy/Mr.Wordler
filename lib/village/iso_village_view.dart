@@ -189,8 +189,11 @@ class VillageScene {
   }
 
   /// Center of all letters (or the board center if empty), as a cell.
-  ({int r, int c}) lettersCenter() {
-    if (occupied.isEmpty) return (r: grid.boardHeight ~/ 2, c: grid.boardWidth ~/ 2);
+  ({int r, int c}) lettersCenter({int? emptyCell}) {
+    if (occupied.isEmpty) {
+      if (emptyCell != null) return (r: emptyCell ~/ grid.boardWidth, c: emptyCell % grid.boardWidth);
+      return (r: grid.boardHeight ~/ 2, c: grid.boardWidth ~/ 2);
+    }
     var rs = 0, cs = 0;
     for (final i in occupied) {
       rs += rowOf(i);
@@ -430,6 +433,7 @@ class IsoVillagePainter extends CustomPainter {
     final cMax = corners.map((p) => p.c).reduce(max).ceil().clamp(0, grid.boardWidth - 1);
 
     _paintGrass(canvas, area, rMin, rMax, cMin, cMax);
+    if (islandMap?.isLetterra ?? false) _paintSea(canvas, area, rMin, rMax, cMin, cMax);
     if (fog != null) _paintFog(canvas, area, rMin, rMax, cMin, cMax);
     _paintMarkers(canvas, area);
 
@@ -496,6 +500,24 @@ class IsoVillagePainter extends CustomPainter {
       }
     }
     canvas.drawPath(checker, Paint()..color = _grassB);
+  }
+
+  // Letterra: open sea (the Deep and empty bays) in blue; a letter standing
+  // in the sea is a pier, a wooden slab on the water.
+  void _paintSea(Canvas canvas, Rect area, int rMin, int rMax, int cMin, int cMax) {
+    final map = islandMap!;
+    final water = Path(), wood = Path();
+    for (int r = rMin; r <= rMax; r++) {
+      for (int c = cMin; c <= cMax; c++) {
+        final g = grid.ground(r, c);
+        if (!area.contains(g)) continue;
+        final index = r * grid.boardWidth + c;
+        if (!map.isSeaIndex(index)) continue;
+        (scene.boardCells[index] != null ? wood : water).addPath(_diamond(g, 1.0), Offset.zero);
+      }
+    }
+    if (!water.getBounds().isEmpty) canvas.drawPath(water, Paint()..color = const Color(0xFF3E86C4));
+    if (!wood.getBounds().isEmpty) canvas.drawPath(wood, Paint()..color = const Color(0xFF9A7440));
   }
 
   void _paintFog(Canvas canvas, Rect area, int rMin, int rMax, int cMin, int cMax) {
