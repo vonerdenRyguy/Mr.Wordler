@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import '../letterra/planet.dart';
+
 // ── Enumerations ─────────────────────────────────────────────────────────────
 
 /// Each ring on the island, ordered outward from the village centre.
@@ -127,6 +129,15 @@ const _boulderLetters = [
   'B', 'C', 'D', 'F', 'G', 'H', 'L', 'M', 'N', 'P', 'R', 'S', 'T', //
 ];
 
+/// Which layout an [IslandMap] uses.
+enum MapLayout {
+  /// The pre-spec-18 square rings round the home cell. Kept for migration.
+  legacy,
+
+  /// Letterra (spec-18): round bands round the Lantern, harbor on the shore.
+  letterra,
+}
+
 // ── IslandMap ─────────────────────────────────────────────────────────────────
 
 /// The island's fixed layout: rings and special tiles.
@@ -152,18 +163,91 @@ class IslandMap {
   /// Count of non-coast cells (Meadow through Mountains) for explored-fraction.
   late final int reachableCellCount;
 
+  /// Which layout this map uses.
+  final MapLayout layout;
+
+  /// Letterra only: the harbor spot this map's village sits on.
+  final int slot;
+
+  /// Letterra only: harbor spots somebody holds; the rest are open bays.
+  final Set<int> takenSlots;
+
   IslandMap({
     required this.seed,
     required this.homes,
     this.boardWidth = 500,
     this.boardHeight = 500,
+    this.layout = MapLayout.legacy,
+    this.slot = 0,
+    this.takenSlots = const {0},
   }) {
     specials = _generateSpecials();
     _byCell = {for (final s in specials) s.cell: s};
     reachableCellCount = _countReachable();
   }
 
+  /// The Letterra map for the person on harbor [slot] (spec-18). Only the
+  /// first villager depends on the slot; everything else is the same for
+  /// everyone with the same [seed].
+  factory IslandMap.letterra({
+    required int seed,
+    int slot = 0,
+    Set<int>? takenSlots,
+  }) =>
+      IslandMap(
+        seed: seed,
+        homes: [harborCell(slot)],
+        boardWidth: kPlanetBoard,
+        boardHeight: kPlanetBoard,
+        layout: MapLayout.letterra,
+        slot: slot,
+        takenSlots: takenSlots ?? {slot},
+      );
+
+  bool get isLetterra => layout == MapLayout.letterra;
+
+  /// The Ring a Letterra [Band] plays by (Shore counts as Meadow; the Cloud
+  /// Cap, the Peak and the Deep can't clear fog yet).
+  static Ring ringForBand(Band b) => switch (b) {
+        Band.sunnyShore || Band.meadow => Ring.meadow,
+        Band.whisperWoods => Ring.forest,
+        Band.ribbonRiver => Ring.river,
+        Band.ruinHills => Ring.hills,
+        Band.echoMountains => Ring.mountains,
+        Band.cloudCap || Band.northPeak || Band.deep => Ring.coast,
+      };
+
+  /// Letterra: every cell a special may use, per ring (row-major order, so
+  /// picks are deterministic). Never in any harbor's wedge.
+  late final Map<Ring, List<int>> _letterraCells = _scanLetterra();
+
+  Map<Ring, List<int>> _scanLetterra() {
+    final out = {for (final r in Ring.values) r: <int>[]};
+    const lo = kLanternRow - 124, hi = kLanternRow + 124;
+    for (var r = lo; r <= hi; r++) {
+      for (var c = lo; c <= hi; c++) {
+        final ring = ringForBand(bandAt(r, c));
+        if (ring == Ring.coast) continue;
+        if (inAnyWedge(r, c)) continue;
+        out[ring]!.add(r * boardWidth + c);
+      }
+    }
+    return out;
+  }
+
   int _countReachable() {
+    if (isLetterra) {
+      var count = 0;
+      const lo = kLanternRow - 124, hi = kLanternRow + 124;
+      for (var r = lo; r <= hi; r++) {
+        for (var c = lo; c <= hi; c++) {
+          if (ringForBand(bandAt(r, c)) == Ring.coast) continue;
+          if (isBay(r, c, takenSlots)) continue;
+          count++;
+        }
+      }
+      return count;
+    }
     // Count all cells that belong to a non-coast ring.
     if (homes.isEmpty) return 0;
     final homeR = homes.first ~/ boardWidth;
@@ -202,6 +286,7 @@ class IslandMap {
     if (row < 0 || row >= boardHeight || col < 0 || col >= boardWidth) {
       return Ring.coast;
     }
+    if (isLetterra) return ringForBand(bandAt(row, col));
     final d = _distFromHome(row, col);
     if (d <= _meadowMax) return Ring.meadow;
     if (d <= _forestMax) return Ring.forest;
@@ -354,7 +439,13 @@ class IslandMap {
         if (r < 0 || c < 0 || r >= boardHeight || c >= boardWidth) continue;
         final d = math.max((r - hr).abs(), (c - hc).abs());
         final cell = r * boardWidth + c;
-        if (d >= 4 && !used.contains(cell)) near.add(cell);
+        if (d < 4 || used.contains(cell)) continue;
+        // Letterra: stay on land (not the Deep, not an open bay).
+        if (isLetterra &&
+            (ringAt(r, c) == Ring.coast || isBay(r, c, takenSlots))) {
+          continue;
+        }
+        near.add(cell);
       }
     }
     if (near.isNotEmpty) add(near[rng.nextInt(near.length)]);
@@ -382,7 +473,12 @@ class IslandMap {
     Set<int> used, {
     required bool waterOk,
   }) {
-    final candidates = _cellsInRing(ring, waterOk: waterOk);
+    final candidates = isLetterra
+        ? [
+            for (final c in _letterraCells[ring]!)
+              if (waterOk || !isWater(c ~/ boardWidth, c % boardWidth)) c
+          ]
+        : _cellsInRing(ring, waterOk: waterOk);
     // Fisher-Yates shuffle drawing from the shared RNG so placement is
     // globally deterministic.
     for (var i = candidates.length - 1; i > 0; i--) {
