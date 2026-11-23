@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../explore/island_map.dart';
+import '../game/word_runs.dart' show WordRun;
 import '../players/players.dart';
 import '../villagers/village_book.dart';
 
@@ -29,6 +30,11 @@ import '../villagers/village_book.dart';
 //                         back to the rack once for this old village.
 //   looseNote           — how many letters Mr. W put back; shown once on the
 //                         next visit, then 0.
+//   bag                 — the letter bag: letters that don't fit the 10-letter
+//                         rack wait here (optional; absent = empty).
+//   keptRuns            — words already standing when the real-words rule
+//                         arrived; their buildings stay until a letter moves
+//                         (optional; absent = none).
 class VillageSaveData {
   final List<String?> boardCells;
   final List<String?> rackCells;
@@ -82,6 +88,13 @@ class VillageSaveData {
   /// about yet.
   final int looseNote;
 
+  /// spec-17 letter bag.
+  final List<String> bag;
+
+  /// spec-17: words that stood on the board when the rule arrived (see
+  /// `settle`'s `kept`).
+  final List<WordRun> keptRuns;
+
   static const int currentVersion = 5;
 
   /// The fixed seed for the spec-15 island map.
@@ -108,6 +121,8 @@ class VillageSaveData {
     this.villagers = const VillagerBook(),
     this.tidiedLoose = false,
     this.looseNote = 0,
+    this.bag = const [],
+    this.keptRuns = const [],
   });
 
   VillageSaveData copyWith({int? saveVersion, VillagerBook? villagers}) => VillageSaveData(
@@ -130,6 +145,8 @@ class VillageSaveData {
         villagers: villagers ?? this.villagers,
         tidiedLoose: tidiedLoose,
         looseNote: looseNote,
+        bag: bag,
+        keptRuns: keptRuns,
       );
 
   Map<String, dynamic> toJson() => {
@@ -155,6 +172,11 @@ class VillageSaveData {
         // spec-17
         'tidiedLoose': tidiedLoose,
         'looseNote': looseNote,
+        if (bag.isNotEmpty) 'bag': bag,
+        if (keptRuns.isNotEmpty)
+          'keptRuns': [
+            for (final r in keptRuns) {'w': r.word, 'p': r.positions, 'a': r.across},
+          ],
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -184,6 +206,15 @@ class VillageSaveData {
         villagers: VillagerBook.fromJson(json['villagers']),
         tidiedLoose: json['tidiedLoose'] as bool? ?? false,
         looseNote: json['looseNote'] as int? ?? 0,
+        bag: (json['bag'] as List?)?.cast<String>() ?? const [],
+        keptRuns: [
+          for (final r in (json['keptRuns'] as List?) ?? const [])
+            WordRun(
+              (r as Map)['w'] as String,
+              (r['p'] as List).cast<int>(),
+              r['a'] as bool? ?? true,
+            ),
+        ],
       );
 }
 

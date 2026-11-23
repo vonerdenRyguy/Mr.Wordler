@@ -24,7 +24,7 @@ void main() {
   final words = parseWordsOfTheDay(File('assets/words/word_of_the_day.json').readAsStringSync());
 
   Future<ProviderContainer> openVillageWith(WidgetTester tester, String wordOnBoard,
-      {Map<int, String> extra = const {}}) async {
+      {Map<int, String> extra = const {}, int version = 2}) async {
     final board = List<String?>.filled(_size * _size, null);
     wordOnBoard.split('').asMap().forEach((i, l) => board[_mid * _size + _mid - 3 + i] = l);
     extra.forEach((index, l) => board[index] = l);
@@ -36,7 +36,7 @@ void main() {
         'dealtLetters': [...wordOnBoard.split(''), ...List<String>.filled(10, 'E')],
         'lastCashedOutScore': 0,
         'discoveredWords': <String>[],
-        'saveVersion': 2,
+        'saveVersion': version,
         'tidiedLoose': true,
       }),
     });
@@ -137,7 +137,7 @@ void main() {
 
   testWidgets('a word with a misspelled crossing builds nothing and pays nothing', (tester) async {
     // WELL across, a Q under its E: "EQ" isn't a word, so WELL doesn't count.
-    final container = await openVillageWith(tester, 'WELL', extra: {(_mid + 1) * _size + _mid - 2: 'Q'});
+    final container = await openVillageWith(tester, 'WELL', extra: {(_mid + 1) * _size + _mid - 2: 'Q'}, version: 5);
 
     expect(find.text('New building!'), findsNothing);
     expect(container.read(portfolioProvider).currency, 0);

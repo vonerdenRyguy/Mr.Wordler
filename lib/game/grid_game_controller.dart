@@ -87,7 +87,15 @@ class GridGameController extends StateNotifier<GridGameState> {
         to.zone == TileZone.board &&
         from.index < state.config.rackSize &&
         rack.whereType<String>().length < state.config.rackSize &&
-        state.pool.isNotEmpty) {
+        (state.bag.isNotEmpty || state.pool.isNotEmpty)) {
+      // The bag empties first; nothing is dealt from the pool until it is.
+      if (state.bag.isNotEmpty) {
+        final newBag = List<String>.from(state.bag);
+        rack = List<String?>.from(rack);
+        rack[from.index] = newBag.removeAt(0);
+        state = state.copyWith(boardCells: board, rackCells: rack, bag: newBag);
+        return;
+      }
       final newPool = List<String>.from(state.pool);
       // `rack` still has this slot empty, which is exactly what
       // drawBalanced expects.
@@ -181,17 +189,27 @@ class GridGameController extends StateNotifier<GridGameState> {
     final base = state.config.rackSize;
     final rack = List<String?>.from(state.rackCells);
     final pool = List<String>.from(state.pool);
+    final bag = List<String>.from(state.bag);
     final drawnLetters = <String>[];
-    for (int i = 0; i < base && i < rack.length && pool.isNotEmpty; i++) {
+    var changed = false;
+    for (int i = 0; i < base && i < rack.length; i++) {
       if (rack[i] != null) continue;
+      if (bag.isNotEmpty) {
+        rack[i] = bag.removeAt(0);
+        changed = true;
+        continue;
+      }
+      if (pool.isEmpty) break;
       final drawn = _drawRefill(pool, rack);
       rack[i] = drawn;
       drawnLetters.add(drawn);
+      changed = true;
     }
-    if (drawnLetters.isEmpty) return;
+    if (!changed) return;
     state = state.copyWith(
       rackCells: rack,
       pool: pool,
+      bag: bag,
       dealtLetters: [...state.dealtLetters, ...drawnLetters],
     );
   }
@@ -246,9 +264,10 @@ class GridGameController extends StateNotifier<GridGameState> {
     final pool = List<String>.from(state.pool)..shuffle();
     final drawn = pool.removeLast();
     final rack = List<String?>.from(state.rackCells);
-    final emptyIndex = rack.indexWhere((c) => c == null);
+    final emptyIndex = _firstEmptyBaseSlot(rack);
+    var bag = state.bag;
     if (emptyIndex == -1) {
-      rack.add(drawn);
+      bag = [...bag, drawn];
     } else {
       rack[emptyIndex] = drawn;
     }
@@ -256,18 +275,48 @@ class GridGameController extends StateNotifier<GridGameState> {
     state = state.copyWith(
       rackCells: rack,
       pool: pool,
+      bag: bag,
       dealtLetters: [...state.dealtLetters, drawn],
     );
     return true;
   }
 
-  // Adds a given letter (a gift from the family, spec-10) as a new bonus
-  // slot at the end of the rack, on top of the base rack. It doesn't come
-  // from the pool. Returns the rack index it went to.
+  int _firstEmptyBaseSlot(List<String?> rack) {
+    for (int i = 0; i < state.config.rackSize && i < rack.length; i++) {
+      if (rack[i] == null) return i;
+    }
+    return -1;
+  }
+
+  // Adds a given letter (a gift from the family, spec-10). It doesn't come
+  // from the pool. It takes an empty rack slot if there is one; otherwise
+  // it waits in the letter bag (spec-17), so the rack never grows. Returns
+  // the rack index it went to, or -1 when it went to the bag.
   int addGiftLetter(String letter) {
-    final rack = List<String?>.from(state.rackCells)..add(letter);
+    final rack = List<String?>.from(state.rackCells);
+    final slot = _firstEmptyBaseSlot(rack);
+    if (slot == -1) {
+      state = state.copyWith(bag: [...state.bag, letter], dealtLetters: [...state.dealtLetters, letter]);
+      return -1;
+    }
+    rack[slot] = letter;
     state = state.copyWith(rackCells: rack, dealtLetters: [...state.dealtLetters, letter]);
-    return rack.length - 1;
+    return slot;
+  }
+
+  // Swaps a bag letter with a rack letter (or, for an empty slot, just
+  // moves it in). Returns false when either index is out of range.
+  bool swapBagWithRack(int bagIndex, int rackIndex) {
+    if (bagIndex < 0 || bagIndex >= state.bag.length) return false;
+    if (rackIndex < 0 || rackIndex >= state.rackCells.length) return false;
+    final bag = List<String>.from(state.bag);
+    final rack = List<String?>.from(state.rackCells);
+    final incoming = bag.removeAt(bagIndex);
+    final outgoing = rack[rackIndex];
+    rack[rackIndex] = incoming;
+    if (outgoing != null) bag.add(outgoing);
+    state = state.copyWith(rackCells: rack, bag: bag);
+    return true;
   }
 
   // Replaces the current board/rack/pool wholesale, e.g. to resume a
@@ -281,16 +330,24 @@ class GridGameController extends StateNotifier<GridGameState> {
     required List<String?> rackCells,
     required List<String> pool,
     required List<String> dealtLetters,
+    List<String> bag = const [],
   }) {
     if (boardCells.length != state.config.boardCellCount) return;
-    // A saved rack may be longer than rackSize if it held unplaced bonus
-    // letters (see drawBonusLetter), but never shorter.
     if (rackCells.length < state.config.rackSize) return;
+    // Letters past the base rack (older saves let the rack grow) go to the
+    // bag, so the rack never takes over the screen. Nothing is lost.
+    final base = state.config.refillRackOnPlace ? state.config.rackSize : rackCells.length;
+    final fixedRack = List<String?>.from(rackCells.take(base));
+    final extra = [
+      for (final c in rackCells.skip(base))
+        if (c != null) c,
+    ];
     state = state.copyWith(
       boardCells: boardCells,
-      rackCells: rackCells,
+      rackCells: fixedRack,
       pool: pool,
       dealtLetters: dealtLetters,
+      bag: [...bag, ...extra],
     );
   }
 
@@ -310,17 +367,21 @@ class GridGameController extends StateNotifier<GridGameState> {
   // (unlike currentWordPositions, where a second copy of a word
   // overwrites the first). Village view and building detection use this.
   // [isValid] defaults to the dictionary.
-  Future<List<WordRun>> currentWordRuns({Future<bool> Function(String word)? isValid}) async =>
-      (await settledBoard(isValid: isValid)).settledRuns;
+  Future<List<WordRun>> currentWordRuns({
+    Future<bool> Function(String word)? isValid,
+    List<WordRun> kept = const [],
+  }) async =>
+      (await settledBoard(isValid: isValid, kept: kept)).settledRuns;
 
   // The board split into settled words, misspelled runs and loose letters
   // (spec-17: only settled words count).
-  Future<BoardWords> settledBoard({Future<bool> Function(String word)? isValid}) {
+  Future<BoardWords> settledBoard({Future<bool> Function(String word)? isValid, List<WordRun> kept = const []}) {
     return settle(
       state.boardCells,
       state.config.boardWidth,
       state.config.boardHeight,
       isValid ?? _validator.isValidWord,
+      kept: kept,
     );
   }
 
@@ -329,14 +390,19 @@ class GridGameController extends StateNotifier<GridGameState> {
   Future<Set<int>> looseCells({Future<bool> Function(String word)? isValid}) async =>
       (await settledBoard(isValid: isValid)).looseCells;
 
-  // Moves every loose letter from the board back to the rack: empty rack
-  // slots first, then new bonus slots past the end (so the rack may hold
-  // more than its usual size). Returns how many went back.
-  Future<int> returnLooseToRack({Future<bool> Function(String word)? isValid}) async {
-    final loose = await looseCells(isValid: isValid);
-    if (loose.isEmpty) return 0;
-    final moved = returnLoose(state.boardCells, state.rackCells, loose);
-    state = state.copyWith(boardCells: moved.board, rackCells: moved.rack);
+  // Moves every stray letter (loose and in no real word at all) from the
+  // board back to the player: empty rack slots first, then the letter bag.
+  // A loose letter that is also part of a real word stays, and so does any
+  // cell in [keep] (a building, a found special or a villager's square).
+  // Returns how many went back.
+  Future<int> returnLooseToRack({
+    Future<bool> Function(String word)? isValid,
+    Set<int> keep = const {},
+  }) async {
+    final stray = {...(await settledBoard(isValid: isValid)).strayCells}..removeAll(keep);
+    if (stray.isEmpty) return 0;
+    final moved = returnLoose(state.boardCells, state.rackCells, state.bag, stray, rackSize: state.config.rackSize);
+    state = state.copyWith(boardCells: moved.board, rackCells: moved.rack, bag: moved.bag);
     return moved.count;
   }
 
