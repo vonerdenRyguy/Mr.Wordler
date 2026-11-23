@@ -95,7 +95,8 @@ void main() {
     expect(json['looseNote'], 0); // told
     expect((json['boardCells'] as List)[_qCell], isNull);
     expect((json['boardCells'] as List).whereType<String>().join(), 'WELL');
-    expect((json['rackCells'] as List).whereType<String>().length, 11);
+    expect((json['rackCells'] as List).whereType<String>().length, 10);
+    expect(json['bag'], ['Q']); // the rack was full, so the Q waits in the bag
     expect((json['discoveredWords'] as List), ['WELL']);
 
     // A second visit changes nothing and says nothing.
@@ -104,7 +105,8 @@ void main() {
     await pumpVillage(tester);
     expect(sawNote, isFalse);
     json = await savedJson();
-    expect((json['rackCells'] as List).whereType<String>().length, 11);
+    expect((json['rackCells'] as List).whereType<String>().length, 10);
+    expect(json['bag'], ['Q']);
     expect((json['boardCells'] as List).whereType<String>().join(), 'WELL');
   });
 
@@ -118,7 +120,8 @@ void main() {
     await leave(tester);
     var json = await savedJson();
     expect((json['boardCells'] as List)[_qCell], isNull);
-    expect((json['rackCells'] as List).whereType<String>().length, 11);
+    expect((json['rackCells'] as List).whereType<String>().length, 10);
+    expect(json['bag'], ['Q']);
     expect(json['looseNote'], 1);
 
     await tester.tap(find.text('Visit your village'));

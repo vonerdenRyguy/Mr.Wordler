@@ -78,7 +78,7 @@ void main() {
       expect([for (final g in waitingGifts(notes, 'me', {'n1'})) g.letter], ['B']);
     });
 
-    test('a gift goes on top of the rack, not from the pool', () {
+    test('a gift waits in the letter bag, not from the pool; the rack stays at 10', () {
       final c = GridGameController(const GridConfig(
         boardWidth: 10,
         boardHeight: 10,
@@ -88,9 +88,9 @@ void main() {
       ));
       final pool = c.state.pool.length;
       final i = c.addGiftLetter('Q');
-      expect(i, 10);
-      expect(c.state.rackCells, hasLength(11));
-      expect(c.state.rackCells[10], 'Q');
+      expect(i, -1);
+      expect(c.state.rackCells, hasLength(10));
+      expect(c.state.bag, ['Q']);
       expect(c.state.pool, hasLength(pool));
     });
   });
@@ -315,7 +315,7 @@ void main() {
       await tester.tap(find.text('Visit'));
       await tester.pumpAndSettle();
       expect(find.text('Sam sent you 3 letters!'), findsOneWidget);
-      expect(find.textContaining("They're in your rack"), findsOneWidget);
+      expect(find.textContaining("They're waiting in your letter bag"), findsOneWidget);
       await tester.tap(find.text('Say thank you'));
       await tester.pumpAndSettle();
       expect(find.text('Sam sent you 3 letters!'), findsNothing);

@@ -41,6 +41,7 @@ import '../settings/word_level.dart' show WordLevel;
 import 'villagers_screens.dart';
 
 import '../ui/chunky_button.dart';
+import '../ui/letter_bag.dart';
 import '../sound/sound_service.dart';
 import '../ui/pill_chip.dart';
 import '../ui/reward_moment.dart';
@@ -218,6 +219,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // spec-17: runs that aren't words, and letters that aren't settled.
   List<WordRun> _badRuns = const [];
   Set<int> _looseCells = const {};
+  // Loose letters that are in no real word at all: the only ones tidied away.
+  Set<int> _strayCells = const {};
+  // Words standing when the real-words rule arrived (see settle's `kept`).
+  List<WordRun> _keptRuns = const [];
   // spec-17: an old village is tidied once; the note about letters Mr. W put
   // back waits here (and in the save) until the player has seen it.
   bool _tidiedLoose = true;
@@ -657,6 +662,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         rackCells: migrated.rackCells,
         pool: migrated.pool,
         dealtLetters: migrated.dealtLetters,
+        bag: migrated.bag,
       );
       // A migrated rack that held fewer than 10 letters is topped up.
       controller.fillEmptyBaseRackSlots();
@@ -674,6 +680,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _bookNotifier.value = migrated.villagers;
       _tidiedLoose = migrated.tidiedLoose;
       _looseNote = migrated.looseNote;
+      _keptRuns = migrated.keptRuns;
       // Build the island map for the restored seed.
       _islandMap = IslandMap(seed: _mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
       // Restore fog; migration guarantees `cleared` is non-null for v3 saves.
@@ -686,9 +693,16 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     // spec-17: the first time an old village loads, any letters that aren't
     // in a real word go back to the rack. Nothing already earned is touched.
     if (saved != null && !_tidiedLoose) {
-      final n = await ref
-          .read(gridGameControllerProvider.notifier)
-          .returnLooseToRack(isValid: ref.read(wordCheckProvider));
+      final controller = ref.read(gridGameControllerProvider.notifier);
+      // Every real word already standing is kept: its building stays even if
+      // one of its letters also sits in a bad crossing (nothing breaks).
+      final before = await controller.settledBoard(isValid: ref.read(wordCheckProvider));
+      if (!mounted) return;
+      _keptRuns = before.validRuns;
+      final n = await controller.returnLooseToRack(
+        isValid: ref.read(wordCheckProvider),
+        keep: _protectedCells(),
+      );
       if (!mounted) return;
       _looseNote += n;
       _tidiedLoose = true;
@@ -715,8 +729,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
         n == 1
-            ? "Mr. W put 1 letter back in your rack: it wasn't in a word yet."
-            : "Mr. W put $n letters back in your rack: they weren't in a word yet.",
+            ? "Mr. W put 1 letter in your bag: it wasn't in a word yet."
+            : "Mr. W put $n letters in your bag: they weren't in a word yet.",
       ),
     ));
   }
@@ -726,13 +740,23 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // (using the last scan's loose cells; no dictionary needed, nothing waits).
   // The note is kept in the save for the next visit.
   void _saveTidiedForLeaving() {
-    if (_restoring || _looseCells.isEmpty) return;
+    final stray = {..._strayCells}..removeAll(_protectedCells());
+    if (_restoring || stray.isEmpty) return;
     final g = _lastGrid;
     if (g == null) return;
-    final moved = returnLoose(g.boardCells, g.rackCells, _looseCells);
+    final moved = returnLoose(g.boardCells, g.rackCells, g.bag, stray, rackSize: InfiniteEstateScreen.rackSize);
     if (moved.count == 0) return;
-    _saveController.save(_snapshot(g, board: moved.board, rack: moved.rack, note: _looseNote + moved.count));
+    _saveController.save(_snapshot(g, board: moved.board, rack: moved.rack, bag: moved.bag, note: _looseNote + moved.count));
   }
+
+  // Squares the tidy-up never touches: found specials, the squares villagers
+  // came from, and every word kept from before the rule.
+  Set<int> _protectedCells() => {
+        for (final sp in _islandMap.specials)
+          if (sp.kind == SpecialKind.villager ? _book.isMet(sp.id) : _foundSpecials.contains(sp.id)) sp.cell,
+        for (final r in _keptRuns) ...r.positions,
+        for (final r in _wordRuns) ...r.positions,
+      };
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -745,7 +769,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     await _saveController.save(_snapshot(ref.read(gridGameControllerProvider)));
   }
 
-  VillageSaveData _snapshot(GridGameState gridState, {List<String?>? board, List<String?>? rack, int? note}) {
+  VillageSaveData _snapshot(GridGameState gridState,
+      {List<String?>? board, List<String?>? rack, List<String>? bag, int? note}) {
     _lastGrid = gridState;
     return (VillageSaveData(
       boardCells: board ?? gridState.boardCells,
@@ -767,6 +792,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       villagers: _book,
       tidiedLoose: _tidiedLoose,
       looseNote: note ?? _looseNote,
+      bag: bag ?? gridState.bag,
+      keptRuns: _keptRuns,
     ));
   }
 
@@ -849,7 +876,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     final controller = ref.read(gridGameControllerProvider.notifier);
     final added = <int>{};
     for (final g in gifts) {
-      added.add(controller.addGiftLetter(g.letter!));
+      final slot = controller.addGiftLetter(g.letter!);
+      if (slot >= 0) added.add(slot);
     }
     setState(() => _giftRackIndices = {..._giftRackIndices, ...added});
     await _saveVillage();
@@ -898,9 +926,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     _computingStructures = true;
     try {
       final controller = ref.read(gridGameControllerProvider.notifier);
-      final board = await controller.settledBoard(isValid: ref.read(wordCheckProvider));
+      // A kept word stops being kept as soon as a letter of it moves.
+      final stillKept = pruneKept(_keptRuns, ref.read(gridGameControllerProvider).boardCells);
+      final keptChanged = stillKept.length != _keptRuns.length;
+      if (keptChanged) _keptRuns = stillKept;
+      final board = await controller.settledBoard(isValid: ref.read(wordCheckProvider), kept: _keptRuns);
       final runs = board.settledRuns;
       if (!mounted) return;
+      if (keptChanged) await _saveVillage();
       final structures = computeStructures(runs);
       final newlyDiscovered = newDiscoveries(structures, _discoveredWords);
       setState(() {
@@ -908,6 +941,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         _wordRuns = runs;
         _badRuns = board.badRuns;
         _looseCells = board.looseCells;
+        _strayCells = board.strayCells;
         _scene = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
@@ -1604,15 +1638,22 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                                       border: Border.all(color: WColors.ink, width: WSize.outline),
                                       borderRadius: BorderRadius.circular(18),
                                     ),
-                                    child: GridRackView(
-                                      theme: _estateTheme,
-                                      crossAxisCount: 5,
-                                      childAspectRatio: 1.0,
-                                      bordered: false,
-                                      cellPadding: 2,
-                                      pinnedIndices: _pinnedRackIndices,
-                                      onTogglePin: _togglePin,
-                                      stripes: {for (final i in _giftRackIndices) i: WColors.sun},
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        GridRackView(
+                                          theme: _estateTheme,
+                                          crossAxisCount: 5,
+                                          childAspectRatio: 1.0,
+                                          bordered: false,
+                                          cellPadding: 2,
+                                          pinnedIndices: _pinnedRackIndices,
+                                          onTogglePin: _togglePin,
+                                          stripes: {for (final i in _giftRackIndices) i: WColors.sun},
+                                        ),
+                                        const LetterBagChip(),
+                                      ],
                                     ),
                                   ),
                                 ),

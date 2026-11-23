@@ -19,12 +19,18 @@ class GridGameState {
   // dealt letter is on the board).
   final List<String> dealtLetters;
 
+  // Spec-17 letter bag: letters that are the player's but don't fit the rack
+  // (put back from the board, gifts, golden letters). Each rack letter used
+  // pulls the next one from here before anything is dealt from the pool.
+  final List<String> bag;
+
   const GridGameState({
     required this.config,
     required this.boardCells,
     required this.rackCells,
     required this.pool,
     required this.dealtLetters,
+    this.bag = const [],
   });
 
   int get filledBoardCount => boardCells.where((c) => c != null).length;
@@ -39,6 +45,7 @@ class GridGameState {
     List<String?>? rackCells,
     List<String>? pool,
     List<String>? dealtLetters,
+    List<String>? bag,
   }) {
     return GridGameState(
       config: config,
@@ -46,6 +53,7 @@ class GridGameState {
       rackCells: rackCells ?? this.rackCells,
       pool: pool ?? this.pool,
       dealtLetters: dealtLetters ?? this.dealtLetters,
+      bag: bag ?? this.bag,
     );
   }
 }

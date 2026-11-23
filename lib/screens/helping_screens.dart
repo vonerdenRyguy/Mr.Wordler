@@ -614,8 +614,8 @@ Future<void> showGiftsArrived(BuildContext context, WidgetRef ref, List<FamilyNo
     title: title,
     icon: const Text('\u{1F381}', style: TextStyle(fontSize: 34), textScaler: TextScaler.noScaling),
     bodyText: one
-        ? "It's in your rack with a gold stripe, on top of your 10 letters."
-        : "${lines}They're in your rack with gold stripes, on top of your 10 letters.",
+        ? "It's waiting in your letter bag, ready for your rack."
+        : "${lines}They're waiting in your letter bag, ready for your rack.",
     actions: [
       WordlerDialogAction('Say thank you', () async {
         final c = ref.read(familyOnlineProvider.notifier);

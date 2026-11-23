@@ -65,7 +65,8 @@ List<WordRun> runsThrough(List<String?> board, int width, int height, int index)
 /// The result of [settle]: which runs count, which don't, and which
 /// letters are loose.
 class BoardWords {
-  /// Valid runs whose every letter is settled. Only these count.
+  /// Valid runs whose every letter is settled, plus kept runs (see
+  /// [settle]). Only these count.
   final List<WordRun> settledRuns;
 
   /// Runs of 2+ letters that are not words.
@@ -75,18 +76,38 @@ class BoardWords {
   /// in a valid run that crosses one, or standing alone.
   final Set<int> looseCells;
 
-  const BoardWords(this.settledRuns, this.badRuns, this.looseCells);
+  /// Every real word run on the board, settled or not.
+  final List<WordRun> validRuns;
+
+  /// Loose letters that are part of no real word at all (a lone letter, or
+  /// the Q of CAT / AQ). Only these are ever sent back to the rack: a
+  /// loose letter that is also part of a real word is shared and stays.
+  final Set<int> strayCells;
+
+  const BoardWords(
+    this.settledRuns,
+    this.badRuns,
+    this.looseCells, [
+    this.validRuns = const [],
+    this.strayCells = const {},
+  ]);
 }
 
 /// Splits the board into settled and loose letters. A letter is settled
 /// when every run through it (across and down, 2+ letters) is a real word
 /// and it belongs to at least one such run. Everything else is loose.
+///
+/// A run in [kept] (a word that stood on an old village before this rule
+/// existed) still counts as settled while its letters are unchanged, even
+/// if one of them sits in a bad crossing, so a building already standing
+/// never disappears. It earns nothing new: its rewards were paid before.
 Future<BoardWords> settle(
   List<String?> cells,
   int w,
   int h,
-  Future<bool> Function(String word) isValid,
-) async {
+  Future<bool> Function(String word) isValid, {
+  List<WordRun> kept = const [],
+}) async {
   assert(cells.length == w * h);
   final valid = <WordRun>[];
   final bad = <WordRun>[];
@@ -125,35 +146,61 @@ Future<BoardWords> settle(
     for (int i = 0; i < cells.length; i++)
       if (cells[i] != null && (tainted.contains(i) || !inValid.contains(i))) i,
   };
+  final stray = <int>{for (final i in loose) if (!inValid.contains(i)) i};
   final settled = [
     for (final r in valid)
-      if (!r.positions.any(loose.contains)) r,
+      if (!r.positions.any(loose.contains) || kept.contains(r)) r,
   ];
-  return BoardWords(settled, bad, loose);
+  return BoardWords(settled, bad, loose, valid, stray);
 }
 
-/// Moves the [loose] letters from [board] into [rack]: empty rack slots
-/// first, then new slots past the end (so the rack may hold more than its
-/// usual size). Pure: returns new lists and leaves the inputs alone.
-({List<String?> board, List<String?> rack, int count}) returnLoose(
+/// The [kept] runs whose letters are all still on the board exactly as they
+/// were. Picking up or moving any letter of a kept run drops it, so from then
+/// on it follows the normal settled rule.
+List<WordRun> pruneKept(List<WordRun> kept, List<String?> cells) => [
+      for (final r in kept)
+        if (_stillThere(r, cells)) r,
+    ];
+
+bool _stillThere(WordRun r, List<String?> cells) {
+  for (int i = 0; i < r.positions.length; i++) {
+    final p = r.positions[i];
+    if (p >= cells.length || cells[p] != r.word[i]) return false;
+  }
+  return true;
+}
+
+/// Moves the letters at [cells] from [board] to the player: into empty
+/// base rack slots (index < [rackSize]) first, then into the letter bag.
+/// Pure: returns new lists and leaves the inputs alone.
+({List<String?> board, List<String?> rack, List<String> bag, int count}) returnLoose(
   List<String?> board,
   List<String?> rack,
-  Set<int> loose,
-) {
+  List<String> bag,
+  Set<int> cells, {
+  required int rackSize,
+}) {
   final newBoard = List<String?>.from(board);
   final newRack = List<String?>.from(rack);
+  final newBag = List<String>.from(bag);
   var count = 0;
-  for (final i in loose.toList()..sort()) {
+  for (final i in cells.toList()..sort()) {
     final letter = newBoard[i];
     if (letter == null) continue;
     newBoard[i] = null;
-    final empty = newRack.indexWhere((c) => c == null);
+    var empty = -1;
+    for (int j = 0; j < rackSize && j < newRack.length; j++) {
+      if (newRack[j] == null) {
+        empty = j;
+        break;
+      }
+    }
     if (empty == -1) {
-      newRack.add(letter);
+      newBag.add(letter);
     } else {
       newRack[empty] = letter;
     }
     count++;
   }
-  return (board: newBoard, rack: newRack, count: count);
+  return (board: newBoard, rack: newRack, bag: newBag, count: count);
 }
