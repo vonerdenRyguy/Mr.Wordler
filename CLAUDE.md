@@ -48,7 +48,7 @@ design, architecture, tricky bugs) or Sonnet (building from a spec, tests,
 installs, small fixes). If I'm on the wrong one, tell me to switch with
 `/model`.
 
-## Current state (as of 2026-11-19)
+## Current state (as of 2026-11-22)
 
 Built from specs 01-15, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
@@ -377,9 +377,25 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   - Faint outlines of unfound specials now show through fog in Words view
     (`GridBoardView.cellMarker`) and Village view (`SpecialMarker`), and on
     Home's picture. Bridge menu lists found landmarks and shrines.
-  - Not done: homes and jobs (later spec). Move-in fires on any valid word
-    (even 2 letters), which can interrupt a longer word being built; Ryan
-    may want it delayed.
+  - Not done: homes and jobs (later spec). Move-in needs a word of 3+
+    letters (changed after the spec-16 merge); it can still fire on CAT
+    while CATS is being built.
+
+- **spec-17 real words only** (merged to master 2026-11-22 on Ryan's OK,
+  **without the phone manual check**). Spec:
+  `Desktop\MrWordlerScreenshots\specs\spec-17-real-words-only.md`. Rule:
+  every run of 2+ letters, across and down, must be a real word.
+  - `settle()` in `lib/game/word_runs.dart` returns `BoardWords`
+    (`settledRuns`, `badRuns`, `looseCells`). A letter is settled when every
+    run through it is a real word; only runs whose letters are all settled
+    count (buildings, fog, XP, specials, villagers, wishes, word of the day,
+    banner and haptic). `currentWordRuns()` returns settled runs;
+    `looseCells()` and `returnLooseToRack()` are new on the controller.
+  - Loose letters look unsure (dashed coral outline, slight tilt); tapping
+    one opens the Not-a-word card naming the bad run.
+  - Leaving the village sends loose letters back to the rack (it may hold
+    more than 10; refills wait), with a note on the next visit. Old saves
+    tidy once: **saveVersion 5**, `tidiedLoose` (and `looseNote`).
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -455,9 +471,12 @@ game for this, then mock everything up on the canvas.
   4 Sail to a new island (new biome, harder words), which repeats.
   Joining villages should also give real bonuses, not only the moment.
   Watch out: one family member who stops playing must not block the wall.
-- **Build order:** spec-15 Explore (fog, regions, special tiles, XP; map
-  made ready for several villages), spec-16 Villagers, spec-17 Shared
-  island, spec-18 Play together, spec-19 day/night, seasons, quests.
+- **Build order (updated 2026-11-22):** spec-15 Explore, spec-16
+  Villagers, spec-17 Real words only, spec-18 Letterra planet, spec-19
+  Letterra together (shared fog, roads, Lantern), spec-20 Sea friends, then
+  Play together, then day/night, seasons, quests. The flat "Shared island"
+  below became Letterra.
+
 - Keep it gentle: no region locked forever; a hint when stuck.
 - **Canvas row "Chapter 1 ... and the game wheel"** (boards M161-M168,
   2026-11-19): Ryan likes the concept; the art is placeholder.
@@ -476,6 +495,26 @@ game for this, then mock everything up on the canvas.
   directions) so Flutter stays 2D and fast. The island map becomes one
   painted illustration with fog layers, like Royal Match / Hay Day maps.
   Consider a human artist for a few key pieces to anchor the style.
+
+### Letterra, the family planet (approved 2026-11-22)
+
+Source: `Desktop\MrWordlerScreenshots\research\2026-11-22-letterra-planet.md`;
+spec: `specs\spec-18-letterra-planet.md`. "Letterra" is a working name.
+- A tiny planet replaces the flat shared island. 8 harbor spots on the Sunny
+  Shore (equator); each person climbs bands inward toward the Great Lantern
+  at the North Peak: Meadow, Whisper Woods, Ribbon River, Ruin Hills, Echo
+  Mountains, Cloud Cap. Word lengths 3/4/5/6/7 as spec-15. Empty spots are
+  open bays of sea; friendly sea monsters (Inky, Gulp, Nessa, bottle crabs)
+  live in the Deep. A soft grey fog, the Hush, covers the unexplored land.
+- Home becomes a globe zoomed on your harbor (tap your village to go in,
+  swipe to turn to family); a whole-planet view replaces the Island map page.
+- Parts: spec-18 planet layout + globe Home; spec-19 shared fog, roads
+  joining villages, the Cloud Cap wall, the Lantern (replaces Town Square
+  bricks; the vote stays); spec-20 sea friends.
+- Home decisions T201-T206: Time Attack is removed (stats stay in storage),
+  gifts show only in the village, Journal / Villagers / XP live on Me.
+- Spec-17's rule holds everywhere: any word shown or required must be real
+  both ways.
 
 The design canvas is the claude.ai artifact "Mr. Wordler - App Flow"
 (https://claude.ai/artifact/C4fYPKs7owUmfUDfM1VK7L): rows for the family

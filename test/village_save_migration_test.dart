@@ -41,7 +41,7 @@ void main() {
 
     final migrated = migrateVillageSave(old, rackSize: 10);
 
-    expect(migrated.saveVersion, 5); // v1→v2→v3→v4→v5 in one pass
+    expect(migrated.saveVersion, 6); // v1→v2→v3→v4→v5 in one pass
     expect(migrated.rackCells.length, 10);
     expect(migrated.rackCells.every((c) => c != null), isTrue);
     expect(migrated.rackCells, rack.whereType<String>().take(10).toList());
@@ -87,7 +87,7 @@ void main() {
       saveVersion: 2,
     );
     final migrated = migrateVillageSave(v2, rackSize: 10);
-    expect(migrated.saveVersion, 5);
+    expect(migrated.saveVersion, 6);
     expect(migrated.boardCells, v2.boardCells);
     expect(migrated.rackCells, v2.rackCells);
     expect(migrated.pool, v2.pool);
@@ -132,7 +132,7 @@ void main() {
       cleared: 'AAAA', // arbitrary non-null base64
     );
     final v4 = migrateVillageSave(v3, rackSize: 10);
-    expect(v4.saveVersion, 5);
+    expect(v4.saveVersion, 6);
     expect(v4.villagers.isEmpty, isTrue);
     expect(v4.boardCells, v3.boardCells);
     expect(v4.rackCells, v3.rackCells);
@@ -155,7 +155,7 @@ void main() {
       villagers: const VillagerBook([Villager(id: 'v0', name: 'Pip', cell: 77, hearts: 2)]),
     );
     final v5 = migrateVillageSave(v4, rackSize: 10);
-    expect(v5.saveVersion, 5);
+    expect(v5.saveVersion, 6);
     expect(v5.tidiedLoose, isFalse); // the village screen does the tidy once
     expect(v5.looseNote, 0);
     expect(v5.boardCells, v4.boardCells);
@@ -181,7 +181,7 @@ void main() {
       ]),
     );
     final loaded = VillageSaveData.fromJson(jsonDecode(jsonEncode(v4.toJson())) as Map<String, dynamic>);
-    expect(loaded.saveVersion, 5);
+    expect(loaded.saveVersion, 6);
     expect(loaded.villagers.count, 2);
     final pip = loaded.villagers.byId('v0')!;
     expect((pip.name, pip.cell, pip.hearts, pip.wish, pip.granted, pip.movedInWord), ('Pip', 77, 2, wish, 2, 'SIPS'));
@@ -204,7 +204,7 @@ void main() {
     await controller.save(migrated);
 
     final reloaded = (await controller.load())!;
-    expect(reloaded.saveVersion, 5);
+    expect(reloaded.saveVersion, 6);
     expect(reloaded.rackCells, migrated.rackCells);
     expect(reloaded.pool, migrated.pool);
     // Migrating a v3 save is a no-op.

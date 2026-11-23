@@ -39,6 +39,9 @@ import '../village/village_art.dart';
 import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
+import '../letterra/globe_painter.dart';
+import '../letterra/globe_view.dart';
+import '../letterra/planet.dart';
 import 'daily_challenge_screen.dart';
 import 'family_online_screens.dart';
 import 'family_screens.dart';
@@ -47,7 +50,6 @@ import 'helping_screens.dart';
 import 'town_square_screens.dart';
 import 'home_tips.dart';
 import 'infinite_estate_screen.dart';
-import 'mode_start_pages.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
@@ -64,6 +66,11 @@ typedef _Village = ({
   // spec-16: the same fog and outlines as inside the village.
   FogMap? fog,
   List<SpecialMarker> markers,
+  // spec-18: where your harbor is on Letterra, your building words (for the
+  // little houses on the globe) and how far up you have climbed.
+  int slot,
+  List<String> words,
+  int reach,
 });
 
 // The app's one entry screen (spec-11): three pages you swipe between,
@@ -108,8 +115,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _loadVillage() async {
     final generation = ++_loadGeneration;
-    final saved = await VillageSaveController().load();
+    final raw = await VillageSaveController().load();
     if (!mounted || generation != _loadGeneration) return;
+    // Shown as it will be once the village opens on Letterra (spec-18); the
+    // stored save is only rewritten by the village screen.
+    final saved = raw == null
+        ? null
+        : migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
     if (saved == null || saved.boardCells.every((c) => c == null)) {
       setState(() => _village = (
             hasSave: saved != null,
@@ -121,6 +133,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             discovered: saved?.discoveredWords ?? const {},
             fog: null,
             markers: const [],
+            slot: saved?.planetSlot ?? 0,
+            words: const [],
+            reach: 0,
           ));
       return;
     }
@@ -144,9 +159,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     // The same fog and outlines as the village (spec-16): an old save gets its
     // fog worked out the way the village does when it opens.
-    final migrated = migrateVillageSave(saved, rackSize: InfiniteEstateScreen.rackSize);
+    final migrated = saved;
     final fog = migrated.cleared == null ? null : FogMap.fromBase64(migrated.cleared!);
-    final islandMap = IslandMap(seed: migrated.mapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+    final islandMap = IslandMap.letterra(seed: migrated.mapSeed, slot: migrated.planetSlot ?? 0);
     final markers = [
       for (final sp in islandMap.specials)
         if (sp.kind == SpecialKind.villager ? !migrated.villagers.isMet(sp.id) : !migrated.foundSpecials.contains(sp.id))
@@ -162,6 +177,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           discovered: saved.discoveredWords,
           fog: fog,
           markers: markers,
+          slot: migrated.planetSlot ?? 0,
+          words: [for (final s in structures) s.def.word],
+          reach: fog == null ? 1 : reachFromFog(fog, migrated.planetSlot ?? 0),
         ));
   }
 
@@ -364,6 +382,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onLevel: () => _open(const PortfolioScreen()),
         onWordOfDay: wordOfDay == null ? null : () => _openWordOfDay(wordOfDay, wordClaimed),
         onJournal: _openJournal,
+        onVillagers: () => _open(const InfiniteEstateScreen(openVillagers: true)),
         onProperties: () => _open(const PortfolioScreen()),
         onStats: () => _open(const StatsScreen()),
         onWordLevel: () => _open(const WordLevelScreen()),
@@ -376,9 +395,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         theme: dailyPuzzleFor(now).theme.name,
         wordLevel: wordLevel,
         now: now,
+        playerName: players.current.name,
         onVisit: () => _open(const InfiniteEstateScreen()),
         onDaily: () => _openDaily(playedToday),
-        onTimeAttack: () => _open(const TimeAttackStartPage()),
       ),
       if (!hasFamily)
         Wallpaper(
@@ -627,10 +646,10 @@ Widget _grow(int flex, double min, Widget child) => Expanded(
 
 // ---- Play ---------------------------------------------------------------------
 
-/// Play (spec-12): your village fills the page, with one big gold PLAY
-/// button and the Daily and Time Attack as round badges above it. PLAY
-/// opens the Daily until it's played today, then your village.
-class _PlayPage extends StatelessWidget {
+/// Play (spec-18): the planet Letterra turned to your harbor. Tap your
+/// village to go in; the Daily is a round badge. A goal bar says how far you
+/// have climbed toward the Great Lantern.
+class _PlayPage extends ConsumerStatefulWidget {
   const _PlayPage({
     required this.village,
     required this.playedToday,
@@ -638,9 +657,9 @@ class _PlayPage extends StatelessWidget {
     required this.theme,
     required this.wordLevel,
     required this.now,
+    required this.playerName,
     required this.onVisit,
     required this.onDaily,
-    required this.onTimeAttack,
   });
 
   final _Village? village;
@@ -649,32 +668,110 @@ class _PlayPage extends StatelessWidget {
   final String theme;
   final WordLevel wordLevel;
   final DateTime now;
+  final String playerName;
   final VoidCallback onVisit;
   final VoidCallback onDaily;
-  final VoidCallback onTimeAttack;
 
   static const _months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
   @override
+  ConsumerState<_PlayPage> createState() => _PlayPageState();
+}
+
+class _PlayPageState extends ConsumerState<_PlayPage> {
+  int? _focus;
+
+  @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
-    final v = village;
+    final v = widget.village;
+    final mySlot = v?.slot ?? 0;
+    final focus = _focus ?? mySlot;
+    final reduce = ref.watch(settingsProvider).reduceMotion;
     final info = v == null || !v.hasSave
         ? 'New village'
         : '${v.buildings} building${v.buildings == 1 ? '' : 's'} · Journal ${v.journal}/${kMagicWords.length}';
+    final reach = v?.reach ?? 1;
+    final villages = [
+      GlobeVillage(
+        slot: mySlot,
+        name: widget.playerName,
+        buildings: (v?.words ?? const <String>[]).take(4).toList(),
+        reach: reach,
+      ),
+    ];
+    final taken = {for (final g in villages) g.slot};
+    final fog = v?.fog;
+    bool hushed(int row, int col, double lon) {
+      // Each slice follows the nearest filled harbor: yours by your fog.
+      if (fog != null) return !fog.isCleared(row * kPlanetBoard + col);
+      return hushedByReach(row, col, reach);
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        _VillageBackdrop(village: v, onTap: onVisit),
-        // A soft shade at the top and bottom so the floating bits read well.
+        const ColoredBox(color: Color(0xFFBFE6F5)),
+        // The planet fills what the bars leave; the badge and goal sit under it.
+        Padding(
+          padding: EdgeInsets.fromLTRB(0, pad.top, 0, pad.bottom + 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: GlobeView(
+                  mode: GlobeMode.closeUp,
+                  villages: villages,
+                  takenSlots: taken,
+                  focusSlot: focus,
+                  isHushed: hushed,
+                  reduceMotion: reduce,
+                  onVillageTap: (_) => widget.onVisit(),
+                  onTurn: (s) => setState(() => _focus = s),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: WSize.screenPadding),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _RoundBadge(
+                          label: 'Daily puzzle',
+                          semantics: 'Daily puzzle. ${widget.playedToday ? 'Done for today' : 'Not played yet'}'
+                              '${widget.streak >= 2 ? '. ${widget.streak}-day streak' : ''}',
+                          color: WColors.sky,
+                          alert: !widget.playedToday,
+                          sub: widget.streak >= 2 ? '${widget.streak}-day streak' : null,
+                          onTap: widget.onDaily,
+                          child: _CalendarTile(month: _PlayPage._months[widget.now.month - 1], day: widget.now.day),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: WSize.gap3),
+                    _GoalBar(
+                      title: 'Light the Great Lantern',
+                      sub: 'You reached ${reachName(reach)} · tap your village to go in',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // A soft shade at the top so the floating bits read well.
         const IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0x33000000), Color(0x00000000), Color(0x00000000), Color(0x40000000)],
-                stops: [0, 0.18, 0.6, 1],
+                colors: [Color(0x33000000), Color(0x00000000), Color(0x00000000)],
+                stops: [0, 0.14, 1],
               ),
             ),
           ),
@@ -687,72 +784,37 @@ class _PlayPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Flexible(child: _FloatChip(text: info)),
-              const SizedBox(width: WSize.gap2),
               const Spacer(),
-              // Before the Daily is done, PLAY means the Daily; this is the
-              // way into the village meanwhile.
-              if (!playedToday)
-                ChunkyButton(
-                  label: 'Visit your village',
-                  kind: ChunkyKind.secondary,
-                  size: ChunkySize.small,
-                  onPressed: onVisit,
-                ),
-            ],
-          ),
-        ),
-        Positioned(
-          left: WSize.screenPadding,
-          right: WSize.screenPadding,
-          bottom: pad.bottom + 10,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _RoundBadge(
-                    label: 'Daily puzzle',
-                    semantics: 'Daily puzzle. ${playedToday ? 'Done for today' : 'Not played yet'}'
-                        '${streak >= 2 ? '. $streak-day streak' : ''}',
-                    color: WColors.sky,
-                    alert: !playedToday,
-                    sub: streak >= 2 ? '$streak-day streak' : null,
-                    onTap: onDaily,
-                    child: _CalendarTile(month: _months[now.month - 1], day: now.day),
-                  ),
-                  _RoundBadge(
-                    label: 'Time Attack',
-                    semantics: 'Time Attack. 3 minutes. Beat the clock!',
-                    color: WColors.coral,
-                    onTap: onTimeAttack,
-                    child: const Icon(Icons.bolt, size: 46, color: WColors.white),
-                  ),
-                ],
-              ),
-              const SizedBox(height: WSize.gap3),
-              _PlayButton(
-                onTap: playedToday ? onVisit : onDaily,
-                semantics: playedToday ? 'Play. Build in your village' : 'Play the Daily puzzle. Theme: $theme',
-                sub: playedToday
-                    ? Text('Build in your village',
-                        maxLines: 1, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink))
-                    : FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          _Chip(text: wordLevel.info.name, color: wordLevel.info.color),
-                          const SizedBox(width: 6),
-                          Text('Theme: $theme',
-                              maxLines: 1, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink)),
-                        ]),
-                      ),
-              ),
+              _Chip(text: widget.wordLevel.info.name, color: widget.wordLevel.info.color),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The goal line at the bottom of Play.
+class _GoalBar extends StatelessWidget {
+  const _GoalBar({required this.title, required this.sub});
+
+  final String title;
+  final String sub;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(
+        color: WColors.card,
+        border: Border.all(color: WColors.ink, width: WSize.outline),
+        borderRadius: BorderRadius.circular(WSize.radiusHero),
+        boxShadow: wLip(WSize.lip),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(title, maxLines: 1, style: WText.heading.copyWith(fontSize: 22, color: WColors.ink)),
+        Text(sub, textAlign: TextAlign.center, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink)),
+      ]),
     );
   }
 }
@@ -876,71 +938,6 @@ class _RoundBadgeState extends State<_RoundBadge> {
   }
 }
 
-/// The one big gold PLAY button.
-class _PlayButton extends StatefulWidget {
-  const _PlayButton({required this.onTap, required this.semantics, required this.sub});
-
-  final VoidCallback onTap;
-  final String semantics;
-  final Widget sub;
-
-  @override
-  State<_PlayButton> createState() => _PlayButtonState();
-}
-
-class _PlayButtonState extends State<_PlayButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final down = _pressed && !reduce;
-    return Semantics(
-      button: true,
-      label: widget.semantics,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: () {
-          playSfx(context, Sfx.tap);
-          widget.onTap();
-        },
-        child: AnimatedScale(
-          scale: down ? 0.97 : 1,
-          duration: const Duration(milliseconds: 90),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 70),
-            margin: EdgeInsets.only(top: down ? WSize.lipHero - 1 : 0, bottom: down ? 1 : WSize.lipHero),
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFD866), WColors.sun],
-              ),
-              borderRadius: BorderRadius.circular(WSize.radiusHero),
-              border: Border.all(color: WColors.ink, width: WSize.outline),
-              boxShadow: wLip(down ? 1 : WSize.lipHero, color: const Color(0xFF9A6A12)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('PLAY',
-                    style: WText.title.copyWith(fontSize: 40, letterSpacing: 3, color: WColors.ink, height: 1.0)),
-                const SizedBox(height: 4),
-                widget.sub,
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CalendarTile extends StatelessWidget {
   const _CalendarTile({required this.month, required this.day});
 
@@ -1011,6 +1008,7 @@ class _MePage extends StatelessWidget {
     required this.onLevel,
     required this.onWordOfDay,
     required this.onJournal,
+    required this.onVillagers,
     required this.onProperties,
     required this.onStats,
     required this.onWordLevel,
@@ -1024,6 +1022,7 @@ class _MePage extends StatelessWidget {
   final VoidCallback onLevel;
   final VoidCallback? onWordOfDay;
   final VoidCallback onJournal;
+  final VoidCallback onVillagers;
   final VoidCallback onProperties;
   final VoidCallback onStats;
   final VoidCallback onWordLevel;
@@ -1127,6 +1126,7 @@ class _MePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _RoundButton(icon: Icons.menu_book, color: WColors.skyTint, label: 'Journal', onTap: onJournal),
+          _RoundButton(icon: Icons.people, color: WColors.sunTint, label: 'Villagers', onTap: onVillagers),
           _RoundButton(icon: Icons.home_work, color: WColors.leafTint, label: 'Homes', onTap: onProperties),
           _RoundButton(icon: Icons.bar_chart, color: WColors.coralTint, label: 'Stats', onTap: onStats),
           _RoundButton(
@@ -1180,11 +1180,11 @@ class _RoundButtonState extends State<_RoundButton> {
           scale: _pressed && !reduce ? 0.92 : 1,
           duration: const Duration(milliseconds: 90),
           child: SizedBox(
-            width: 80,
+            width: 70,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: 66,
-                height: 66,
+                width: 60,
+                height: 60,
                 margin: const EdgeInsets.only(bottom: WSize.lip),
                 decoration: BoxDecoration(
                   color: widget.color,
@@ -1195,10 +1195,13 @@ class _RoundButtonState extends State<_RoundButton> {
                 child: Icon(widget.icon, size: 32, color: WColors.ink),
               ),
               const SizedBox(height: 4),
-              Text(widget.label,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  style: WText.buttonSmall.copyWith(color: WColors.ink, fontSize: 16)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(widget.label,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style: WText.buttonSmall.copyWith(color: WColors.ink, fontSize: 16)),
+              ),
             ]),
           ),
         ),
@@ -1638,82 +1641,6 @@ class _Badge extends StatelessWidget {
         border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
       ),
       child: child,
-    );
-  }
-}
-
-/// Your village as a still picture filling the Play page, centered on your
-/// newest building. Tapping it opens the village.
-class _VillageBackdrop extends StatefulWidget {
-  const _VillageBackdrop({required this.village, required this.onTap});
-
-  final _Village? village;
-  final VoidCallback onTap;
-
-  @override
-  State<_VillageBackdrop> createState() => _VillageBackdropState();
-}
-
-class _VillageBackdropState extends State<_VillageBackdrop> {
-  final _camera = TransformationController();
-
-  @override
-  void dispose() {
-    _camera.dispose();
-    super.dispose();
-  }
-
-  ({int r, int c})? _aimedAt;
-  Size? _aimedSize;
-
-  // Points the still picture at [focus]. Done after the frame: changing the
-  // camera during build would rebuild the map mid-build.
-  void _aim(({int r, int c}) focus, Size size, IsoGrid grid) {
-    if (focus == _aimedAt && size == _aimedSize) return;
-    _aimedAt = focus;
-    _aimedSize = size;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _camera.value = isoTransformCenteredOn(focus.r, focus.c, size, 0.9, grid);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final village = widget.village;
-    final scene = village?.scene;
-    return Semantics(
-      button: true,
-      label: 'Your village. Open it',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: scene == null
-            ? Image.asset(
-                'assets/images/village_preview.png',
-                fit: BoxFit.cover,
-                alignment: const Alignment(0, -0.3),
-                excludeFromSemantics: true,
-                errorBuilder: (context, error, stack) => Container(color: WColors.grassField),
-              )
-            : IgnorePointer(
-                child: LayoutBuilder(builder: (context, constraints) {
-                  // Aiming at a shorter box puts the building at 40% down.
-                  final full = constraints.biggest;
-                  _aim(village!.focus, Size(full.width, full.height * 0.8), scene.grid);
-                  return ColoredBox(
-                    color: WColors.grassField,
-                    child: IsoVillageView(
-                      scene: scene,
-                      transformController: _camera,
-                      interactive: false,
-                      fog: village.fog,
-                      markers: village.markers,
-                    ),
-                  );
-                }),
-              ),
-      ),
     );
   }
 }

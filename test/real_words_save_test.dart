@@ -35,6 +35,7 @@ Map<String, dynamic> _save({required int version, bool tidied = false, int note 
     'saveVersion': version,
     if (version >= 5) 'tidiedLoose': tidied,
     if (version >= 5) 'looseNote': note,
+    if (version >= 6) 'planet': {'slot': 0},
   };
 }
 
@@ -62,8 +63,8 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(tester.element(find.text('Visit your village')));
-    await tester.tap(find.text('Visit your village'));
+    final container = ProviderScope.containerOf(tester.element(find.byKey(const ValueKey('globe-village-0'))));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     return container;
   }
@@ -83,14 +84,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a v4 village with a stray letter tidies once, saves v5 and says so', (tester) async {
+  testWidgets('a v4 village with a stray letter tidies once, saves the current version and says so', (tester) async {
     SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 4))});
     final container = await openVillage(tester);
 
     expect(sawNote, isTrue);
     expect(container.read(portfolioProvider).currency, 0); // nothing earned or lost
     var json = await savedJson();
-    expect(json['saveVersion'], 5);
+    expect(json['saveVersion'], 6);
     expect(json['tidiedLoose'], true);
     expect(json['looseNote'], 0); // told
     expect((json['boardCells'] as List)[_qCell], isNull);
@@ -101,7 +102,7 @@ void main() {
 
     // A second visit changes nothing and says nothing.
     await leave(tester);
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     expect(sawNote, isFalse);
     json = await savedJson();
@@ -111,7 +112,7 @@ void main() {
   });
 
   testWidgets('leaving puts loose letters back in the rack; the next visit says so once', (tester) async {
-    SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 5, tidied: true))});
+    SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 6, tidied: true))});
     await openVillage(tester);
     // Already tidied, so the stray Q is still on the board and no note shows.
     expect(sawNote, isFalse);
@@ -124,7 +125,7 @@ void main() {
     expect(json['bag'], ['Q']);
     expect(json['looseNote'], 1);
 
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     expect(sawNote, isTrue);
     json = await savedJson();

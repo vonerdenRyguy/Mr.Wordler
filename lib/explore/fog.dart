@@ -104,6 +104,20 @@ class FogMap {
     return next;
   }
 
+  /// A copy with every cleared cell moved by ([dRow], [dCol]); cells that
+  /// would land off the board are dropped.
+  FogMap shifted(int dRow, int dCol) {
+    final next = FogMap.empty(boardWidth: boardWidth, boardHeight: boardHeight);
+    final total = boardWidth * boardHeight;
+    for (var i = 0; i < total; i++) {
+      if (!isCleared(i)) continue;
+      final r = i ~/ boardWidth + dRow, c = i % boardWidth + dCol;
+      if (r < 0 || c < 0 || r >= boardHeight || c >= boardWidth) continue;
+      next._set(r * boardWidth + c);
+    }
+    return next;
+  }
+
   /// Clears [cells] themselves (without any radius).
   FogMap clearCells(List<int> cells) => clearAround(cells, radius: 0);
 

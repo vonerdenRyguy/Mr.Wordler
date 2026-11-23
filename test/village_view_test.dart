@@ -41,7 +41,8 @@ void main() {
         'dealtLetters': [...'WELLCAT'.split(''), ...List<String>.filled(10, 'E')],
         'lastCashedOutScore': 0,
         'discoveredWords': ['WELL'],
-        'saveVersion': 2,
+        'saveVersion': 6,
+        'planet': {'slot': 0},
       }),
     });
   });
@@ -59,7 +60,7 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle();
   }
 

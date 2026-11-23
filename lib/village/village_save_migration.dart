@@ -1,4 +1,7 @@
 import '../explore/fog.dart';
+import '../game/word_runs.dart' show WordRun;
+import '../letterra/planet.dart';
+import '../villagers/village_book.dart';
 import 'village_save.dart';
 
 /// Brings an older save up to the current format.
@@ -31,6 +34,7 @@ VillageSaveData migrateVillageSave(
   int boardWidth = 500,
   int boardHeight = 500,
   int? homeIndex,
+  int? planetSlot,
 }) {
   // ── v1 → v2 ─────────────────────────────────────────────────────────────
   if (data.saveVersion < 2) {
@@ -100,7 +104,100 @@ VillageSaveData migrateVillageSave(
     data = data.copyWith(saveVersion: 5);
   }
 
+  // ── v5 → v6 (spec-18) ───────────────────────────────────────────────────
+  // The village moves onto Letterra: everything shifts so the old home cell
+  // lands on harbor [planetSlot]. See [moveToLetterra].
+  // Only when [planetSlot] is given; without it the version just moves on.
+  if (data.saveVersion < 6 && planetSlot == null) {
+    data = data.copyWith(saveVersion: 6);
+  } else if (data.saveVersion < 6) {
+    data = moveToLetterra(
+      data,
+      slot: planetSlot!,
+      oldHome: homeIndex ?? (boardHeight ~/ 2) * boardWidth + boardWidth ~/ 2,
+      boardWidth: boardWidth,
+      boardHeight: boardHeight,
+    );
+  }
+
   return data;
+}
+
+/// Version 5 → 6 (spec-18): shifts the whole board, the fog, the squares ever
+/// used and each villager's home so the old home cell lands on harbor [slot].
+/// Letters that now sit in the sea stay put as piers and still count. Found
+/// specials are kept by id, so they stay found wherever the new map puts
+/// them. A letter that would fall off the board goes back to the pool.
+/// Running it on a v6 save changes nothing.
+VillageSaveData moveToLetterra(
+  VillageSaveData data, {
+  required int slot,
+  required int oldHome,
+  int boardWidth = 500,
+  int boardHeight = 500,
+}) {
+  if (data.saveVersion >= 6) return data;
+  final newHome = harborCell(slot);
+  final dRow = newHome ~/ boardWidth - oldHome ~/ boardWidth;
+  final dCol = newHome % boardWidth - oldHome % boardWidth;
+
+  int? shift(int idx) {
+    final r = idx ~/ boardWidth + dRow, c = idx % boardWidth + dCol;
+    if (r < 0 || c < 0 || r >= boardHeight || c >= boardWidth) return null;
+    return r * boardWidth + c;
+  }
+
+  final board = List<String?>.filled(data.boardCells.length, null);
+  final pool = List<String>.from(data.pool);
+  final dealt = List<String>.from(data.dealtLetters);
+  for (var i = 0; i < data.boardCells.length; i++) {
+    final letter = data.boardCells[i];
+    if (letter == null) continue;
+    final to = shift(i);
+    if (to == null) {
+      pool.add(letter);
+      dealt.remove(letter);
+    } else {
+      board[to] = letter;
+    }
+  }
+
+  final fog = data.cleared == null
+      ? null
+      : FogMap.fromBase64(data.cleared!, boardWidth: boardWidth, boardHeight: boardHeight)
+          .shifted(dRow, dCol)
+          .toBase64();
+
+  final used = {
+    for (final i in data.everUsed)
+      if (shift(i) case final n?) n,
+  };
+
+  final villagers = VillagerBook([
+    for (final v in data.villagers.villagers)
+      if (shift(v.cell) case final n?) v.moved(n),
+  ]);
+
+  // Words kept from before the real-words rule move with the board.
+  final kept = <WordRun>[];
+  for (final r in data.keptRuns) {
+    final moved = [for (final i in r.positions) shift(i)];
+    if (moved.contains(null)) continue;
+    kept.add(WordRun(r.word, moved.cast<int>(), r.across));
+  }
+
+  return data.copyWith(
+    saveVersion: 6,
+    keptRuns: kept,
+    boardCells: board,
+    pool: pool,
+    dealtLetters: dealt,
+    cleared: fog,
+    everUsed: used,
+    villagers: villagers,
+    planetSlot: slot,
+    migratedFrom: data.saveVersion,
+  );
 }
 
 /// Fixed radius used when initialising fog from an existing v2 save.

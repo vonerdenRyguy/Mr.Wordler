@@ -6,6 +6,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/screens/home_screen.dart';
+import 'package:namer_app/screens/mode_start_pages.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/ui/wallpaper.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -82,7 +84,9 @@ void main() {
 
     await goToHomePage(tester, 'Play');
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Time Attack').first);
+    Navigator.of(tester.element(find.byType(HomeScreen))).push(
+      MaterialPageRoute<void>(builder: (_) => const TimeAttackStartPage()),
+    );
     await tester.pumpAndSettle();
     expect(find.byWidgetPredicate((w) => w is Wallpaper && w.kind == WallpaperKind.hills), findsOneWidget);
     expect(tester.takeException(), isNull);

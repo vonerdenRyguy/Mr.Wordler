@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:namer_app/screens/mode_start_pages.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/daily/daily_challenge_controller.dart';
-import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/ui/game_layout.dart';
-import 'package:namer_app/util/theme_notifier.dart';
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Timed screens never settle, so pump in bounded steps.
@@ -32,10 +30,21 @@ void main() {
   Future<void> startTimeAttack(WidgetTester tester) async {
     phoneSize(tester);
     await tester.pumpWidget(ProviderScope(
-      child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TimeAttackStartPage()),
+              ),
+              child: const Text('open time attack'),
+            ),
+          ),
+        ),
+      ),
     ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Time Attack'));
+    await tester.tap(find.text('open time attack'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Start - 3:00'));
     await pumpFor(tester);
@@ -62,7 +71,7 @@ void main() {
     await pumpFor(tester);
     await tester.tap(find.text('Leave'));
     await tester.pumpAndSettle();
-    expect(find.text('Visit your village'), findsOneWidget);
+    expect(find.text('open time attack'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -76,7 +85,7 @@ void main() {
 
     await tester.tap(find.text('Leave'));
     await tester.pumpAndSettle();
-    expect(find.text('Visit your village'), findsOneWidget);
+    expect(find.text('open time attack'), findsOneWidget);
   });
 
   testWidgets("leaving the Daily doesn't record an attempt", (tester) async {

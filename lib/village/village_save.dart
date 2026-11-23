@@ -35,6 +35,10 @@ import '../villagers/village_book.dart';
 //   keptRuns            — words already standing when the real-words rule
 //                         arrived; their buildings stay until a letter moves
 //                         (optional; absent = none).
+//
+// spec-18 (saveVersion 6) Letterra:
+//   planet              — {slot, migratedFrom}: the harbor spot this village
+//                         sits on and, for a moved village, the old version.
 class VillageSaveData {
   final List<String?> boardCells;
   final List<String?> rackCells;
@@ -45,7 +49,7 @@ class VillageSaveData {
   final Set<String> discoveredWords;
   // Format version. 1 = original 21-letter rack; 2 = 10-letter rack;
   // 3 = explore (fog + island map + XP tracking); 4 = villagers;
-  // 5 = real words only (tidiedLoose, looseNote).
+  // 5 = real words only (tidiedLoose, looseNote); 6 = Letterra (planet).
   // See village_save_migration.dart.
   final int saveVersion;
 
@@ -95,7 +99,16 @@ class VillageSaveData {
   /// `settle`'s `kept`).
   final List<WordRun> keptRuns;
 
-  static const int currentVersion = 5;
+
+  /// spec-18: the harbor spot (0..7) this village sits on. Null on a save
+  /// that hasn't been moved onto Letterra yet.
+  final int? planetSlot;
+
+  /// spec-18: the save version this village was moved from, or null when it
+  /// was born on Letterra.
+  final int? migratedFrom;
+
+  static const int currentVersion = 6;
 
   /// The fixed seed for the spec-15 island map.
   static const int kDefaultMapSeed = 15001;
@@ -123,21 +136,35 @@ class VillageSaveData {
     this.looseNote = 0,
     this.bag = const [],
     this.keptRuns = const [],
+    this.planetSlot,
+    this.migratedFrom,
   });
 
-  VillageSaveData copyWith({int? saveVersion, VillagerBook? villagers}) => VillageSaveData(
-        boardCells: boardCells,
+  VillageSaveData copyWith({
+    int? saveVersion,
+    VillagerBook? villagers,
+    List<String?>? boardCells,
+    List<String>? pool,
+    List<String>? dealtLetters,
+    String? cleared,
+    Set<int>? everUsed,
+    int? planetSlot,
+    int? migratedFrom,
+    List<WordRun>? keptRuns,
+  }) =>
+      VillageSaveData(
+        boardCells: boardCells ?? this.boardCells,
         rackCells: rackCells,
-        pool: pool,
-        dealtLetters: dealtLetters,
+        pool: pool ?? this.pool,
+        dealtLetters: dealtLetters ?? this.dealtLetters,
         lastCashedOutScore: lastCashedOutScore,
         reachedLandmarks: reachedLandmarks,
         discoveredWords: discoveredWords,
         saveVersion: saveVersion ?? this.saveVersion,
         mapSeed: mapSeed,
         mapVersion: mapVersion,
-        cleared: cleared,
-        everUsed: everUsed,
+        cleared: cleared ?? this.cleared,
+        everUsed: everUsed ?? this.everUsed,
         everWords: everWords,
         foundSpecials: foundSpecials,
         shrines: shrines,
@@ -146,7 +173,9 @@ class VillageSaveData {
         tidiedLoose: tidiedLoose,
         looseNote: looseNote,
         bag: bag,
-        keptRuns: keptRuns,
+        keptRuns: keptRuns ?? this.keptRuns,
+        planetSlot: planetSlot ?? this.planetSlot,
+        migratedFrom: migratedFrom ?? this.migratedFrom,
       );
 
   Map<String, dynamic> toJson() => {
@@ -177,6 +206,12 @@ class VillageSaveData {
           'keptRuns': [
             for (final r in keptRuns) {'w': r.word, 'p': r.positions, 'a': r.across},
           ],
+        // spec-18
+        if (planetSlot != null)
+          'planet': {
+            'slot': planetSlot,
+            if (migratedFrom != null) 'migratedFrom': migratedFrom,
+          },
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -215,6 +250,8 @@ class VillageSaveData {
               r['a'] as bool? ?? true,
             ),
         ],
+        planetSlot: (json['planet'] as Map?)?['slot'] as int?,
+        migratedFrom: (json['planet'] as Map?)?['migratedFrom'] as int?,
       );
 }
 

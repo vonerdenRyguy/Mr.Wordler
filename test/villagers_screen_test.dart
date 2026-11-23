@@ -11,7 +11,6 @@ import 'package:namer_app/explore/island_map.dart';
 import 'package:namer_app/game/word_landing.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/portfolio/portfolio_controller.dart';
-import 'package:namer_app/screens/infinite_estate_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:namer_app/village/village_save.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +20,7 @@ import 'home_test_helpers.dart' show skipHomeIntro;
 
 const _size = 500;
 
-IslandMap get _map => IslandMap(seed: VillageSaveData.kDefaultMapSeed, homes: const [InfiniteEstateScreen.homeIndex]);
+IslandMap get _map => IslandMap.letterra(seed: VillageSaveData.kDefaultMapSeed);
 
 /// Puts [word] across on [cell]'s row, starting [before] squares left of it.
 void _across(List<String?> board, int cell, String word, {int before = 1}) {
@@ -29,7 +28,7 @@ void _across(List<String?> board, int cell, String word, {int before = 1}) {
   word.split('').asMap().forEach((i, l) => board[start + i] = l);
 }
 
-Map<String, dynamic> _save(List<String?> board, {int version = 3, List<dynamic>? villagers}) => {
+Map<String, dynamic> _save(List<String?> board, {int version = 6, List<dynamic>? villagers}) => {
       'boardCells': board,
       'rackCells': List<String>.filled(10, 'E'),
       'pool': List<String>.filled(50, 'E'),
@@ -38,6 +37,7 @@ Map<String, dynamic> _save(List<String?> board, {int version = 3, List<dynamic>?
       'discoveredWords': <String>[],
       'saveVersion': version,
       if (version >= 3) 'cleared': '',
+      if (version >= 6) 'planet': {'slot': 0},
       if (villagers != null) 'villagers': villagers,
     };
 
@@ -57,8 +57,8 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(tester.element(find.text('Visit your village')));
-    await tester.tap(find.text('Visit your village'));
+    final container = ProviderScope.containerOf(tester.element(find.byKey(const ValueKey('globe-village-0'))));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle(
         const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 20));
     return container;
@@ -89,7 +89,7 @@ void main() {
     expect(find.text('1/12'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     final saved = jsonDecode(prefs.getString('infiniteEstateVillageSave')!) as Map<String, dynamic>;
-    expect(saved['saveVersion'], 5);
+    expect(saved['saveVersion'], 6);
     final v = (saved['villagers'] as List).single as Map<String, dynamic>;
     expect(v['id'], tile.id);
     expect(v['name'], 'Captain Zed');
@@ -150,7 +150,7 @@ void main() {
       'movedInWord': 'SIPS',
       'presentClaimed': false,
     };
-    final container = await openVillage(tester, _save(board, version: 4, villagers: [villager]), {'SIPS', 'MOONS'});
+    final container = await openVillage(tester, _save(board, villagers: [villager]), {'SIPS', 'MOONS'});
 
     expect(find.text('Wish came true!'), findsOneWidget);
     expect(find.textContaining('Pip wished for a 5-letter word, and MOONS did it.'), findsOneWidget);

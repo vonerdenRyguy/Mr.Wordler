@@ -56,18 +56,18 @@ void main() {
   testWidgets('swiping moves between Me, Play and Family; the tabs follow', (tester) async {
     SharedPreferences.setMockInitialValues({SettingsController.homeIntroSeenKey: true});
     await pumpHome(tester);
-    expect(find.text('Visit your village'), findsOneWidget);
+    expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
 
     // Swipe right: Me.
     await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('Journal'), findsOneWidget);
-    expect(find.text('Visit your village'), findsNothing);
+    expect(find.byKey(const ValueKey('globe-village-0')), findsNothing);
 
     // Swipe left twice: Play, then Family.
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1000);
     await tester.pumpAndSettle();
-    expect(find.text('Visit your village'), findsOneWidget);
+    expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('Play with your family'), findsOneWidget);
@@ -115,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Spell the word of the day in your village for +10 coins.'), findsOneWidget);
-    for (final label in ['Stats', 'Word level', 'Journal', 'Homes']) {
+    for (final label in ['Stats', 'Word level', 'Journal', 'Homes', 'Villagers']) {
       final box = tester.getRect(find.text(label));
       expect(box.bottom, lessThan(tester.getRect(find.byType(TipBar)).top), reason: label);
     }
@@ -130,8 +130,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: tab);
     }
-    // Play's badges and PLAY are all on screen.
-    for (final label in ['Daily puzzle', 'Time Attack', 'PLAY']) {
+    // Play's badge and goal bar are on screen.
+    for (final label in ['Daily puzzle', 'Light the Great Lantern']) {
       expect(const Rect.fromLTWH(0, 0, 390, 844).contains(tester.getRect(find.text(label)).bottomRight), isTrue,
           reason: label);
     }
@@ -172,37 +172,33 @@ void main() {
       }
     }
 
-    testWidgets('before the Daily is played, PLAY opens it and Daily wears a red !', (tester) async {
+    testWidgets('before the Daily is played, its badge opens it and wears a red !', (tester) async {
       SharedPreferences.setMockInitialValues(prefs());
       await pumpHome(tester);
       expect(find.text('!'), findsOneWidget);
-      expect(find.text('Visit your village'), findsOneWidget);
-      fitsBetweenBars(tester, ['PLAY', 'Daily puzzle', 'Time Attack', 'Visit your village']);
-      await tester.tap(find.text('PLAY'));
+      expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
+      expect(find.text('Light the Great Lantern'), findsOneWidget);
+      expect(find.text('PLAY'), findsNothing);
+      fitsBetweenBars(tester, ['Daily puzzle', 'Light the Great Lantern']);
+      await tester.tap(find.text('Daily puzzle'));
       await tester.pumpAndSettle();
       expect(find.text('Clue'), findsOneWidget); // the Daily round
     });
 
-    testWidgets('after the Daily, PLAY builds in your village', (tester) async {
+    testWidgets('tapping your village on the globe goes in', (tester) async {
       SharedPreferences.setMockInitialValues(prefs(played: true));
       await pumpHome(tester);
       expect(find.text('!'), findsNothing);
-      expect(find.text('Build in your village'), findsOneWidget);
-      expect(find.text('Visit your village'), findsNothing);
-      await tester.tap(find.text('PLAY'));
+      await tester.tap(find.byKey(const ValueKey('globe-village-0')));
       await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
           const Duration(seconds: 20));
       expect(find.text('Swap'), findsOneWidget); // the village
     });
 
-    testWidgets('the badges open the Daily and Time Attack', (tester) async {
+    testWidgets('Time Attack is gone from Home; the Daily badge says so when played', (tester) async {
       SharedPreferences.setMockInitialValues(prefs(played: true));
       await pumpHome(tester);
-      await tester.tap(find.text('Time Attack'));
-      await tester.pumpAndSettle();
-      expect(find.text('Start - 3:00'), findsOneWidget);
-      Navigator.of(tester.element(find.text('Start - 3:00'))).pop();
-      await tester.pumpAndSettle();
+      expect(find.text('Time Attack'), findsNothing);
       await tester.tap(find.text('Daily puzzle'));
       await tester.pumpAndSettle();
       expect(find.text("You've already played today!"), findsOneWidget);
@@ -215,8 +211,9 @@ void main() {
       await pumpHome(tester, size: const Size(411, 891));
       expect(tester.takeException(), isNull);
       expect(find.text(playTip), findsOneWidget);
-      fitsBetweenBars(tester, ['PLAY', 'Daily puzzle', 'Time Attack']);
-      expect(tester.getRect(find.text('PLAY')).bottom, lessThan(tester.getRect(find.byType(TipBar)).top));
+      fitsBetweenBars(tester, ['Daily puzzle', 'Light the Great Lantern']);
+      expect(tester.getRect(find.text('Light the Great Lantern')).bottom,
+          lessThan(tester.getRect(find.byType(TipBar)).top));
     });
   });
 
