@@ -65,6 +65,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   double _pinchStartZoom = 1;
   final Map<int, Offset> _pointers = {};
   double _pinchStartDistance = 0;
+  bool _dragging = false;
 
   @override
   void initState() {
@@ -76,6 +77,10 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
         _lat = _fromLat + (_toLat - _fromLat) * t;
         _zoom = _fromZoom + (_toZoom - _fromZoom) * t;
       });
+    });
+    _anim.addStatusListener((status) {
+      // Back to full detail once a fly-to settles.
+      if (status == AnimationStatus.completed && mounted) setState(() {});
     });
   }
 
@@ -172,6 +177,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   void _pointerUp(PointerEvent e) {
     _pointers.remove(e.pointer);
     _pinchStartDistance = 0;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -188,7 +194,12 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
         onPointerCancel: _pointerUp,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onPanStart: canPan ? (_) => _anim.stop() : null,
+          onPanStart: canPan
+              ? (_) {
+                  _anim.stop();
+                  setState(() => _dragging = true);
+                }
+              : null,
           onPanUpdate: canPan
               ? (d) {
                   if (_pointers.length < 2) _panBy(d.delta);
@@ -196,6 +207,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
               : null,
           onPanEnd: canPan
               ? (_) {
+                  setState(() => _dragging = false);
                   final near = _nearestVillage();
                   if (near != null && near != _reported && widget.villages.length > 1) {
                     _reported = near;
@@ -218,6 +230,9 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
                       takenSlots: widget.takenSlots,
                       isHushed: widget.isHushed,
                       showTags: widget.showTags,
+                      detail: (_anim.isAnimating || _dragging || _pointers.length > 1)
+                          ? GlobeDetail.coarse
+                          : GlobeDetail.fine,
                     ),
                   ),
                 ),

@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -251,8 +253,41 @@ const _bandColors = <Band, Color>{
   Band.cloudCap: Color(0xFFE9EEF2),
   Band.northPeak: Color(0xFFFFE9A0),
 };
-const _hush = Color(0xDD6F7378);
 const _tile = Color(0xFFE9D9B5);
+
+final _letterPainters = <String, TextPainter>{};
+
+/// How finely the land is drawn: coarser while the globe is moving.
+enum GlobeDetail { fine, coarse }
+
+// What each board cell is, cached once per set of taken harbors: the band
+// index (0-7), or -1 for sea (the Deep or an open bay), or -2 not yet known.
+final _kindCache = <int, Int8List>{};
+
+Int8List _kindsFor(Set<int> taken) {
+  var key = 0;
+  for (final s in taken) {
+    key |= 1 << s;
+  }
+  return _kindCache.putIfAbsent(key, () => Int8List(kPlanetBoard * kPlanetBoard)..fillRange(0, kPlanetBoard * kPlanetBoard, -2));
+}
+
+int _kindAtCompute(Set<int> taken, int row, int col) {
+  final band = bandAt(row, col);
+  if (band == Band.deep || isBay(row, col, taken)) return -1;
+  return band.index;
+}
+
+final _bandColorValues = <int>[
+  for (final b in Band.values) (_bandColors[b] ?? _sea).value,
+];
+
+// The Hush laid over a colour (same as drawing 0xDD6F7378 on top of it).
+int _hushOver(int base) {
+  const a = 0xDD / 255;
+  int mix(int shift, int over) => ((((base >> shift) & 0xFF) * (1 - a)) + over * a).round();
+  return (0xFF << 24) | (mix(16, 0x6F) << 16) | (mix(8, 0x73) << 8) | mix(0, 0x78);
+}
 
 /// Paints the planet.
 class GlobePainter extends CustomPainter {
@@ -264,8 +299,10 @@ class GlobePainter extends CustomPainter {
     required this.takenSlots,
     required this.isHushed,
     this.showTags = true,
+    this.detail = GlobeDetail.fine,
   });
 
+  final GlobeDetail detail;
   final double centerLon;
   final double centerLat;
   final double zoom;
@@ -317,59 +354,86 @@ class GlobePainter extends CustomPainter {
 
   // Land, drawn as lat/lon tiles that split finer the closer they are to the
   // camera (so the shore stays smooth when you zoom right in), skipping what
-  // is round the back or off screen.
+  // is round the back or off screen. Every tile goes into ONE batched draw
+  // (coloured triangles), and what each board cell is comes from a cache, so
+  // zooming and spinning stay smooth.
   void _paintLand(Canvas canvas, Size size, GlobeProjection proj) {
-    final paint = Paint()..isAntiAlias = false; // no seams between cells
     final screen = Offset.zero & size;
     const root = 12 * _deg;
     const minSize = 0.2 * _deg;
+    final splitPx = detail == GlobeDetail.coarse ? 13.0 : 6.0;
+    final kinds = _kindsFor(takenSlots);
+    int kindOf(int row, int col) {
+      if (row < 0 || col < 0 || row >= kPlanetBoard || col >= kPlanetBoard) return -1;
+      final i = row * kPlanetBoard + col;
+      var k = kinds[i];
+      if (k == -2) {
+        k = _kindAtCompute(takenSlots, row, col);
+        kinds[i] = k;
+      }
+      return k;
+    }
+    final positions = <double>[];
+    final colors = <int>[];
 
-    void tile(double lat, double lon, double sz, int depth) {
+    void push(Offset a, Offset b, Offset c, int color) {
+      positions
+        ..add(a.dx)
+        ..add(a.dy)
+        ..add(b.dx)
+        ..add(b.dy)
+        ..add(c.dx)
+        ..add(c.dy);
+      colors
+        ..add(color)
+        ..add(color)
+        ..add(color);
+    }
+
+    void tile(double lat, double lon, double sz) {
       final mLat = lat + sz / 2, mLon = lon + sz / 2;
-      final c = proj.project(mLat, mLon);
       final z = proj._zOf(mLat, mLon);
       if (z <= 0.02) return;
+      final c = proj.project(mLat, mLon);
       // Round the back (allowing for the tile's own size).
       if (c.depth * proj._eyeLen - 1 < -sz * 1.5 * proj._eyeLen) return;
       final px = proj.focal * sz / z;
-      final pad = px * 1.5 + 8;
-      if (!screen.inflate(pad).contains(c.p)) return;
-      if (px > 6 && sz > minSize) {
+      if (!screen.inflate(px * 1.5 + 8).contains(c.p)) return;
+      if (px > splitPx && sz > minSize) {
         final h = sz / 2;
-        tile(lat, lon, h, depth + 1);
-        tile(lat, lon + h, h, depth + 1);
-        tile(lat + h, lon, h, depth + 1);
-        tile(lat + h, lon + h, h, depth + 1);
+        tile(lat, lon, h);
+        tile(lat, lon + h, h);
+        tile(lat + h, lon, h);
+        tile(lat + h, lon + h, h);
         return;
       }
       final b = sphereToBoard(mLat, mLon);
       final row = b.row.round(), col = b.col.round();
-      final band = bandAt(row, col);
-      if (band == Band.deep || isBay(row, col, takenSlots)) return;
+      final kind = kindOf(row, col);
+      if (kind < 0) return; // sea
       final p0 = proj.project(lat, lon);
       final p1 = proj.project(lat, lon + sz);
       final p2 = proj.project(lat + sz, lon + sz);
       final p3 = proj.project(lat + sz, lon);
       if (!p0.front || !p1.front || !p2.front || !p3.front) return;
-      final quad = Path()
-        ..moveTo(p0.p.dx, p0.p.dy)
-        ..lineTo(p1.p.dx, p1.p.dy)
-        ..lineTo(p2.p.dx, p2.p.dy)
-        ..lineTo(p3.p.dx, p3.p.dy)
-        ..close();
-      paint.color = _bandColors[band] ?? _sea;
-      canvas.drawPath(quad, paint);
-      if (isHushed(row, col, mLon)) {
-        paint.color = _hush;
-        canvas.drawPath(quad, paint);
-      }
+      var color = _bandColorValues[kind];
+      if (isHushed(row, col, mLon)) color = _hushOver(color);
+      push(p0.p, p1.p, p2.p, color);
+      push(p0.p, p2.p, p3.p, color);
     }
 
     for (var lat = -6 * _deg; lat < math.pi / 2 - 1e-9; lat += root) {
       for (var lon = 0.0; lon < 2 * math.pi - 1e-9; lon += root) {
-        tile(lat, lon, root, 0);
+        tile(lat, lon, root);
       }
     }
+    if (positions.isEmpty) return;
+    final vertices = ui.Vertices.raw(
+      ui.VertexMode.triangles,
+      Float32List.fromList(positions),
+      colors: Int32List.fromList(colors),
+    );
+    canvas.drawVertices(vertices, BlendMode.dst, Paint());
   }
 
   // A soft shade towards the rim (the curve) and a thin atmosphere line along
@@ -554,18 +618,18 @@ class GlobePainter extends CustomPainter {
           (pts[0].dx + pts[1].dx + pts[2].dx + pts[3].dx) / 4,
           (pts[0].dy + pts[1].dy + pts[2].dy + pts[3].dy) / 4,
         );
-        final tp = TextPainter(
-          text: TextSpan(
-            text: e.value,
-            style: TextStyle(
-              fontFamily: 'LilitaOne',
-              fontSize: cell * 0.62,
-              color: WColors.ink,
+        final size = (cell * 0.62).round();
+        final tp = _letterPainters.putIfAbsent(
+          '${e.value}$size',
+          () => TextPainter(
+            text: TextSpan(
+              text: e.value,
+              style: TextStyle(fontFamily: 'LilitaOne', fontSize: size.toDouble(), color: WColors.ink),
             ),
-          ),
-          textDirection: TextDirection.ltr,
-          textScaler: TextScaler.noScaling,
-        )..layout();
+            textDirection: TextDirection.ltr,
+            textScaler: TextScaler.noScaling,
+          )..layout(),
+        );
         tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
       }
     }
@@ -645,7 +709,8 @@ class GlobePainter extends CustomPainter {
       oldDelegate.zoom != zoom ||
       oldDelegate.villages != villages ||
       oldDelegate.takenSlots != takenSlots ||
-      oldDelegate.showTags != showTags;
+      oldDelegate.showTags != showTags ||
+      oldDelegate.detail != detail;
 }
 
 /// The magic-word runs on a board, for colouring a village's building tiles

@@ -48,7 +48,7 @@ design, architecture, tricky bugs) or Sonnet (building from a spec, tests,
 installs, small fixes). If I'm on the wrong one, tell me to switch with
 `/model`.
 
-## Current state (as of 2026-11-22)
+## Current state (as of 2026-11-23)
 
 Built from specs 01-15, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
@@ -393,9 +393,60 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     `looseCells()` and `returnLooseToRack()` are new on the controller.
   - Loose letters look unsure (dashed coral outline, slight tilt); tapping
     one opens the Not-a-word card naming the bad run.
-  - Leaving the village sends loose letters back to the rack (it may hold
-    more than 10; refills wait), with a note on the next visit. Old saves
-    tidy once: **saveVersion 5**, `tidiedLoose` (and `looseNote`).
+  - Leaving the village sends loose letters back, with a note on the next
+    visit. Old saves tidy once: **saveVersion 5**, `tidiedLoose` (and
+    `looseNote`).
+  - **Fixes after the first build** (merged 2026-11-23 after Ryan's Samsung
+    check; the first build had made a BARN building vanish):
+    - The tidy-up only takes **stray** letters (`BoardWords.strayCells`:
+      loose and in no real word at all). A letter shared by two real words
+      never moves, and neither do found-special, villager or kept-word
+      squares.
+    - **Kept words** (`keptRuns` in the save): on an old village's first
+      load every real word already standing is recorded; `settle(..., kept:)`
+      still counts it (so its building stays) until a letter of it moves
+      (`pruneKept`). Kept words shift with the board in `shiftVillage`.
+    - **Letter bag** (`GridGameState.bag`, saved as `bag`, widget
+      `lib/ui/letter_bag.dart`): the rack never grows past 10. Returned
+      letters, gifts (no gold stripe any more) and chest letters wait in the
+      bag ("+23" chip under the rack, tap to swap one in). A used rack
+      letter pulls from the bag before anything is dealt from the pool. Old
+      oversized racks restore into the bag.
+    - Samsung repair done by hand (2026-11-23): BARN's letters were put
+      back from the pre-spec17 backup by editing the prefs XML; the Pixel
+      was never connected to compare.
+- **spec-18 Letterra planet** (merged 2026-11-23; **commits 7 and 8 of the
+  spec are NOT built**: the whole-planet screen / story / Regions page, and
+  the online slots + `reach` sync + rules). Spec:
+  `Desktop\MrWordlerScreenshots\specs\spec-18-letterra-planet.md`.
+  - `lib/letterra/planet.dart`: bands by round distance from the Lantern
+    (250,250): North Peak 0-6, Cloud Cap 7-20, Echo Mountains 21-44, Ruin
+    Hills 45-64, Ribbon River 65-68, Whisper Woods 69-94, Meadow 95-116,
+    Sunny Shore 117-124, the Deep 125+. 8 harbor slots at distance 120,
+    `slotAngle(s)=s*pi/4`, join order `kSlotOrder=[0,4,2,6,1,5,3,7]`; open
+    bays around empty slots are sea (`isBay`). `IslandMap.letterra(...)`.
+  - **Save v6**: `planetSlot`, `migratedFrom`. `moveToLetterra` shifts an old
+    village (board, fog, everUsed, villager homes, kept words) onto harbor 0,
+    and `landOnShore` (`village_save_migration.dart`) then slides it inland
+    until **no letter is on the sea**; it also runs on every load of a v6
+    save, which is how the Samsung's piers over the Deep were rescued.
+    Sea and bays refuse new tiles. Band chip in the village.
+  - **Home is a globe** (`lib/letterra/globe_view.dart`, `globe_painter.dart`):
+    a true sphere with a perspective camera that tilts as you zoom (zoom 1 =
+    whole planet, max 7). Board cell <-> sphere: lat = 90 * (1 - d/120)
+    (`boardToSphere` / `sphereToBoard`). Drag spins (only when there are
+    several villages or you are zoomed in, so a lone globe lets swipes reach
+    Home's pages), pinch or +/- zoom, tap a village to go in. Zoomed in it
+    draws the village's own letters as tiles on the curved ground
+    (`GlobeVillage.letters`, `magicRunsOn` colours building runs). Land is a
+    quadtree of lat/lon tiles drawn as ONE `drawVertices` call with cached
+    cell kinds; `GlobeDetail.coarse` while moving. Ryan said zooming still
+    felt slow and not great (2026-11-23): Home layout options H301-H304 are
+    on the canvas (dive / three stops / postcards), waiting for his pick.
+    `tool/globe_shots_test.dart` renders PNGs, `tool/globe_perf_test.dart`
+    times the painter (neither is in the normal suite).
+  - Time Attack is gone from Home (its start page is still reachable in
+    tests); Me gained a Villagers button.
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -640,7 +691,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 336 tests as of spec-16 (300 as of spec-15).
+- `flutter test` — 413 tests as of spec-18 (336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
