@@ -63,8 +63,8 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(tester.element(find.text('Visit your village')));
-    await tester.tap(find.text('Visit your village'));
+    final container = ProviderScope.containerOf(tester.element(find.byKey(const ValueKey('globe-village-0'))));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     return container;
   }
@@ -102,7 +102,7 @@ void main() {
 
     // A second visit changes nothing and says nothing.
     await leave(tester);
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     expect(sawNote, isFalse);
     json = await savedJson();
@@ -125,7 +125,7 @@ void main() {
     expect(json['bag'], ['Q']);
     expect(json['looseNote'], 1);
 
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await pumpVillage(tester);
     expect(sawNote, isTrue);
     json = await savedJson();

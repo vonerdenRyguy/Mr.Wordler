@@ -53,9 +53,9 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(tester.element(find.text('Visit your village')));
+    final container = ProviderScope.containerOf(tester.element(find.byKey(const ValueKey('globe-village-0'))));
     expect(container.read(portfolioProvider).currency, 0);
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
     return container;
@@ -87,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    expect(find.text('Visit your village'), findsOneWidget);
+    expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
     // The Me page's word card now says Done.
     await tester.tap(find.text('Me').last);
     await tester.pumpAndSettle();
@@ -97,7 +97,7 @@ void main() {
     await tester.tap(find.text('Play').last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
     expect(container.read(portfolioProvider).currency, coinsBefore);
@@ -118,7 +118,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
     expect(find.text('New building!'), findsNothing);

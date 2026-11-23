@@ -106,15 +106,20 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
       final size = constraints.biggest;
       final proj = GlobeProjection(size: size, centerLon: _lon, mode: widget.mode);
       _radius = proj.radius;
+      // With one village alone there is nothing to turn to, so swipes go to
+      // the page behind (Home's Me | Play | Family).
+      final turns = widget.villages.length > 1;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (_) => _anim.stop(),
-        onHorizontalDragUpdate: (d) => setState(() => _lon = wrapLon(_lon - d.delta.dx / _radius)),
-        onHorizontalDragEnd: (d) {
-          if (widget.mode == GlobeMode.closeUp) {
-            _settle(d.primaryVelocity ?? 0);
-          }
-        },
+        onHorizontalDragStart: turns ? (_) => _anim.stop() : null,
+        onHorizontalDragUpdate: turns ? (d) => setState(() => _lon = wrapLon(_lon - d.delta.dx / _radius)) : null,
+        onHorizontalDragEnd: turns
+            ? (d) {
+                if (widget.mode == GlobeMode.closeUp) {
+                  _settle(d.primaryVelocity ?? 0);
+                }
+              }
+            : null,
         child: Stack(
           children: [
             Positioned.fill(

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../explore/fog.dart';
 import '../ui/tokens.dart';
 import 'planet.dart';
 
@@ -466,4 +467,23 @@ double lonDelta(double from, double to) {
   if (d > math.pi) d -= 2 * math.pi;
   if (d < -math.pi) d += 2 * math.pi;
   return d;
+}
+
+/// How far up the planet a village has climbed, worked out from its fog: the
+/// furthest band with a cleared cell along the straight way from the harbor
+/// to the Great Lantern.
+int reachFromFog(FogMap fog, int slot) {
+  final h = harborCell(slot);
+  final hr = h ~/ kPlanetBoard, hc = h % kPlanetBoard;
+  var reach = 0;
+  const steps = 120;
+  for (var i = 0; i <= steps; i++) {
+    final r = (hr + (kLanternRow - hr) * i / steps).round();
+    final c = (hc + (kLanternCol - hc) * i / steps).round();
+    if (fog.isCleared(r * kPlanetBoard + c)) {
+      final v = reachOfBand(bandAt(r, c));
+      if (v > reach) reach = v;
+    }
+  }
+  return reach;
 }

@@ -57,8 +57,8 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(tester.element(find.text('Visit your village')));
-    await tester.tap(find.text('Visit your village'));
+    final container = ProviderScope.containerOf(tester.element(find.byKey(const ValueKey('globe-village-0'))));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle(
         const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 20));
     return container;

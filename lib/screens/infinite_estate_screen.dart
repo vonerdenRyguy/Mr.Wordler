@@ -81,7 +81,10 @@ enum _ViewMode { words, village }
 // growth since the last cash-out into currency/XP and lets the player
 // leave; the village itself is never reset.
 class InfiniteEstateScreen extends StatelessWidget {
-  const InfiniteEstateScreen({super.key});
+  const InfiniteEstateScreen({super.key, this.openVillagers = false});
+
+  /// Open straight onto the Your villagers page (Me's shortcut, spec-18).
+  final bool openVillagers;
 
   static const int boardSize = 500;
   // 10 big tiles in 2 rows of 5 (was 21). Saves from the 21-tile days are
@@ -116,7 +119,7 @@ class InfiniteEstateScreen extends StatelessWidget {
           ),
         ),
       ],
-      child: const _InfiniteEstateBody(),
+      child: _InfiniteEstateBody(openVillagers: openVillagers),
     );
   }
 }
@@ -143,7 +146,9 @@ int scoreForWords(List<String> words) {
 }
 
 class _InfiniteEstateBody extends ConsumerStatefulWidget {
-  const _InfiniteEstateBody();
+  const _InfiniteEstateBody({this.openVillagers = false});
+
+  final bool openVillagers;
 
   @override
   ConsumerState<_InfiniteEstateBody> createState() => _InfiniteEstateBodyState();
@@ -739,6 +744,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     await _refreshStructures();
     await _refreshScore();
     await _takeGifts();
+    if (widget.openVillagers && mounted) _openVillagersPage();
   }
 
   // "Mr. W put 3 letters back in your rack", once.

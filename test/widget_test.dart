@@ -11,10 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:namer_app/daily/daily_puzzle.dart';
 import 'package:namer_app/daily/word_of_the_day.dart';
 import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/main.dart';
+import 'package:namer_app/screens/home_screen.dart';
+import 'package:namer_app/screens/mode_start_pages.dart';
 import 'package:namer_app/screens/daily_challenge_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 
@@ -58,7 +59,10 @@ Finder oneLetterTileFinder() => find.byWidgetPredicate((widget) =>
 // How each mode is reached from Home. Kept in one place so the tests
 // follow the app's navigation as it changes.
 Future<void> openTimeAttack(WidgetTester tester) async {
-  await tester.tap(find.text('Time Attack'));
+  // Time Attack has no door on Home any more (spec-18); push its page.
+  Navigator.of(tester.element(find.byType(HomeScreen))).push(
+    MaterialPageRoute<void>(builder: (_) => const TimeAttackStartPage()),
+  );
   await tester.pumpAndSettle();
   expect(find.text('Use every letter before the clock runs out.'), findsOneWidget);
   await tester.tap(find.text('Start - 3:00'));
@@ -110,10 +114,9 @@ void main() {
       }
     }
 
-    // Play opens first: the village, the Daily and Time Attack.
+    // Play opens first: the planet, the Daily and the goal bar.
     expect(tester.takeException(), isNull);
-    final theme = 'Theme: ${dailyPuzzleFor(DateTime.now()).theme.name}';
-    onScreen(['Visit your village', 'Daily puzzle', 'Time Attack', 'New village', theme, 'Me', 'Family']);
+    onScreen(['Daily puzzle', 'Light the Great Lantern', 'New village', 'Me', 'Family']);
     // "Play" is the tab and both games' buttons.
     expect(screen.contains(tester.getRect(find.text('Play').last).bottomRight), isTrue);
     expect(find.text('Free Play'), findsNothing);
@@ -303,7 +306,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     // No perpetual timer in this mode -- pumpAndSettle is safe throughout.
     await tester.pumpAndSettle();
 
@@ -374,7 +377,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -389,7 +392,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester, overrides: overrides);
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle();
   }
 
@@ -462,8 +465,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Visit your village'));
-    await tester.tap(find.text('Visit your village'));
+    await tester.ensureVisible(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
