@@ -23,7 +23,7 @@ class GlobeView extends StatefulWidget {
     this.onTurn,
     this.reduceMotion = false,
     this.showTags = true,
-    this.initialZoom = 1.25,
+    this.initialZoom = 1.0,
     this.showZoomButtons = true,
   });
 

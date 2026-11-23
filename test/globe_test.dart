@@ -16,7 +16,7 @@ bool _noHush(int r, int c, double lon) => false;
 void main() {
   group('projection', () {
     test('your harbor sits low and centred, the Lantern towards the top', () {
-      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.25);
+      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.0);
       final harbor = p.harborAt(0)!;
       expect(harbor.dx, closeTo(_size.width / 2, 0.5));
       expect(harbor.dy, greaterThan(_size.height / 2));
@@ -25,13 +25,13 @@ void main() {
     });
 
     test('a harbor on the far side is not shown; a neighbour is to the right', () {
-      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.25);
+      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.0);
       expect(p.harborAt(4), isNull);
       expect(p.harborAt(1)!.dx, greaterThan(_size.width / 2));
     });
 
     test('spinning to a harbor brings it to the middle', () {
-      final p = GlobeProjection(size: _size, centerLon: slotAngle(4), centerLat: 0.42, zoom: 1.25);
+      final p = GlobeProjection(size: _size, centerLon: slotAngle(4), centerLat: 0.42, zoom: 1.0);
       expect(p.harborAt(4)!.dx, closeTo(_size.width / 2, 0.5));
       expect(p.harborAt(0), isNull);
     });
