@@ -22,6 +22,8 @@ const _key = 'infiniteEstateVillageSave';
 // WELL across from (mid, mid-3); a Q under the E ("EQ" is no word).
 const _eCell = _mid * _size + _mid - 2;
 const _qUnderE = (_mid + 1) * _size + _mid - 2;
+// spec-18: an old village moves onto Letterra's harbor, 120 rows down.
+const _moved = 120 * _size;
 
 Map<String, dynamic> _save({required int version, bool tidied = false, List<String>? rack, List<String>? bag}) {
   final board = List<String?>.filled(_size * _size, null);
@@ -52,7 +54,7 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Visit your village'));
+    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -71,10 +73,10 @@ void main() {
     await openVillage(tester);
 
     final json = await savedJson();
-    expect(json['saveVersion'], 5);
+    expect(json['saveVersion'], 6);
     final board = json['boardCells'] as List;
-    expect(board[_qUnderE], isNull);
-    expect(board[_eCell], 'E');
+    expect(board[_qUnderE + _moved], isNull);
+    expect(board[_eCell + _moved], 'E');
     expect(json['bag'], ['Q']);
     expect((json['keptRuns'] as List).single['w'], 'WELL');
 
