@@ -23,7 +23,7 @@ class GlobeView extends StatefulWidget {
     this.onTurn,
     this.reduceMotion = false,
     this.showTags = true,
-    this.initialZoom = 1.75,
+    this.initialZoom = 1.25,
     this.showZoomButtons = true,
   });
 
@@ -49,8 +49,8 @@ class GlobeView extends StatefulWidget {
 /// The camera latitude that suits a zoom: tilted to show the Lantern when the
 /// whole planet is in view, nearly level when zoomed into a village.
 double _latForZoom(double zoom) {
-  final t = ((zoom - 1.5) / 4.5).clamp(0.0, 1.0);
-  return 0.46 + (0.14 - 0.46) * t;
+  final t = ((zoom - 1.25) / 3.0).clamp(0.0, 1.0);
+  return 0.46 + (0.04 - 0.46) * t;
 }
 
 class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMixin {
@@ -113,7 +113,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
     super.dispose();
   }
 
-  double get _radius => math.min(_size.width, _size.height) * 0.46 * _zoom;
+  double get _pxPerRad => GlobeProjection(size: _size, centerLon: _lon, centerLat: _lat, zoom: _zoom).pixelsPerRadian;
 
   // With one village alone there is nothing to spin to, so swipes go to the
   // page behind (Home's Me | Play | Family) until you have zoomed in.
@@ -138,7 +138,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   }
 
   void _panBy(Offset delta) {
-    final r = _radius;
+    final r = _pxPerRad;
     final cosLat = math.max(0.25, math.cos(_lat));
     setState(() {
       _lon = wrapLon(_lon - delta.dx / (r * cosLat));

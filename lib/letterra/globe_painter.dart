@@ -71,7 +71,14 @@ const double kGlobeMinZoom = 1.0;
   return (row: kLanternRow + d * math.cos(lon), col: kLanternCol + d * math.sin(lon));
 }
 
-/// Where a point on the planet lands on screen.
+/// A perspective camera over the planet: far away it sees the whole globe from
+/// above; as you zoom in it comes down and tilts, so the village sits low on
+/// the screen and the horizon curves across the top, like zooming into a globe
+/// in a map app.
+///
+/// The planet is a unit sphere at the origin (north pole up). The camera
+/// looks at the point ([centerLat], [centerLon]), standing south of it and
+/// above it by an altitude that shrinks as [zoom] grows.
 class GlobeProjection {
   GlobeProjection({
     required this.size,
@@ -80,34 +87,118 @@ class GlobeProjection {
     this.zoom = 1.0,
   })  : radius = math.min(size.width, size.height) * 0.46 * zoom,
         cx = size.width / 2,
-        cy = size.height / 2,
-        _sinLat0 = math.sin(centerLat),
-        _cosLat0 = math.cos(centerLat);
+        _alt = (_e0 - 1) / zoom {
+    final t = (((zoom - 1.2) / 4.0).clamp(0.0, 1.0)).toDouble();
+    final smooth = t * t * (3 - 2 * t);
+    tilt = 0.95 * smooth;
+    cy = size.height * (0.5 + 0.12 * smooth);
+    focal = math.min(size.width, size.height) * 0.46 * math.sqrt(_e0 * _e0 - 1);
+
+    final sinLat = math.sin(centerLat), cosLat = math.cos(centerLat);
+    final sinLon = math.sin(centerLon), cosLon = math.cos(centerLon);
+    final target = _V(cosLat * sinLon, sinLat, cosLat * cosLon);
+    final north = _V(-sinLat * sinLon, cosLat, -sinLat * cosLon);
+    _eye = target + (target * math.cos(tilt) - north * math.sin(tilt)) * _alt;
+    final fwd = (target - _eye).unit();
+    _f = fwd;
+    _r = fwd.cross(north).unit();
+    _u = _r.cross(fwd);
+    _eyeLen = _eye.len();
+  }
+
+  static const double _e0 = 3.2;
 
   final Size size;
 
-  /// The longitude and latitude (radians) at the middle of the screen.
+  /// The longitude and latitude (radians) the camera looks at.
   final double centerLon;
   final double centerLat;
 
   /// 1 shows the whole planet; higher zooms in.
   final double zoom;
+
+  /// A size for things drawn at the planet's scale (the planet's radius in
+  /// pixels when the whole of it is in view).
   final double radius;
   final double cx;
-  final double cy;
-  final double _sinLat0;
-  final double _cosLat0;
+  late final double cy;
+  late final double focal;
+  late final double tilt;
+  late final _V _eye;
+  late final _V _f, _r, _u;
+  late final double _eyeLen;
+  final double _alt;
+
+  /// Pixels on the screen per radian of ground at the point looked at.
+  double get pixelsPerRadian => focal / _alt;
 
   /// Projects latitude [lat] and longitude [lon] (radians). [front] is true
-  /// when the point is on the visible side.
+  /// when the point is on the side the camera can see (and in front of it).
   ({Offset p, bool front, double depth}) project(double lat, double lon) {
-    final dl = lon - centerLon;
-    final cosLat = math.cos(lat), sinLat = math.sin(lat);
-    final cosD = math.cos(dl);
-    final x = cosLat * math.sin(dl);
-    final y = _cosLat0 * sinLat - _sinLat0 * cosLat * cosD;
-    final z = _sinLat0 * sinLat + _cosLat0 * cosLat * cosD;
-    return (p: Offset(cx + radius * x, cy - radius * y), front: z > 0, depth: z);
+    final cl = math.cos(lat);
+    return _projectPoint(_V(cl * math.sin(lon), math.sin(lat), cl * math.cos(lon)));
+  }
+
+  ({Offset p, bool front, double depth}) _projectPoint(_V p) {
+    final v = p - _eye;
+    final z = v.dot(_f);
+    final depth = p.dot(_eye) / _eyeLen; // cos of the angle from under the camera
+    final front = p.dot(_eye) > 1.0 + 1e-9 && z > 0.02;
+    if (z <= 1e-6) return (p: Offset(cx, cy), front: false, depth: depth);
+    return (p: Offset(cx + focal * v.dot(_r) / z, cy - focal * v.dot(_u) / z), front: front, depth: depth);
+  }
+
+  /// Distance from the camera along its view direction, for a point.
+  double _zOf(double lat, double lon) {
+    final cl = math.cos(lat);
+    return (_V(cl * math.sin(lon), math.sin(lat), cl * math.cos(lon)) - _eye).dot(_f);
+  }
+
+  /// How many pixels a stretch of [radians] of ground spans at ([lat], [lon]).
+  double pixelsAt(double lat, double lon, double radians) {
+    final z = _zOf(lat, lon);
+    return z <= 1e-6 ? double.infinity : focal * radians / z;
+  }
+
+  /// The outline of the planet as a path (a closed circle when the whole
+  /// planet is in view; the horizon with everything below it when you are
+  /// close).
+  Path silhouette() {
+    final e = _eyeLen;
+    final centre = _eye * (1 / (e * e));
+    final rho = math.sqrt(math.max(0.0, 1 - 1 / (e * e)));
+    final axis = _eye.unit();
+    var a = axis.cross(_V(0, 1, 0));
+    if (a.len() < 1e-6) a = _V(1, 0, 0);
+    a = a.unit();
+    final b = axis.cross(a).unit();
+    final pts = <Offset>[];
+    var all = true;
+    for (var i = 0; i < 180; i++) {
+      final th = i * 2 * math.pi / 180;
+      final p = centre + (a * math.cos(th) + b * math.sin(th)) * rho;
+      final r = _projectPoint(p);
+      final z = (p - _eye).dot(_f);
+      if (z <= 0.01) {
+        all = false;
+        continue;
+      }
+      pts.add(r.p);
+    }
+    if (all) return Path()..addPolygon(pts, true);
+    if (pts.length < 2) return Path()..addRect(Offset.zero & size);
+    // Only the part of the horizon in front of the camera: everything below it
+    // is planet.
+    pts.sort((p, q) => p.dx.compareTo(q.dx));
+    final path = Path()..moveTo(pts.first.dx - 2000, size.height + 4000);
+    path.lineTo(pts.first.dx - 2000, pts.first.dy);
+    for (final p in pts) {
+      path.lineTo(p.dx, p.dy);
+    }
+    path.lineTo(pts.last.dx + 2000, pts.last.dy);
+    path.lineTo(pts.last.dx + 2000, size.height + 4000);
+    path.close();
+    return path;
   }
 
   /// Where harbor [slot] sits on screen (null when it faces away).
@@ -119,15 +210,30 @@ class GlobeProjection {
   /// Where the Great Lantern sits.
   Offset get lantern => project(math.pi / 2, 0).p;
 
-  /// Screen size (pixels) of one board cell at the harbor.
-  double get cellPixels => radius * (math.pi / 2) / kHarborDistance;
+  /// Screen size (pixels) of one board cell at the point looked at.
+  double get cellPixels => pixelsPerRadian * (math.pi / 2) / kHarborDistance;
 
   /// The tap area of a village: at least 48 logical pixels each way.
   Rect? villageHit(int slot) {
     final p = harborAt(slot);
     if (p == null) return null;
-    final s = math.min(math.max(48.0, radius * 0.22), size.width * 0.5);
+    final s = math.min(math.max(48.0, cellPixels * 11), size.width * 0.5);
     return Rect.fromCenter(center: p.translate(0, -s * 0.15), width: s * 1.6, height: s);
+  }
+}
+
+class _V {
+  const _V(this.x, this.y, this.z);
+  final double x, y, z;
+  _V operator +(_V o) => _V(x + o.x, y + o.y, z + o.z);
+  _V operator -(_V o) => _V(x - o.x, y - o.y, z - o.z);
+  _V operator *(double k) => _V(x * k, y * k, z * k);
+  double dot(_V o) => x * o.x + y * o.y + z * o.z;
+  _V cross(_V o) => _V(y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x);
+  double len() => math.sqrt(x * x + y * y + z * z);
+  _V unit() {
+    final l = len();
+    return l == 0 ? this : _V(x / l, y / l, z / l);
   }
 }
 
@@ -174,21 +280,26 @@ class GlobePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom);
-    final disc = Rect.fromCircle(center: Offset(proj.cx, proj.cy), radius: proj.radius);
+    final outline = proj.silhouette();
+    final disc = outline.getBounds();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
 
-    // The sea fills the disc; the Deep is darker towards the rim.
-    canvas.drawCircle(
-      disc.center,
-      proj.radius,
+    // Sky behind the planet, then the sea filling it; the Deep is darker
+    // towards the rim.
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFBFE6F5));
+    canvas.drawPath(
+      outline,
       Paint()..shader = RadialGradient(colors: const [_sea, _seaDeep]).createShader(disc),
     );
 
+    canvas.save();
+    canvas.clipPath(outline);
     _paintLand(canvas, size, proj);
     _paintSeaFriends(canvas, proj);
     _paintLantern(canvas, proj);
-    _paintShading(canvas, proj, disc);
+    canvas.restore();
+    _paintShading(canvas, proj, outline, disc);
 
     // Villages, back to front.
     final order = [...villages]..sort((a, b) {
@@ -204,61 +315,70 @@ class GlobePainter extends CustomPainter {
     canvas.restore();
   }
 
-  // Land cells on the visible side, sampled finer the closer you are, and
-  // only over the part of the globe that is on screen.
+  // Land, drawn as lat/lon tiles that split finer the closer they are to the
+  // camera (so the shore stays smooth when you zoom right in), skipping what
+  // is round the back or off screen.
   void _paintLand(Canvas canvas, Size size, GlobeProjection proj) {
-    final stepDeg = ((6 / proj.radius) / _deg).clamp(0.3, 3.0);
-    final step = stepDeg * _deg;
-    final halfDiag = math.sqrt(size.width * size.width + size.height * size.height) / 2;
-    final reach = math.asin(math.min(1.0, halfDiag / proj.radius)) + step * 2;
-    final latMin = math.max(-4 * _deg, centerLat - reach);
-    final latMax = math.min(math.pi / 2, centerLat + reach);
-    if (latMax <= latMin) return;
-    final polar = latMax > 85 * _deg || reach > 1.25;
-    final worstLat = math.max(latMin.abs(), latMax.abs()).clamp(0.0, 1.5);
-    final span = polar ? math.pi : math.min(math.pi, reach / math.cos(worstLat));
-
     final paint = Paint()..isAntiAlias = false; // no seams between cells
-    final lat0 = (latMin / step).floor() * step;
-    final lon0 = ((centerLon - span) / step).floor() * step;
-    final nLon = (2 * span / step).ceil() + 1;
-    for (var lat = lat0; lat < latMax; lat += step) {
-      final midLat = lat + step / 2;
-      for (var k = 0; k < nLon; k++) {
-        final lon = lon0 + k * step;
-        final midLon = lon + step / 2;
-        final b = sphereToBoard(midLat, midLon);
-        final row = b.row.round(), col = b.col.round();
-        final band = bandAt(row, col);
-        if (band == Band.deep || isBay(row, col, takenSlots)) continue;
-        final a = proj.project(lat, lon);
-        if (!a.front) continue;
-        final bb = proj.project(lat, lon + step);
-        final c = proj.project(lat + step, lon + step);
-        final d = proj.project(lat + step, lon);
-        if (!bb.front || !c.front || !d.front) continue;
-        final quad = Path()
-          ..moveTo(a.p.dx, a.p.dy)
-          ..lineTo(bb.p.dx, bb.p.dy)
-          ..lineTo(c.p.dx, c.p.dy)
-          ..lineTo(d.p.dx, d.p.dy)
-          ..close();
-        paint.color = _bandColors[band] ?? _sea;
+    final screen = Offset.zero & size;
+    const root = 12 * _deg;
+    const minSize = 0.2 * _deg;
+
+    void tile(double lat, double lon, double sz, int depth) {
+      final mLat = lat + sz / 2, mLon = lon + sz / 2;
+      final c = proj.project(mLat, mLon);
+      final z = proj._zOf(mLat, mLon);
+      if (z <= 0.02) return;
+      // Round the back (allowing for the tile's own size).
+      if (c.depth * proj._eyeLen - 1 < -sz * 1.5 * proj._eyeLen) return;
+      final px = proj.focal * sz / z;
+      final pad = px * 1.5 + 8;
+      if (!screen.inflate(pad).contains(c.p)) return;
+      if (px > 6 && sz > minSize) {
+        final h = sz / 2;
+        tile(lat, lon, h, depth + 1);
+        tile(lat, lon + h, h, depth + 1);
+        tile(lat + h, lon, h, depth + 1);
+        tile(lat + h, lon + h, h, depth + 1);
+        return;
+      }
+      final b = sphereToBoard(mLat, mLon);
+      final row = b.row.round(), col = b.col.round();
+      final band = bandAt(row, col);
+      if (band == Band.deep || isBay(row, col, takenSlots)) return;
+      final p0 = proj.project(lat, lon);
+      final p1 = proj.project(lat, lon + sz);
+      final p2 = proj.project(lat + sz, lon + sz);
+      final p3 = proj.project(lat + sz, lon);
+      if (!p0.front || !p1.front || !p2.front || !p3.front) return;
+      final quad = Path()
+        ..moveTo(p0.p.dx, p0.p.dy)
+        ..lineTo(p1.p.dx, p1.p.dy)
+        ..lineTo(p2.p.dx, p2.p.dy)
+        ..lineTo(p3.p.dx, p3.p.dy)
+        ..close();
+      paint.color = _bandColors[band] ?? _sea;
+      canvas.drawPath(quad, paint);
+      if (isHushed(row, col, mLon)) {
+        paint.color = _hush;
         canvas.drawPath(quad, paint);
-        if (isHushed(row, col, midLon)) {
-          paint.color = _hush;
-          canvas.drawPath(quad, paint);
-        }
+      }
+    }
+
+    for (var lat = -6 * _deg; lat < math.pi / 2 - 1e-9; lat += root) {
+      for (var lon = 0.0; lon < 2 * math.pi - 1e-9; lon += root) {
+        tile(lat, lon, root, 0);
       }
     }
   }
 
-  // A soft shade towards the rim (the curve) and a thin atmosphere line.
-  void _paintShading(Canvas canvas, GlobeProjection proj, Rect disc) {
+  // A soft shade towards the rim (the curve) and a thin atmosphere line along
+  // the horizon.
+  void _paintShading(Canvas canvas, GlobeProjection proj, Path outline, Rect disc) {
     canvas.save();
-    canvas.clipPath(Path()..addOval(disc));
+    canvas.clipPath(outline);
     canvas.drawRect(
-      disc,
+      disc.inflate(10),
       Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.25, -0.35),
@@ -268,21 +388,12 @@ class GlobePainter extends CustomPainter {
         ).createShader(disc),
     );
     canvas.restore();
-    canvas.drawCircle(
-      disc.center,
-      proj.radius,
+    canvas.drawPath(
+      outline,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4
-        ..color = const Color(0xFF9BD3F0).withOpacity(0.7),
-    );
-    canvas.drawCircle(
-      disc.center,
-      proj.radius + 3,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = WColors.ink.withOpacity(0.45),
+        ..color = const Color(0xFF9BD3F0).withOpacity(0.8),
     );
   }
 
