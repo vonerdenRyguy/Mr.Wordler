@@ -3,25 +3,22 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../explore/fog.dart';
+import '../village/magic_word.dart';
 import '../ui/tokens.dart';
 import 'planet.dart';
 
-// Letterra's globe (spec-18, canvas W234 and X252). 2D only: an orthographic
-// projection in a CustomPainter. The board's top-down disc IS the northern
-// hemisphere: the Lantern is the North Pole, the Sunny Shore the equator, and
-// harbor slot s sits at longitude s * 45 degrees. A cell at (lat, lon) is the
-// board cell at distance d = (90 - lat) / 90 * 124 from the Lantern in the
-// direction lon, so fog, bands and bays all come from the same board.
+// Letterra's globe (spec-18, canvas W234 and X252). A true sphere seen in
+// orthographic projection, centred on any point: spin it to see the other
+// villages, pinch (or use + / -) to zoom in until the village's own tiles
+// show, still on the curved surface, like zooming into a globe in a map app.
+//
+// The board's top-down disc IS the planet: the Lantern is the North Pole, the
+// Sunny Shore (the harbors) the equator, and harbor slot s sits at longitude
+// s * 45 degrees. A board cell at distance d from the Lantern in direction
+// lon sits at latitude 90 * (1 - d / 120). So fog, bands, bays and each
+// village's letters all come from the same board.
 //
 // Art is placeholder, drawn in code.
-
-enum GlobeMode {
-  /// Zoomed in on one harbor; the Lantern glows at the top.
-  closeUp,
-
-  /// The whole planet.
-  whole,
-}
 
 /// One person's village as the globe draws it.
 class GlobeVillage {
@@ -31,6 +28,8 @@ class GlobeVillage {
     this.buildings = const [],
     this.reach = 0,
     this.color = WColors.sun,
+    this.letters = const {},
+    this.buildingRuns = const [],
   });
 
   final int slot;
@@ -43,47 +42,72 @@ class GlobeVillage {
   /// 0 shore, 1 meadow, 2 woods, 3 river, 4 hills, 5 mountains, 6 cloud cap.
   final int reach;
   final Color color;
+
+  /// Board cell index -> letter, for the tiles drawn when you zoom in.
+  final Map<int, String> letters;
+
+  /// The cells of each standing building, for colouring those tiles.
+  final List<({String word, List<int> cells})> buildingRuns;
 }
 
 const _deg = math.pi / 180;
 
+/// Highest zoom (1 = the whole planet fits the box).
+const double kGlobeMaxZoom = 7.0;
+const double kGlobeMinZoom = 1.0;
+
+/// Latitude / longitude (radians) of a board position (fractional allowed).
+({double lat, double lon}) boardToSphere(double row, double col) {
+  final dr = row - kLanternRow, dc = col - kLanternCol;
+  final d = math.sqrt(dr * dr + dc * dc);
+  final lon = d == 0 ? 0.0 : math.atan2(dc, dr);
+  final lat = (math.pi / 2) * (1 - d / kHarborDistance);
+  return (lat: lat.clamp(-math.pi / 2, math.pi / 2).toDouble(), lon: lon);
+}
+
+/// The board position of a latitude / longitude (radians).
+({double row, double col}) sphereToBoard(double lat, double lon) {
+  final d = (1 - lat / (math.pi / 2)) * kHarborDistance;
+  return (row: kLanternRow + d * math.cos(lon), col: kLanternCol + d * math.sin(lon));
+}
+
 /// Where a point on the planet lands on screen.
 class GlobeProjection {
-  GlobeProjection({required this.size, required this.centerLon, required this.mode}) {
-    switch (mode) {
-      case GlobeMode.closeUp:
-        tilt = 0.9;
-        radius = size.height * 0.48;
-        cx = size.width / 2;
-        cy = size.height * 0.78 - radius * math.sin(tilt);
-      case GlobeMode.whole:
-        tilt = 1.25;
-        radius = math.min(size.width, size.height) * 0.46;
-        cx = size.width / 2;
-        cy = size.height / 2;
-    }
-  }
+  GlobeProjection({
+    required this.size,
+    required this.centerLon,
+    this.centerLat = 0.42,
+    this.zoom = 1.0,
+  })  : radius = math.min(size.width, size.height) * 0.46 * zoom,
+        cx = size.width / 2,
+        cy = size.height / 2,
+        _sinLat0 = math.sin(centerLat),
+        _cosLat0 = math.cos(centerLat);
 
   final Size size;
 
-  /// The longitude (radians) facing the viewer.
+  /// The longitude and latitude (radians) at the middle of the screen.
   final double centerLon;
-  final GlobeMode mode;
-  late final double tilt;
-  late final double radius;
-  late final double cx;
-  late final double cy;
+  final double centerLat;
+
+  /// 1 shows the whole planet; higher zooms in.
+  final double zoom;
+  final double radius;
+  final double cx;
+  final double cy;
+  final double _sinLat0;
+  final double _cosLat0;
 
   /// Projects latitude [lat] and longitude [lon] (radians). [front] is true
   /// when the point is on the visible side.
   ({Offset p, bool front, double depth}) project(double lat, double lon) {
-    final d = lon - centerLon;
-    final x = math.cos(lat) * math.sin(d);
-    final y = math.sin(lat);
-    final z = math.cos(lat) * math.cos(d);
-    final y2 = y * math.cos(tilt) - z * math.sin(tilt);
-    final z2 = y * math.sin(tilt) + z * math.cos(tilt);
-    return (p: Offset(cx + radius * x, cy - radius * y2), front: z2 > 0, depth: z2);
+    final dl = lon - centerLon;
+    final cosLat = math.cos(lat), sinLat = math.sin(lat);
+    final cosD = math.cos(dl);
+    final x = cosLat * math.sin(dl);
+    final y = _cosLat0 * sinLat - _sinLat0 * cosLat * cosD;
+    final z = _sinLat0 * sinLat + _cosLat0 * cosLat * cosD;
+    return (p: Offset(cx + radius * x, cy - radius * y), front: z > 0, depth: z);
   }
 
   /// Where harbor [slot] sits on screen (null when it faces away).
@@ -95,12 +119,15 @@ class GlobeProjection {
   /// Where the Great Lantern sits.
   Offset get lantern => project(math.pi / 2, 0).p;
 
+  /// Screen size (pixels) of one board cell at the harbor.
+  double get cellPixels => radius * (math.pi / 2) / kHarborDistance;
+
   /// The tap area of a village: at least 48 logical pixels each way.
   Rect? villageHit(int slot) {
     final p = harborAt(slot);
     if (p == null) return null;
-    final s = math.max(48.0, radius * (mode == GlobeMode.closeUp ? 0.34 : 0.2));
-    return Rect.fromCenter(center: p.translate(0, -s * 0.2), width: s * 1.6, height: s);
+    final s = math.min(math.max(48.0, radius * 0.22), size.width * 0.5);
+    return Rect.fromCenter(center: p.translate(0, -s * 0.15), width: s * 1.6, height: s);
   }
 }
 
@@ -119,52 +146,23 @@ const _bandColors = <Band, Color>{
   Band.northPeak: Color(0xFFFFE9A0),
 };
 const _hush = Color(0xDD6F7378);
-
-class _Cell {
-  const _Cell(this.lat, this.lon, this.band, this.row, this.col, this.sea);
-  final double lat, lon;
-  final Band band;
-  final int row, col;
-  final bool sea;
-}
-
-final _cellCache = <int, List<_Cell>>{};
-const _stepDeg = 3.0;
-
-List<_Cell> _cellsFor(Set<int> taken) {
-  var key = 0;
-  for (final s in taken) {
-    key |= 1 << s;
-  }
-  return _cellCache.putIfAbsent(key, () {
-    final out = <_Cell>[];
-    for (var latD = 0.0; latD < 90; latD += _stepDeg) {
-      for (var lonD = 0.0; lonD < 360; lonD += _stepDeg) {
-        final lat = (latD + _stepDeg / 2) * _deg;
-        final lon = (lonD + _stepDeg / 2) * _deg;
-        final d = (90 - (latD + _stepDeg / 2)) / 90 * 124;
-        final row = (kLanternRow + d * math.cos(lon)).round();
-        final col = (kLanternCol + d * math.sin(lon)).round();
-        out.add(_Cell(lat, lon, bandAt(row, col), row, col, isBay(row, col, taken)));
-      }
-    }
-    return out;
-  });
-}
+const _tile = Color(0xFFE9D9B5);
 
 /// Paints the planet.
 class GlobePainter extends CustomPainter {
   GlobePainter({
-    required this.mode,
     required this.centerLon,
+    required this.centerLat,
+    required this.zoom,
     required this.villages,
     required this.takenSlots,
     required this.isHushed,
     this.showTags = true,
   });
 
-  final GlobeMode mode;
   final double centerLon;
+  final double centerLat;
+  final double zoom;
   final List<GlobeVillage> villages;
   final Set<int> takenSlots;
 
@@ -175,7 +173,7 @@ class GlobePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final proj = GlobeProjection(size: size, centerLon: centerLon, mode: mode);
+    final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom);
     final disc = Rect.fromCircle(center: Offset(proj.cx, proj.cy), radius: proj.radius);
     canvas.save();
     canvas.clipRect(Offset.zero & size);
@@ -184,27 +182,13 @@ class GlobePainter extends CustomPainter {
     canvas.drawCircle(
       disc.center,
       proj.radius,
-      Paint()
-        ..shader = RadialGradient(colors: const [_sea, _seaDeep]).createShader(disc),
+      Paint()..shader = RadialGradient(colors: const [_sea, _seaDeep]).createShader(disc),
     );
 
-    // Land cells, front side only.
-    final paint = Paint()..isAntiAlias = false; // no seams between cells
-    for (final cell in _cellsFor(takenSlots)) {
-      if (cell.band == Band.deep || cell.sea) continue;
-      final quad = _quad(proj, cell);
-      if (quad == null) continue;
-      paint.color = _bandColors[cell.band] ?? _sea;
-      canvas.drawPath(quad, paint);
-      if (isHushed(cell.row, cell.col, cell.lon)) {
-        paint.color = _hush;
-        canvas.drawPath(quad, paint);
-      }
-    }
-
-    _paintRim(canvas, proj);
-    _paintLantern(canvas, proj);
+    _paintLand(canvas, size, proj);
     _paintSeaFriends(canvas, proj);
+    _paintLantern(canvas, proj);
+    _paintShading(canvas, proj, disc);
 
     // Villages, back to front.
     final order = [...villages]..sort((a, b) {
@@ -215,36 +199,90 @@ class GlobePainter extends CustomPainter {
     for (final v in order) {
       final at = proj.harborAt(v.slot);
       if (at == null) continue;
-      _paintVillage(canvas, proj, v, at);
+      _paintVillage(canvas, size, proj, v, at);
     }
     canvas.restore();
   }
 
-  Path? _quad(GlobeProjection proj, _Cell cell) {
-    const h = _stepDeg / 2 * _deg;
-    final corners = [
-      proj.project(cell.lat - h, cell.lon - h),
-      proj.project(cell.lat - h, cell.lon + h),
-      proj.project(cell.lat + h, cell.lon + h),
-      proj.project(cell.lat + h, cell.lon - h),
-    ];
-    if (corners.any((c) => !c.front)) return null;
-    return Path()
-      ..moveTo(corners[0].p.dx, corners[0].p.dy)
-      ..lineTo(corners[1].p.dx, corners[1].p.dy)
-      ..lineTo(corners[2].p.dx, corners[2].p.dy)
-      ..lineTo(corners[3].p.dx, corners[3].p.dy)
-      ..close();
+  // Land cells on the visible side, sampled finer the closer you are, and
+  // only over the part of the globe that is on screen.
+  void _paintLand(Canvas canvas, Size size, GlobeProjection proj) {
+    final stepDeg = ((6 / proj.radius) / _deg).clamp(0.3, 3.0);
+    final step = stepDeg * _deg;
+    final halfDiag = math.sqrt(size.width * size.width + size.height * size.height) / 2;
+    final reach = math.asin(math.min(1.0, halfDiag / proj.radius)) + step * 2;
+    final latMin = math.max(-4 * _deg, centerLat - reach);
+    final latMax = math.min(math.pi / 2, centerLat + reach);
+    if (latMax <= latMin) return;
+    final polar = latMax > 85 * _deg || reach > 1.25;
+    final worstLat = math.max(latMin.abs(), latMax.abs()).clamp(0.0, 1.5);
+    final span = polar ? math.pi : math.min(math.pi, reach / math.cos(worstLat));
+
+    final paint = Paint()..isAntiAlias = false; // no seams between cells
+    final lat0 = (latMin / step).floor() * step;
+    final lon0 = ((centerLon - span) / step).floor() * step;
+    final nLon = (2 * span / step).ceil() + 1;
+    for (var lat = lat0; lat < latMax; lat += step) {
+      final midLat = lat + step / 2;
+      for (var k = 0; k < nLon; k++) {
+        final lon = lon0 + k * step;
+        final midLon = lon + step / 2;
+        final b = sphereToBoard(midLat, midLon);
+        final row = b.row.round(), col = b.col.round();
+        final band = bandAt(row, col);
+        if (band == Band.deep || isBay(row, col, takenSlots)) continue;
+        final a = proj.project(lat, lon);
+        if (!a.front) continue;
+        final bb = proj.project(lat, lon + step);
+        final c = proj.project(lat + step, lon + step);
+        final d = proj.project(lat + step, lon);
+        if (!bb.front || !c.front || !d.front) continue;
+        final quad = Path()
+          ..moveTo(a.p.dx, a.p.dy)
+          ..lineTo(bb.p.dx, bb.p.dy)
+          ..lineTo(c.p.dx, c.p.dy)
+          ..lineTo(d.p.dx, d.p.dy)
+          ..close();
+        paint.color = _bandColors[band] ?? _sea;
+        canvas.drawPath(quad, paint);
+        if (isHushed(row, col, midLon)) {
+          paint.color = _hush;
+          canvas.drawPath(quad, paint);
+        }
+      }
+    }
   }
 
-  void _paintRim(Canvas canvas, GlobeProjection proj) {
+  // A soft shade towards the rim (the curve) and a thin atmosphere line.
+  void _paintShading(Canvas canvas, GlobeProjection proj, Rect disc) {
+    canvas.save();
+    canvas.clipPath(Path()..addOval(disc));
+    canvas.drawRect(
+      disc,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.25, -0.35),
+          radius: 1.05,
+          colors: [Colors.white.withOpacity(0.10), Colors.transparent, Colors.black.withOpacity(0.38)],
+          stops: const [0, 0.55, 1],
+        ).createShader(disc),
+    );
+    canvas.restore();
     canvas.drawCircle(
-      Offset(proj.cx, proj.cy),
+      disc.center,
       proj.radius,
       Paint()
         ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0xFF9BD3F0).withOpacity(0.7),
+    );
+    canvas.drawCircle(
+      disc.center,
+      proj.radius + 3,
+      Paint()
+        ..style = PaintingStyle.stroke
         ..strokeWidth = 3
-        ..color = WColors.ink.withOpacity(0.55),
+        ..color = WColors.ink.withOpacity(0.45),
     );
   }
 
@@ -252,13 +290,13 @@ class GlobePainter extends CustomPainter {
     final top = proj.project(math.pi / 2, 0);
     if (!top.front) return;
     final c = top.p;
-    final r = proj.radius * (mode == GlobeMode.closeUp ? 0.16 : 0.1);
+    final r = math.min(proj.radius * 0.12, 90.0);
     canvas.drawCircle(
       c,
       r,
       Paint()
         ..shader = RadialGradient(colors: [
-          WColors.sun.withOpacity(mode == GlobeMode.closeUp ? 0.55 : 0.8),
+          WColors.sun.withOpacity(0.75),
           WColors.sun.withOpacity(0),
         ]).createShader(Rect.fromCircle(center: c, radius: r)),
     );
@@ -270,7 +308,7 @@ class GlobePainter extends CustomPainter {
     void friend(double latD, double lonD, void Function(Offset p, double s) draw) {
       final r = proj.project(latD * _deg, lonD * _deg);
       if (!r.front || r.depth < 0.12) return;
-      draw(r.p, proj.radius * (mode == GlobeMode.closeUp ? 0.07 : 0.035) * (0.6 + r.depth));
+      draw(r.p, math.min(proj.radius * 0.035, 60.0) * (0.6 + r.depth));
     }
 
     friend(-24, 20, (p, s) {
@@ -312,8 +350,14 @@ class GlobePainter extends CustomPainter {
     });
   }
 
-  void _paintVillage(Canvas canvas, GlobeProjection proj, GlobeVillage v, Offset at) {
-    final s = proj.radius * (mode == GlobeMode.closeUp ? 0.075 : 0.036);
+  void _paintVillage(Canvas canvas, Size size, GlobeProjection proj, GlobeVillage v, Offset at) {
+    final cell = proj.cellPixels;
+    if (cell >= 5 && v.letters.isNotEmpty) {
+      _paintTiles(canvas, proj, v, cell);
+      if (showTags) _tag(canvas, v.name, _tagSpot(proj, v, at), v.color);
+      return;
+    }
+    final s = math.min(proj.radius * 0.075, 70.0);
     final depth = proj.project(0, slotAngle(v.slot)).depth;
     final squash = (0.35 + 0.4 * depth).clamp(0.3, 0.8);
     // The plate the village stands on.
@@ -339,6 +383,88 @@ class GlobePainter extends CustomPainter {
     if (showTags) _tag(canvas, v.name, at.translate(0, s * 0.9 * (squash + 0.5)), v.color);
   }
 
+  Offset _tagSpot(GlobeProjection proj, GlobeVillage v, Offset at) {
+    // Just above the highest tile that is on screen, else beside the harbor.
+    var top = at.dy;
+    for (final i in v.letters.keys) {
+      final p = _centerOf(proj, i ~/ kPlanetBoard, i % kPlanetBoard);
+      if (p != null && p.dy < top) top = p.dy;
+    }
+    return Offset(at.dx, top - proj.cellPixels * 1.2 - 14);
+  }
+
+  Offset? _centerOf(GlobeProjection proj, int row, int col) {
+    final s = boardToSphere(row + 0.5, col + 0.5);
+    final r = proj.project(s.lat, s.lon);
+    return r.front ? r.p : null;
+  }
+
+  // The village's own tiles on the curved surface: each board cell is a
+  // quad whose corners follow the sphere, so tiles shrink and slant towards
+  // the rim.
+  void _paintTiles(Canvas canvas, GlobeProjection proj, GlobeVillage v, double cell) {
+    final colors = <int, Color>{};
+    final roofs = <Offset>[];
+    for (final run in v.buildingRuns) {
+      final wall = _wallFor(run.word);
+      for (final c in run.cells) {
+        colors[c] = wall;
+      }
+      final mid = run.cells[run.cells.length ~/ 2];
+      final p = _centerOf(proj, mid ~/ kPlanetBoard, mid % kPlanetBoard);
+      if (p != null) roofs.add(p);
+    }
+    final fill = Paint();
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = cell >= 12 ? 1.6 : 1
+      ..color = WColors.ink.withOpacity(0.85);
+    final entries = v.letters.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    for (final e in entries) {
+      final row = e.key ~/ kPlanetBoard, col = e.key % kPlanetBoard;
+      final pts = <Offset>[];
+      var ok = true;
+      for (final corner in const [(0, 0), (0, 1), (1, 1), (1, 0)]) {
+        final s = boardToSphere(row + corner.$1.toDouble(), col + corner.$2.toDouble());
+        final r = proj.project(s.lat, s.lon);
+        if (!r.front) {
+          ok = false;
+          break;
+        }
+        pts.add(r.p);
+      }
+      if (!ok) continue;
+      final quad = Path()..addPolygon(pts, true);
+      fill.color = colors[e.key] ?? _tile;
+      canvas.drawPath(quad, fill);
+      canvas.drawPath(quad, edge);
+      if (cell >= 13) {
+        final c = Offset(
+          (pts[0].dx + pts[1].dx + pts[2].dx + pts[3].dx) / 4,
+          (pts[0].dy + pts[1].dy + pts[2].dy + pts[3].dy) / 4,
+        );
+        final tp = TextPainter(
+          text: TextSpan(
+            text: e.value,
+            style: TextStyle(
+              fontFamily: 'LilitaOne',
+              fontSize: cell * 0.62,
+              color: WColors.ink,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+          textScaler: TextScaler.noScaling,
+        )..layout();
+        tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
+      }
+    }
+    if (cell >= 7) {
+      for (final p in roofs) {
+        _house(canvas, p.translate(0, -cell * 0.35), cell * 1.1, Colors.transparent, bodyless: true);
+      }
+    }
+  }
+
   Color _wallFor(String word) {
     const palette = [
       Color(0xFFE8A87C),
@@ -350,9 +476,9 @@ class GlobePainter extends CustomPainter {
     return palette[word.codeUnits.fold<int>(0, (a, b) => a + b) % palette.length];
   }
 
-  void _house(Canvas canvas, Offset base, double s, Color wall) {
+  void _house(Canvas canvas, Offset base, double s, Color wall, {bool bodyless = false}) {
     final body = Rect.fromLTWH(base.dx - s * 0.5, base.dy - s * 0.8, s, s * 0.8);
-    canvas.drawRect(body, Paint()..color = wall);
+    if (!bodyless) canvas.drawRect(body, Paint()..color = wall);
     canvas.drawPath(
       Path()
         ..moveTo(base.dx - s * 0.65, base.dy - s * 0.8)
@@ -361,13 +487,15 @@ class GlobePainter extends CustomPainter {
         ..close(),
       Paint()..color = WColors.brick,
     );
-    canvas.drawRect(
-      body,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = WColors.ink,
-    );
+    if (!bodyless) {
+      canvas.drawRect(
+        body,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = WColors.ink,
+      );
+    }
   }
 
   void _tag(Canvas canvas, String text, Offset center, Color color) {
@@ -402,10 +530,45 @@ class GlobePainter extends CustomPainter {
   @override
   bool shouldRepaint(GlobePainter oldDelegate) =>
       oldDelegate.centerLon != centerLon ||
-      oldDelegate.mode != mode ||
+      oldDelegate.centerLat != centerLat ||
+      oldDelegate.zoom != zoom ||
       oldDelegate.villages != villages ||
       oldDelegate.takenSlots != takenSlots ||
       oldDelegate.showTags != showTags;
+}
+
+/// The magic-word runs on a board, for colouring a village's building tiles
+/// on the globe. Only exact runs (a whole across or down line) count.
+List<({String word, List<int> cells})> magicRunsOn(Map<int, String> letters) {
+  final out = <({String word, List<int> cells})>[];
+  final words = [for (final m in kMagicWords) m.word];
+  void scan(bool across) {
+    final keys = letters.keys.toList()..sort();
+    final seen = <int>{};
+    for (final k in keys) {
+      if (seen.contains(k)) continue;
+      final step = across ? 1 : kPlanetBoard;
+      final before = k - step;
+      final startsRun = !letters.containsKey(before) ||
+          (across && k % kPlanetBoard == 0) ||
+          (!across && before < 0);
+      if (!startsRun) continue;
+      final cells = <int>[];
+      var i = k;
+      while (letters.containsKey(i)) {
+        cells.add(i);
+        seen.add(i);
+        if (across && (i + 1) % kPlanetBoard == 0) break;
+        i += step;
+      }
+      final word = cells.map((c) => letters[c]!).join();
+      if (cells.length > 1 && words.contains(word)) out.add((word: word, cells: cells));
+    }
+  }
+
+  scan(true);
+  scan(false);
+  return out;
 }
 
 /// Hush by climb: land above the band index [reach] still has the Hush.

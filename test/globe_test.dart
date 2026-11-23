@@ -1,5 +1,5 @@
-// spec-18 commit 5: the globe. Golden-free: projection geometry, tap areas,
-// turning and the Hush rule.
+// spec-18: the globe. Golden-free: projection geometry, board/sphere mapping,
+// tap areas, free spinning, zoom and the Hush rule.
 
 import 'dart:math' as math;
 
@@ -15,45 +15,43 @@ bool _noHush(int r, int c, double lon) => false;
 
 void main() {
   group('projection', () {
-    test('close-up: your harbor low and centred, the Lantern near the top', () {
-      final p = GlobeProjection(size: _size, centerLon: 0, mode: GlobeMode.closeUp);
+    test('your harbor sits low and centred, the Lantern towards the top', () {
+      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.75);
       final harbor = p.harborAt(0)!;
       expect(harbor.dx, closeTo(_size.width / 2, 0.5));
-      expect(harbor.dy, closeTo(_size.height * 0.78, 0.5));
-      expect(p.lantern.dy, lessThan(_size.height * 0.2));
+      expect(harbor.dy, greaterThan(_size.height / 2));
+      expect(p.lantern.dy, lessThan(harbor.dy));
       expect(p.project(math.pi / 2, 0).front, isTrue);
     });
 
     test('a harbor on the far side is not shown; a neighbour is to the right', () {
-      final p = GlobeProjection(size: _size, centerLon: 0, mode: GlobeMode.closeUp);
+      final p = GlobeProjection(size: _size, centerLon: 0, centerLat: 0.42, zoom: 1.75);
       expect(p.harborAt(4), isNull);
-      final next = p.harborAt(1)!;
-      expect(next.dx, greaterThan(_size.width / 2));
+      expect(p.harborAt(1)!.dx, greaterThan(_size.width / 2));
     });
 
-    test('turning to a harbor brings it to the front', () {
-      final p = GlobeProjection(size: _size, centerLon: slotAngle(4), mode: GlobeMode.closeUp);
+    test('spinning to a harbor brings it to the middle', () {
+      final p = GlobeProjection(size: _size, centerLon: slotAngle(4), centerLat: 0.42, zoom: 1.75);
       expect(p.harborAt(4)!.dx, closeTo(_size.width / 2, 0.5));
       expect(p.harborAt(0), isNull);
     });
 
-    test('whole planet fits in its box', () {
+    test('the whole planet fits its box at zoom 1', () {
       const box = Size(390, 600);
-      final p = GlobeProjection(size: box, centerLon: 0, mode: GlobeMode.whole);
+      final p = GlobeProjection(size: box, centerLon: 0, centerLat: 0.3, zoom: 1);
       expect(p.radius * 2, lessThanOrEqualTo(box.width));
-      for (var s = 0; s < kHarborSlots; s++) {
-        final at = p.harborAt(s);
-        if (at != null) {
-          expect(Offset.zero & box, isNot(equals(null)));
-          expect(at.dx, inInclusiveRange(0, box.width));
-          expect(at.dy, inInclusiveRange(0, box.height));
-        }
-      }
     });
 
-    test('every village tap area is at least 48 x 48', () {
-      for (final mode in GlobeMode.values) {
-        final p = GlobeProjection(size: const Size(360, 420), centerLon: 0, mode: mode);
+    test('zooming in makes a board cell bigger, in proportion', () {
+      final near = GlobeProjection(size: _size, centerLon: 0, zoom: 6).cellPixels;
+      final far = GlobeProjection(size: _size, centerLon: 0, zoom: 2).cellPixels;
+      expect(near / far, closeTo(3, 1e-9));
+      expect(GlobeProjection(size: _size, centerLon: 0, zoom: kGlobeMaxZoom).cellPixels, greaterThan(15));
+    });
+
+    test('every village tap area is at least 48 x 48 at every zoom', () {
+      for (final zoom in [1.0, 1.75, 3.0, 7.0]) {
+        final p = GlobeProjection(size: const Size(360, 420), centerLon: 0, centerLat: 0.3, zoom: zoom);
         for (var s = 0; s < kHarborSlots; s++) {
           final r = p.villageHit(s);
           if (r == null) continue;
@@ -61,6 +59,32 @@ void main() {
           expect(r.height, greaterThanOrEqualTo(48));
         }
       }
+    });
+
+    test('board and sphere agree: the harbor is on the equator at its slot angle', () {
+      for (var s = 0; s < kHarborSlots; s++) {
+        final h = harborCell(s);
+        final row = (h ~/ kPlanetBoard).toDouble(), col = (h % kPlanetBoard).toDouble();
+        final ll = boardToSphere(row, col);
+        expect(ll.lat.abs(), lessThan(0.02));
+        expect(lonDelta(ll.lon, slotAngle(s)).abs(), lessThan(0.02));
+        final back = sphereToBoard(ll.lat, ll.lon);
+        expect(back.row, closeTo(row, 1e-6));
+        expect(back.col, closeTo(col, 1e-6));
+      }
+      // The Lantern is the North Pole.
+      expect(boardToSphere(250, 250).lat, closeTo(math.pi / 2, 1e-9));
+    });
+
+    test('magic words are found as exact runs', () {
+      int c(int r, int col) => r * kPlanetBoard + col;
+      final letters = {
+        for (var i = 0; i < 4; i++) c(300, 200 + i): 'WELL'[i],
+        for (var i = 0; i < 4; i++) c(301 + i, 205): 'BARN'[i],
+        c(310, 210): 'Q',
+      };
+      final runs = magicRunsOn(letters);
+      expect(runs.map((r) => r.word).toSet(), {'WELL', 'BARN'});
     });
   });
 
@@ -88,6 +112,7 @@ void main() {
     void Function(int)? onTap,
     void Function(int)? onTurn,
     bool reduce = false,
+    Map<int, String> letters = const {},
   }) =>
       MaterialApp(
         home: Scaffold(
@@ -95,8 +120,10 @@ void main() {
             width: _size.width,
             height: _size.height,
             child: GlobeView(
-              mode: GlobeMode.closeUp,
-              villages: [for (final s in slots) GlobeVillage(slot: s, name: 'P$s', buildings: const ['WELL'])],
+              villages: [
+                for (final s in slots)
+                  GlobeVillage(slot: s, name: 'P$s', buildings: const ['WELL'], letters: s == 0 ? letters : const {}),
+              ],
               takenSlots: slots.toSet(),
               focusSlot: focus,
               isHushed: _noHush,
@@ -120,12 +147,47 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(48));
   });
 
-  testWidgets('a swipe turns to the next filled harbor only', (tester) async {
+  testWidgets('a drag spins the globe freely and reports the nearest village', (tester) async {
     int? turned;
     await tester.pumpWidget(host(focus: 0, slots: [0, 2, 4], onTurn: (s) => turned = s));
-    await tester.fling(find.byType(GlobeView), const Offset(-300, 0), 1200);
+    // Dragging left turns the planet east: the other villages come round.
+    await tester.drag(find.byType(GlobeView), const Offset(-700, 0));
     await tester.pumpAndSettle();
-    expect(turned, 2); // slot 1 is an open bay: skipped
+    expect(turned, isNotNull);
+    expect(turned, isNot(0));
+    expect(find.byKey(const ValueKey('globe-village-0')), findsNothing);
+  });
+
+  testWidgets('the zoom buttons zoom in and out, and stop at the ends', (tester) async {
+    await tester.pumpWidget(host(focus: 0));
+    await tester.pumpAndSettle();
+    final start = tester.getSize(find.byKey(const ValueKey('globe-village-0')));
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byKey(const ValueKey('globe-zoom-in')));
+      await tester.pumpAndSettle();
+    }
+    final big = tester.getSize(find.byKey(const ValueKey('globe-village-0')));
+    expect(big.width, greaterThan(start.width));
+    for (var i = 0; i < 8; i++) {
+      await tester.tap(find.byKey(const ValueKey('globe-zoom-out')));
+      await tester.pumpAndSettle();
+    }
+    final small = tester.getSize(find.byKey(const ValueKey('globe-village-0')));
+    expect(small.width, lessThan(big.width));
+  });
+
+  testWidgets('zoomed right in, the village paints its tiles on the curved surface without error', (tester) async {
+    int c(int r, int col) => r * kPlanetBoard + col;
+    final letters = {
+      for (var i = 0; i < 4; i++) c(364, 248 + i): 'WELL'[i],
+      for (var i = 0; i < 4; i++) c(365 + i, 250): 'BARN'[i],
+    };
+    await tester.pumpWidget(host(focus: 0, letters: letters));
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byKey(const ValueKey('globe-zoom-in')));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('changing the focus turns the planet (instantly with Reduce motion)', (tester) async {

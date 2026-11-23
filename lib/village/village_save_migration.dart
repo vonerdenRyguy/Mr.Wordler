@@ -118,6 +118,10 @@ VillageSaveData migrateVillageSave(
       boardWidth: boardWidth,
       boardHeight: boardHeight,
     );
+  } else if (planetSlot != null) {
+    // Already on Letterra: if any letter stands in the sea (an earlier build
+    // let old words rest there), the village slides onto land.
+    data = landOnShore(data, slot: data.planetSlot ?? planetSlot, boardWidth: boardWidth, boardHeight: boardHeight);
   }
 
   return data;
@@ -140,7 +144,64 @@ VillageSaveData moveToLetterra(
   final newHome = harborCell(slot);
   final dRow = newHome ~/ boardWidth - oldHome ~/ boardWidth;
   final dCol = newHome % boardWidth - oldHome % boardWidth;
+  final moved = shiftVillage(data, dRow, dCol, boardWidth: boardWidth, boardHeight: boardHeight);
+  return landOnShore(
+    moved.copyWith(saveVersion: 6, planetSlot: slot, migratedFrom: data.saveVersion),
+    slot: slot,
+    boardWidth: boardWidth,
+    boardHeight: boardHeight,
+  );
+}
 
+bool _isSea(int row, int col, int slot) => bandAt(row, col) == Band.deep || isBay(row, col, {slot});
+
+/// Whether any letter of [data] sits in the sea (the Deep or an open bay).
+bool hasLettersInSea(VillageSaveData data, {required int slot, int boardWidth = 500}) {
+  for (var i = 0; i < data.boardCells.length; i++) {
+    if (data.boardCells[i] != null && _isSea(i ~/ boardWidth, i % boardWidth, slot)) return true;
+  }
+  return false;
+}
+
+/// Moves the whole village (board, fog, squares ever used, villager homes and
+/// kept words) so every letter stands on land. Letters never rest on the water:
+/// the village slides inland (north from the harbor) by the smallest amount
+/// that clears the sea. A village with no letters in the sea is returned
+/// unchanged, so this is safe to run on every load.
+VillageSaveData landOnShore(
+  VillageSaveData data, {
+  required int slot,
+  int boardWidth = 500,
+  int boardHeight = 500,
+}) {
+  if (!hasLettersInSea(data, slot: slot, boardWidth: boardWidth)) return data;
+  final letters = [
+    for (var i = 0; i < data.boardCells.length; i++)
+      if (data.boardCells[i] != null) i,
+  ];
+  for (var up = 1; up <= 200; up++) {
+    var ok = true;
+    for (final i in letters) {
+      final r = i ~/ boardWidth - up, c = i % boardWidth;
+      if (r < 0 || _isSea(r, c, slot)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return shiftVillage(data, -up, 0, boardWidth: boardWidth, boardHeight: boardHeight);
+  }
+  return data;
+}
+
+/// Shifts everything that has a place on the board by ([dRow], [dCol]).
+/// A letter that would fall off the board goes back to the pool.
+VillageSaveData shiftVillage(
+  VillageSaveData data,
+  int dRow,
+  int dCol, {
+  int boardWidth = 500,
+  int boardHeight = 500,
+}) {
   int? shift(int idx) {
     final r = idx ~/ boardWidth + dRow, c = idx % boardWidth + dCol;
     if (r < 0 || c < 0 || r >= boardHeight || c >= boardWidth) return null;
@@ -187,7 +248,6 @@ VillageSaveData moveToLetterra(
   }
 
   return data.copyWith(
-    saveVersion: 6,
     keptRuns: kept,
     boardCells: board,
     pool: pool,
@@ -195,8 +255,6 @@ VillageSaveData moveToLetterra(
     cleared: fog,
     everUsed: used,
     villagers: villagers,
-    planetSlot: slot,
-    migratedFrom: data.saveVersion,
   );
 }
 
