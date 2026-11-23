@@ -67,6 +67,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   final Map<int, Offset> _pointers = {};
   double _pinchStartDistance = 0;
   bool _dragging = false;
+  bool _gliding = false;
 
   @override
   void initState() {
@@ -98,7 +99,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
     }
   }
 
-  void _flyTo({required double lon, required double zoom, required double lat}) {
+  void _flyTo({required double lon, required double zoom, required double lat, bool glide = false}) {
     zoom = zoom.clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
     if (widget.reduceMotion) {
       _anim.stop();
@@ -115,6 +116,8 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
     _toLon = lon;
     _toLat = lat;
     _toZoom = zoom;
+    _gliding = glide;
+    _anim.duration = Duration(milliseconds: glide ? 900 : 450);
     _anim.forward(from: 0);
   }
 
@@ -157,6 +160,16 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
     });
   }
 
+  // Let go while moving and the planet glides on, easing to a stop. The glide
+  // starts at the finger's own speed (easeOutCubic starts at 3 / duration).
+  void _glide(Offset velocity) {
+    if (widget.reduceMotion || velocity.distance < 120) return;
+    final r = _pxPerRad;
+    final turn = (-velocity.dx * 0.3 / (r * math.max(0.25, math.cos(_lat)))).clamp(-2.4, 2.4).toDouble();
+    final lat = (_lat + velocity.dy * 0.3 / r).clamp(-0.25, 1.45).toDouble();
+    _flyTo(lon: _lon + turn, zoom: _zoom, lat: lat, glide: true);
+  }
+
   void _pointerMoved(PointerMoveEvent e) {
     if (!_pointers.containsKey(e.pointer)) return;
     _pointers[e.pointer] = e.position;
@@ -164,14 +177,20 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
       final pts = _pointers.values.toList();
       final dist = (pts[0] - pts[1]).distance;
       setState(() {
+        final before = _latForZoom(_zoom);
         _zoom = (_pinchStartZoom * dist / _pinchStartDistance).clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
-        _lat = _latForZoom(_zoom);
+        // Keep where you were looking; only the tilt follows the zoom.
+        _lat = (_lat + _latForZoom(_zoom) - before).clamp(-0.25, 1.45).toDouble();
       });
     }
   }
 
   void _pointerDown(PointerDownEvent e) {
     _pointers[e.pointer] = e.position;
+    if (_gliding) {
+      _gliding = false;
+      _anim.stop();
+    }
     if (_pointers.length == 2) {
       _anim.stop();
       final pts = _pointers.values.toList();
@@ -212,8 +231,9 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
                 }
               : null,
           onPanEnd: canPan
-              ? (_) {
+              ? (d) {
                   setState(() => _dragging = false);
+                  _glide(d.velocity.pixelsPerSecond);
                   final near = _nearestVillage();
                   if (near != null && near != _reported && widget.villages.length > 1) {
                     _reported = near;

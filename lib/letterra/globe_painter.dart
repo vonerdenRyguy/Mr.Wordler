@@ -309,7 +309,10 @@ Set<int> _cellsNearLetters(List<GlobeVillage> villages) {
 
 /// A picture standing on the planet, ready to draw.
 class _Stand {
-  const _Stand(this.z, this.sprite, this.at, this.width, this.lean);
+  const _Stand(this.z, this.sprite, this.at, this.width, this.lean, [this.tint = 0]);
+
+  /// Which puff shade; fixed per puff, so it never flickers while moving.
+  final int tint;
   final double z;
   final GlobeSprite sprite;
   final Offset at;
@@ -533,7 +536,6 @@ class GlobePainter extends CustomPainter {
     final zoomedIn = proj.cellPixels >= 5;
     final near = _cellsNearLetters(villages);
     for (final d in globeDecorFor(takenSlots)) {
-      if (detail == GlobeDetail.coarse && !d.hush && d.cells < 12.5 && !zoomedIn) continue;
       final p = _V(d.x, d.y, d.z);
       if (p.dot(proj._eye) < 0.97) continue;
       final px = pxAt(p) * d.cells;
@@ -546,7 +548,7 @@ class GlobePainter extends CustomPainter {
       }
       if (near.contains(d.row * kPlanetBoard + d.col)) continue;
       if (!zoomedIn && _byHarbor(d)) continue;
-      final st = _standAt(proj, size, p, d.sprite, px);
+      final st = _standAt(proj, size, p, d.sprite, px, tint: d.row * 7 + d.col * 3);
       if (st != null) stands.add(st);
     }
     stand(math.pi / 2, 0, GlobeSprite.lantern, math.min(proj.radius * 0.62, size.width * 0.55));
@@ -639,8 +641,11 @@ class GlobePainter extends CustomPainter {
           ][word.codeUnits.fold<int>(0, (a, b) => a + b) % 5],
       };
 
-  _Stand? _standAt(GlobeProjection proj, Size size, _V p, GlobeSprite s, double width) {
-    if (p.dot(proj._eye) < 0.97) return null;
+  _Stand? _standAt(GlobeProjection proj, Size size, _V p, GlobeSprite s, double width, {int tint = 0}) {
+    // Things grow in over the horizon instead of popping.
+    final over = ((p.dot(proj._eye) - 0.97) / 0.08).clamp(0.0, 1.0).toDouble();
+    if (over <= 0.05) return null;
+    width *= over;
     final v = p - proj._eye;
     final z = v.dot(proj._f);
     if (z <= 0.05) return null;
@@ -648,7 +653,7 @@ class GlobePainter extends CustomPainter {
     if (at.dx < -width || at.dy < -width || at.dx > size.width + width || at.dy > size.height + width) return null;
     // Pictures lean outward with the ground, but mostly stay upright.
     final lean = math.atan2(p.dot(proj._r), p.dot(proj._u) + 1.1);
-    return _Stand(z, s, at, width, lean);
+    return _Stand(z, s, at, width, lean, tint);
   }
 
   void _drawStands(Canvas canvas, GlobeArt look, List<_Stand> stands) {
@@ -672,7 +677,7 @@ class GlobePainter extends CustomPainter {
         // Puffs get a touch of lilac and blue so a bank of Hush has depth.
         for (final s in stands)
           s.sprite == GlobeSprite.puff || s.sprite == GlobeSprite.puffWide
-              ? _puffTints[(s.width * 7).round() % _puffTints.length]
+              ? _puffTints[s.tint % _puffTints.length]
               : const Color(0xFFFFFFFF),
       ],
       BlendMode.modulate,
