@@ -40,8 +40,10 @@ void main() {
     expect(m.saveVersion, 6);
     expect(m.planetSlot, 0);
     expect(m.migratedFrom, 5);
-    final off = harborCell(0) - _oldHome; // (+120, 0)
-    expect(off, 120 * _bw);
+    // (+120, 0) to the harbor, then 6 rows inland: the Q would have landed in
+    // the Deep, so the whole village slides north until nothing is on water.
+    final off = harborCell(0) - _oldHome - 6 * _bw;
+    expect(off, 114 * _bw);
     for (var i = 0; i < 4; i++) {
       expect(m.boardCells[_c(250, 250 + i) + off], 'WELL'[i]);
       expect(m.boardCells[_c(250, 250 + i)], isNull);
@@ -52,9 +54,9 @@ void main() {
   test('fog and used squares shift with the board', () {
     final m = migrateVillageSave(_v5(), rackSize: 10, planetSlot: 0);
     final fog = FogMap.fromBase64(m.cleared!);
-    expect(fog.isCleared(_c(370, 250)), isTrue);
+    expect(fog.isCleared(_c(364, 250)), isTrue);
     expect(fog.isCleared(_c(250, 250)), isFalse);
-    expect(m.everUsed, {_c(370, 250), _c(380, 250)});
+    expect(m.everUsed, {_c(364, 250), _c(374, 250)});
   });
 
   test('a found chest stays found and a villager keeps home, name, hearts', () {
@@ -63,14 +65,39 @@ void main() {
     final v = m.villagers.villagers.single;
     expect(v.name, 'Pip');
     expect(v.hearts, 3);
-    expect(v.cell, _c(372, 252));
+    expect(v.cell, _c(366, 252));
   });
 
-  test('a tile shifted into the sea is a pier and still counts', () {
+  test('nothing rests on the water: the village slides inland until every letter is on land', () {
     final m = migrateVillageSave(_v5(), rackSize: 10, planetSlot: 0);
-    expect(m.boardCells[_c(380, 250)], 'Q');
-    expect(bandAt(380, 250), Band.deep);
+    expect(m.boardCells[_c(374, 250)], 'Q');
+    expect(bandAt(374, 250), Band.sunnyShore);
+    expect(hasLettersInSea(m, slot: 0), isFalse);
     expect(m.dealtLetters, contains('Q'));
+  });
+
+  test('a village an earlier build left on the water is moved onto land on load', () {
+    // Already v6, with a pier over the Deep.
+    final board = List<String?>.filled(_bw * _bw, null);
+    for (var i = 0; i < 4; i++) {
+      board[_c(380, 250 + i)] = 'IODI'[i];
+    }
+    final data = VillageSaveData(
+      boardCells: board,
+      rackCells: List<String?>.filled(10, null),
+      pool: const [],
+      dealtLetters: const ['I', 'O', 'D', 'I'],
+      lastCashedOutScore: 0,
+      saveVersion: 6,
+      planetSlot: 0,
+      tidiedLoose: true,
+    );
+    expect(hasLettersInSea(data, slot: 0), isTrue);
+    final m = migrateVillageSave(data, rackSize: 10, planetSlot: 0);
+    expect(hasLettersInSea(m, slot: 0), isFalse);
+    expect(m.boardCells.whereType<String>().join(), 'IODI');
+    final again = migrateVillageSave(m, rackSize: 10, planetSlot: 0);
+    expect(identical(again.boardCells, m.boardCells), isTrue);
   });
 
   test('loading twice changes nothing', () {

@@ -710,7 +710,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _fog = clearedB64 != null
           ? FogMap.fromBase64(clearedB64)
           : FogMap.empty();
-      needsSave = saved.saveVersion != migrated.saveVersion;
+      needsSave = saved.saveVersion != migrated.saveVersion || !identical(migrated.boardCells, saved.boardCells);
     }
     // spec-17: the first time an old village loads, any letters that aren't
     // in a real word go back to the rack. Nothing already earned is touched.

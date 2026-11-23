@@ -71,6 +71,9 @@ typedef _Village = ({
   int slot,
   List<String> words,
   int reach,
+  // spec-18: the letters and building runs, for the tiles on the zoomed globe.
+  Map<int, String> letters,
+  List<({String word, List<int> cells})> runs,
 });
 
 // The app's one entry screen (spec-11): three pages you swipe between,
@@ -136,6 +139,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             slot: saved?.planetSlot ?? 0,
             words: const [],
             reach: 0,
+            letters: const {},
+            runs: const [],
           ));
       return;
     }
@@ -180,6 +185,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           slot: migrated.planetSlot ?? 0,
           words: [for (final s in structures) s.def.word],
           reach: fog == null ? 1 : reachFromFog(fog, migrated.planetSlot ?? 0),
+          letters: {
+            for (var i = 0; i < saved.boardCells.length; i++)
+              if (saved.boardCells[i] != null) i: saved.boardCells[i]!,
+          },
+          runs: [for (final st in structures) (word: st.def.word, cells: st.ordered)],
         ));
   }
 
@@ -698,6 +708,8 @@ class _PlayPageState extends ConsumerState<_PlayPage> {
         name: widget.playerName,
         buildings: (v?.words ?? const <String>[]).take(4).toList(),
         reach: reach,
+        letters: v?.letters ?? const {},
+        buildingRuns: v?.runs ?? const [],
       ),
     ];
     final taken = {for (final g in villages) g.slot};
@@ -720,7 +732,6 @@ class _PlayPageState extends ConsumerState<_PlayPage> {
             children: [
               Expanded(
                 child: GlobeView(
-                  mode: GlobeMode.closeUp,
                   villages: villages,
                   takenSlots: taken,
                   focusSlot: focus,
