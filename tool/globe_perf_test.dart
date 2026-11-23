@@ -2,11 +2,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/planet.dart';
 
 void main() {
-  test('paint time', () {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('paint time', (tester) async {
+    await tester.runAsync(GlobeArt.load);
     for (final detail in GlobeDetail.values) {
       for (final zoom in [1.0, 2.5, 5.0, 7.0]) {
         final painter = GlobePainter(
@@ -17,6 +20,7 @@ void main() {
           takenSlots: const {0},
           isHushed: (r, c, l) => bandAt(r, c).index > 4,
           detail: detail,
+          art: GlobeArt.loaded,
         );
         for (var i = 0; i < 3; i++) {
           final rec = ui.PictureRecorder();

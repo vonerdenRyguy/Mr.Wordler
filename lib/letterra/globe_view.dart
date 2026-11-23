@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../ui/tokens.dart';
+import 'globe_art.dart';
 import 'globe_painter.dart';
 import 'planet.dart';
 
@@ -70,6 +71,11 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    if (GlobeArt.loaded == null) {
+      GlobeArt.load().then((_) {
+        if (mounted) setState(() {});
+      }, onError: (_) {});
+    }
     _anim.addListener(() {
       final t = Curves.easeOutCubic.transform(_anim.value);
       setState(() {
@@ -230,6 +236,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
                       takenSlots: widget.takenSlots,
                       isHushed: widget.isHushed,
                       showTags: widget.showTags,
+                      art: GlobeArt.loaded,
                       detail: (_anim.isAnimating || _dragging || _pointers.length > 1)
                           ? GlobeDetail.coarse
                           : GlobeDetail.fine,
