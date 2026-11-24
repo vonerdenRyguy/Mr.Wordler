@@ -84,7 +84,7 @@ void main() {
     await tester.drag(find.byType(GlobeView), const Offset(-240, 0));
     await tester.pumpAndSettle();
     await shot('pm3-spun');
-    await tester.tap(find.text('Find my village'));
+    await tester.tap(find.text('My village').last);
     await tester.pumpAndSettle();
     await shot('pm4-found');
     await tester.tap(find.byKey(const ValueKey('globe-village-0')));

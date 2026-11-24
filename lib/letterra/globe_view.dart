@@ -37,7 +37,13 @@ class GlobeView extends StatefulWidget {
     this.alwaysPan = false,
     this.turning = false,
     this.onTap,
+    this.glowCell,
+    this.onGlowTap,
   });
+
+  /// A board square that glows with a star (spec-18b), through any fog.
+  final int? glowCell;
+  final VoidCallback? onGlowTap;
 
   /// With [onTap] the planet is only looked at (spec-18b, Home): no drag,
   /// pinch, zoom or village taps, just one tap for the whole planet.
@@ -139,7 +145,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
   }
 
   /// Flies down to the village at [slot]; done when the camera is there.
-  Future<void> diveTo(int slot) async {
+  Future<void> diveTo(int slot, {int? cell}) async {
     var lat = 0.04, lon = slotAngle(slot);
     for (final v in widget.villages) {
       if (v.slot != slot || v.letters.isEmpty) continue;
@@ -152,7 +158,65 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
       lat = s.lat;
       lon = s.lon;
     }
+    if (cell != null) {
+      final s = boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+      lat = s.lat;
+      lon = s.lon;
+    }
     await _flyTo(lon: lon, zoom: kGlobeMaxZoom, lat: lat, milliseconds: 1000, curve: Curves.easeInOutCubic);
+  }
+
+  /// Turns the planet so board square [cell] faces you.
+  void turnTo(int cell) {
+    final s = boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+    _flyTo(
+      lon: s.lon,
+      zoom: math.max(1.0, math.min(_zoom, 1.6)),
+      lat: math.max(_latForZoom(1), s.lat - 0.35),
+      milliseconds: 800,
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
+  Widget? _glow(GlobeProjection proj) {
+    final cell = widget.glowCell;
+    if (cell == null) return null;
+    final s = boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+    final at = proj.project(s.lat, s.lon);
+    if (!at.front) return null;
+    return Positioned.fromRect(
+      rect: Rect.fromCenter(center: at.p, width: 92, height: 92),
+      child: Semantics(
+        button: widget.onGlowTap != null,
+        label: 'Something to find',
+        child: GestureDetector(
+          key: const ValueKey('globe-glow'),
+          onTap: widget.onGlowTap,
+          child: const DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [Color(0xFFFFF3B0), Color(0xBFFFD75E), Color(0x00FFD75E)],
+                stops: [0, 0.45, 1],
+              ),
+            ),
+            child: Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: WColors.card,
+                  shape: BoxShape.circle,
+                  border: Border.fromBorderSide(BorderSide(color: WColors.ink, width: 2.5)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(5),
+                  child: Icon(Icons.star_rounded, color: WColors.sun, size: 26),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// The whole planet again, turned to [slot].
@@ -360,6 +424,8 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                   ),
                 ),
               ),
+              if (!look)
+                if (_glow(proj) case final glow?) glow,
               for (final v in look ? const <GlobeVillage>[] : widget.villages)
                 if (proj.villageHit(v.slot) case final rect?)
                   Positioned.fromRect(

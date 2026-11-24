@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../game/word_runs.dart' show settle;
+import '../game/word_runs.dart' show WordRun, settle;
 import '../daily/daily_challenge_controller.dart';
 import '../daily/word_of_the_day.dart';
 import '../dictionary/word_speaker.dart';
@@ -488,8 +488,9 @@ class _VisitVillageScreenState extends ConsumerState<VisitVillageScreen> {
     VillageScene? scene;
     if (saved != null && saved.boardCells.any((c) => c != null)) {
       const size = InfiniteEstateScreen.boardSize;
-      final runs =
-          (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
+      final runs = saved.starActive
+          ? const <WordRun>[]
+          : (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
       final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
       scene = VillageScene(
         grid: const IsoGrid(boardWidth: size, boardHeight: size),

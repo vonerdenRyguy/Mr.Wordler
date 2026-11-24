@@ -4,6 +4,7 @@ import '../explore/fog.dart';
 import '../players/players.dart';
 import 'globe_painter.dart';
 import 'planet.dart';
+import 'something_to_find.dart';
 
 /// One village to show on the planet, as its own save has it.
 class PlanetVillage {
@@ -30,9 +31,9 @@ class PlanetVillage {
 /// free harbors, turned about the Lantern. Only the picture is turned; no save
 /// changes.
 class PlanetData {
-  PlanetData._(this.villages, this.players, this.mySlot, this._slices);
+  PlanetData._(this.villages, this.players, this.mySlot, this._slices, this.find);
 
-  factory PlanetData.of(PlanetVillage mine, [List<PlanetVillage> others = const []]) {
+  factory PlanetData.of(PlanetVillage mine, [List<PlanetVillage> others = const [], SomethingToFind? find]) {
     final villages = <GlobeVillage>[];
     final players = <int, Player>{};
     final slices = <int, _Slice>{};
@@ -71,7 +72,7 @@ class PlanetData {
               ],
       ));
     }
-    return PlanetData._(villages, players, mine.slot, slices);
+    return PlanetData._(villages, players, mine.slot, slices, find);
   }
 
   final List<GlobeVillage> villages;
@@ -79,6 +80,9 @@ class PlanetData {
   /// Whose village each shown harbor is.
   final Map<int, Player> players;
   final int mySlot;
+
+  /// What glows in planet mode, if anything is left.
+  final SomethingToFind? find;
   final Map<int, _Slice> _slices;
 
   late final Set<int> takenSlots = players.keys.toSet();

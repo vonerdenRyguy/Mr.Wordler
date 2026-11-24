@@ -17,6 +17,10 @@ typedef WordCheck = Future<bool> Function(String word);
 /// Overridable in tests. The real one uses the shared dictionary.
 final wordCheckProvider = Provider<WordCheck>((ref) => WordValidator().isValidWord);
 
+/// The gold star's square while a brand-new village's first word must cover
+/// it (spec-18b); null everywhere else. The village has its own copy.
+final startCellProvider = StateProvider<int?>((ref) => null, dependencies: const []);
+
 class TileLanding {
   final int seq; // increases on every landing
   final int placedIndex;
@@ -25,7 +29,9 @@ class TileLanding {
 }
 
 class TileLandingNotifier extends StateNotifier<TileLanding?> {
-  TileLandingNotifier(this._wordCheck) : super(null);
+  TileLandingNotifier(this._wordCheck, [this._startCell]) : super(null);
+
+  final int? Function()? _startCell;
 
   final WordCheck _wordCheck;
   int _seq = 0;
@@ -86,6 +92,8 @@ class TileLandingNotifier extends StateNotifier<TileLanding?> {
         if (!was.contains(run)) run,
     ];
     if (!mounted || seq != _seq || boardVersion != _boardVersion || fresh.isEmpty) return;
+    final start = _startCell?.call();
+    if (start != null && !fresh.any((r) => r.positions.contains(start))) return;
     state = TileLanding(seq, placed ?? fresh.first.positions.first, fresh);
   }
 
@@ -124,10 +132,10 @@ class TileLandingNotifier extends StateNotifier<TileLanding?> {
 }
 
 final tileLandingProvider = StateNotifierProvider.autoDispose<TileLandingNotifier, TileLanding?>((ref) {
-  final notifier = TileLandingNotifier(ref.read(wordCheckProvider));
+  final notifier = TileLandingNotifier(ref.read(wordCheckProvider), () => ref.read(startCellProvider));
   ref.listen<GridGameState>(gridGameControllerProvider, (prev, next) => notifier.onStateChanged(prev, next));
   return notifier;
-}, dependencies: [gridGameControllerProvider, wordCheckProvider]);
+}, dependencies: [gridGameControllerProvider, wordCheckProvider, startCellProvider]);
 
 /// What the board tile at [index] should animate for [landing], or null if
 /// it isn't involved. popOrder is the tile's position across all new words

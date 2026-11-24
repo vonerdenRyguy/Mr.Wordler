@@ -9,6 +9,7 @@ import '../village/magic_word.dart';
 import '../ui/tokens.dart';
 import 'globe_art.dart';
 import 'planet.dart';
+import 'port.dart';
 
 // Letterra's globe (spec-18, canvas W234 and X252). A true sphere seen in
 // orthographic projection, centred on any point: spin it to see the other
@@ -307,6 +308,8 @@ Set<int> _cellsNearLetters(List<GlobeVillage> villages) {
   };
 }
 
+final _quays = Expando<double>();
+
 /// A picture standing on the planet, ready to draw.
 class _Stand {
   const _Stand(this.z, this.sprite, this.at, this.width, this.lean, [this.tint = 0]);
@@ -568,10 +571,12 @@ class GlobePainter extends CustomPainter {
       // Closer in, the real letters take over and the port keeps its true size.
       final unit = zoomedIn ? proj.cellPixels * 5.2 : proj.radius * 0.30;
       final k = v.slot % 3;
-      stand((zoomedIn ? -3.4 : -3.0) * _deg, lon, GlobeSprite.port, unit);
-      stand((zoomedIn ? -5.2 : -8) * _deg, lon + (zoomedIn ? 2.2 : 8) * _deg,
+      // Close in, the port faces the middle of the letters.
+      final quay = zoomedIn ? _quays[v] ??= portAngle(v.slot, v.letters.keys) : lon;
+      stand((zoomedIn ? -3.4 : -3.0) * _deg, quay, GlobeSprite.port, unit);
+      stand((zoomedIn ? -5.2 : -8) * _deg, quay + (zoomedIn ? 2.2 : 8) * _deg,
           [GlobeSprite.boatGold, GlobeSprite.boatCoral, GlobeSprite.boatGreen][k], unit * 0.95);
-      stand((zoomedIn ? -1.6 : 0.6) * _deg, lon + (zoomedIn ? -2.0 : -8) * _deg,
+      stand((zoomedIn ? -1.6 : 0.6) * _deg, quay + (zoomedIn ? -2.0 : -8) * _deg,
           [GlobeSprite.flagGold, GlobeSprite.flagCoral, GlobeSprite.flagGreen][k], unit * 0.95);
       if (!zoomedIn) {
         if (v.letters.isEmpty && v.buildings.isEmpty) {

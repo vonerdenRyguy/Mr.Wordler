@@ -9,7 +9,12 @@ import '../explore/explore_rules.dart';
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
 import '../letterra/band_info.dart';
+import '../explore/regions.dart';
+import '../letterra/globe_painter.dart' show reachName;
+import '../letterra/gold_star.dart';
 import '../letterra/planet.dart';
+import '../letterra/port.dart';
+import '../letterra/port_view.dart';
 import '../portfolio/level_info.dart';
 import '../settings/settings_controller.dart' show settingsProvider;
 import 'island_map_screen.dart';
@@ -17,7 +22,7 @@ import '../game/grid_board_widget.dart';
 import '../game/grid_config.dart';
 import '../game/grid_game_state.dart';
 import '../game/grid_providers.dart';
-import '../game/word_landing.dart' show wordCheckProvider;
+import '../game/word_landing.dart' show startCellProvider, wordCheckProvider;
 import '../game/word_runs.dart';
 import '../online/family_online_controller.dart';
 import 'helping_screens.dart' show showGiftsArrived;
@@ -81,7 +86,10 @@ enum _ViewMode { words, village }
 // growth since the last cash-out into currency/XP and lets the player
 // leave; the village itself is never reset.
 class InfiniteEstateScreen extends StatelessWidget {
-  const InfiniteEstateScreen({super.key, this.openVillagers = false});
+  const InfiniteEstateScreen({super.key, this.openVillagers = false, this.focusCell});
+
+  /// Open looking at this board square (planet mode's Show me).
+  final int? focusCell;
 
   /// Open straight onto the Your villagers page (Me's shortcut, spec-18).
   final bool openVillagers;
@@ -118,8 +126,9 @@ class InfiniteEstateScreen extends StatelessWidget {
             balancedRefill: true,
           ),
         ),
+        startCellProvider.overrideWith((ref) => null),
       ],
-      child: _InfiniteEstateBody(openVillagers: openVillagers),
+      child: _InfiniteEstateBody(openVillagers: openVillagers, focusCell: focusCell),
     );
   }
 }
@@ -146,7 +155,9 @@ int scoreForWords(List<String> words) {
 }
 
 class _InfiniteEstateBody extends ConsumerStatefulWidget {
-  const _InfiniteEstateBody({this.openVillagers = false});
+  const _InfiniteEstateBody({this.openVillagers = false, this.focusCell});
+
+  final int? focusCell;
 
   final bool openVillagers;
 
@@ -178,6 +189,39 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   int _slot = 0;
   int? _migratedFrom;
   int get _harborIndex => harborCell(_slot);
+
+  // spec-18b: a brand-new village's first word must cover the gold star.
+  bool _starStart = false;
+  bool _starDone = false;
+  bool get _starActive => _starStart && !_starDone;
+  late int _starCell = _harborIndex;
+  Set<int> _offStarCells = const {};
+  // Regions already celebrated (see regions.dart).
+  Set<int>? _bandsReached;
+  // An older save's first visit fills them in without a word.
+  bool _bandsQuiet = false;
+  // The port, worked out again only when the letters change.
+  Port? _port;
+  List<String?>? _portBoard;
+
+  Port _portNow() {
+    final board = ref.read(gridGameControllerProvider).boardCells;
+    if (_port == null || !identical(board, _portBoard)) {
+      _portBoard = board;
+      _port = portFor(_slot, [
+        for (var i = 0; i < board.length; i++)
+          if (board[i] != null) i,
+      ]);
+    }
+    return _port!;
+  }
+
+  void _placeStar() {
+    if (!_starStart) return;
+    _starCell = goldStarCell(_slot,
+        isSea: _islandMap.isSeaIndex, taken: {for (final s in _islandMap.specials) s.cell});
+    ref.read(startCellProvider.notifier).state = _starActive ? _starCell : null;
+  }
   int _mapVersion = VillageSaveData.kDefaultMapVersion;
   Set<int> _everUsed = {};
   Set<String> _everWords = {};
@@ -315,6 +359,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   //   - Fuzzy edge (canSee but not cleared): lighter grey, semi-transparent.
   //   - Cleared: null (no overlay); water cells get a subtle blue tint.
   Color? _fogOverlay(int index) {
+    final port = _portNow();
+    if (index == port.boat || port.pier.contains(index)) return const Color(0x99286FA8);
     if (!_fog.isCleared(index)) {
       if (_fog.canSee(index)) return const Color(0x55888888); // edge haze
       return const Color(0xCC555555); // solid fog
@@ -424,7 +470,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     }
     if (newCoins > 0) ref.read(portfolioProvider.notifier).addCurrency(newCoins);
     if (fogChanged) setState(() {}); // redraw fog overlay
+    final reached = fogChanged ? regionsCleared(_fog).difference(_bandsReached ?? const {}) : const <int>{};
+    _bandsReached = {...?_bandsReached, ...reached};
+    final celebrate = reached.isNotEmpty && !_bandsQuiet;
+    if (celebrate) {
+      ref.read(portfolioProvider.notifier).addCurrency(kRegionCoins * reached.length);
+    }
     await _saveVillage();
+    if (celebrate) await _celebrateRegion(reached);
+    if (!mounted) return;
 
     // Level-up treats (fire at most once per level, in order).
     if (newXp > 0) {
@@ -433,6 +487,21 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         if (!_levelTreats.contains(lv)) await _doLevelTreat(lv);
       }
     }
+  }
+
+  // The first time cleared land reaches a region (spec-18b); already paid.
+  Future<void> _celebrateRegion(Set<int> reached) async {
+    await _rewardsShowing;
+    if (!mounted) return;
+    final furthest = reached.reduce(math.max);
+    _rewardsShowing = showRewardMoment(
+      context,
+      ribbon: 'New region!',
+      title: 'You reached ${reachName(furthest)}!',
+      message: 'New land, and new things to find.',
+      coins: kRegionCoins * reached.length,
+    );
+    await _rewardsShowing;
   }
 
   // ── spec-16 villagers ────────────────────────────────────────────────────
@@ -614,6 +683,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   }
 
   Widget? _wordsMarker(int index, Map<int, String> standing) {
+    if (portTile(_portNow(), index) case final tile?) return tile;
+    if (_starStart && index == _starCell && ref.read(gridGameControllerProvider).boardCells[index] == null) {
+      return GoldStarMark(quiet: _starDone);
+    }
     final id = standing[index];
     if (id != null) {
       final v = _book.byId(id)!;
@@ -710,6 +783,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _fog = clearedB64 != null
           ? FogMap.fromBase64(clearedB64)
           : FogMap.empty();
+      _starStart = migrated.starStart;
+      _starDone = migrated.starDone;
+      _bandsReached = migrated.bandsReached;
+      _bandsQuiet = migrated.bandsReached == null;
       needsSave = saved.saveVersion != migrated.saveVersion || !identical(migrated.boardCells, saved.boardCells);
     }
     // spec-17: the first time an old village loads, any letters that aren't
@@ -733,7 +810,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (saved == null) {
       // A brand-new village starts on the shore with a clear patch round it.
       _fog = FogMap.empty().clearAround([_harborIndex], radius: 6);
+      _starStart = true;
     }
+    // The shore and the meadow are where everyone starts: never celebrated.
+    _bandsReached ??= {0, 1, ...regionsCleared(_fog)};
+    _placeStar();
     setState(() => _restoring = false);
     // Write the migrated save straight away so migration only ever runs
     // once.
@@ -742,6 +823,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     // Bring score/structures in sync with whatever board we ended up
     // with (restored or fresh).
     await _refreshStructures();
+    if (_bandsQuiet) {
+      _bandsQuiet = false;
+      await _saveVillage();
+    }
     await _refreshScore();
     await _takeGifts();
     if (widget.openVillagers && mounted) _openVillagersPage();
@@ -823,6 +908,9 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       keptRuns: _keptRuns,
       planetSlot: _slot,
       migratedFrom: _migratedFrom,
+      starStart: _starStart,
+      starDone: _starDone,
+      bandsReached: _bandsReached,
     ));
   }
 
@@ -960,8 +1048,21 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       final keptChanged = stillKept.length != _keptRuns.length;
       if (keptChanged) _keptRuns = stillKept;
       final board = await controller.settledBoard(isValid: ref.read(wordCheckProvider), kept: _keptRuns);
-      final runs = board.settledRuns;
+      var runs = board.settledRuns;
       if (!mounted) return;
+      // The first word must cover the gold star; after that it never matters.
+      var offStar = const <int>{};
+      if (_starActive) {
+        if (runs.any((r) => r.positions.contains(_starCell))) {
+          _starDone = true;
+          ref.read(startCellProvider.notifier).state = null;
+          await _saveVillage();
+          if (!mounted) return;
+        } else {
+          offStar = {for (final r in runs) ...r.positions};
+          runs = const [];
+        }
+      }
       if (keptChanged) await _saveVillage();
       final structures = computeStructures(runs);
       final newlyDiscovered = newDiscoveries(structures, _discoveredWords);
@@ -969,7 +1070,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         _structures = structures;
         _wordRuns = runs;
         _badRuns = board.badRuns;
-        _looseCells = board.looseCells;
+        _looseCells = offStar.isEmpty ? board.looseCells : {...board.looseCells, ...offStar};
+        _offStarCells = offStar;
         _strayCells = board.strayCells;
         _scene = null;
         if (newlyDiscovered.isNotEmpty) {
@@ -1023,6 +1125,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   Future<void> _rewardsShowing = Future.value();
 
   Future<void> _refreshScore() async {
+    if (_starActive) return;
     final controller = ref.read(gridGameControllerProvider.notifier);
     final result = await controller.checkWords();
     if (!mounted) return;
@@ -1247,7 +1350,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     _viewCentered = true;
     // The middle of all the letters (the board center if there are none).
     final center = _villageScene().lettersCenter(emptyCell: _harborIndex);
-    final centerIndex = center.r * InfiniteEstateScreen.boardSize + center.c;
+    final centerIndex = widget.focusCell ?? center.r * InfiniteEstateScreen.boardSize + center.c;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _transformController.value = computeCenterTransform(
@@ -1383,7 +1486,10 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       ..sort((a, b) => (a.across ? 0 : 1).compareTo(b.across ? 0 : 1));
     if (runs.isEmpty || _looseCells.contains(index)) {
       final bad = _badRuns.where((r) => r.positions.contains(index)).toList();
-      await showVillageSheet<void>(context, NotAWordCard(run: bad.isEmpty ? null : bad.first.word));
+      await showVillageSheet<void>(context, NotAWordCard(
+            run: bad.isEmpty ? null : bad.first.word,
+            offStar: _offStarCells.contains(index),
+          ));
       return;
     }
     setState(() => _highlight = runs.first.positions.toSet());
@@ -1655,10 +1761,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                                         villagers: _sprites(),
                                         walkers: _walkers,
                                         markers: _markers(),
+                                        port: _portNow(),
+                                        starCell: _starStart ? _starCell : null,
+                                        starQuiet: _starDone,
                                       );
                                     }),
                             ),
                           ),
+                          if (_starActive)
+                            const Positioned(top: 8, left: 12, right: 12, child: IgnorePointer(child: _StarHint())),
                           // spec-18: which band is under the middle of the view.
                           Positioned(
                             left: 8,
@@ -1760,6 +1871,28 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       ),
     );
   }
+}
+
+/// What a brand-new village says until its first word is down.
+class _StarHint extends StatelessWidget {
+  const _StarHint();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: WColors.card,
+            border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            'Your first word must cover the gold star',
+            textAlign: TextAlign.center,
+            style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink),
+          ),
+        ),
+      );
 }
 
 /// Words / Village: a soil track; the selected side is sun-filled with a

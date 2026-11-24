@@ -158,7 +158,7 @@ void main() {
     await tester.timedDrag(globe, const Offset(-250, 0), const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(lonOf(tester), isNot(0));
-    await tester.tap(find.text('Find my village'));
+    await tester.tap(find.text('My village').last);
     await tester.pumpAndSettle();
     expect(lonDelta(lonOf(tester), 0).abs(), lessThan(1e-6));
 
@@ -177,7 +177,7 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.byType(InfiniteEstateScreen), findsNothing);
-    expect(find.text('Find my village'), findsOneWidget);
+    expect(find.text('My village').last, findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Back'));

@@ -438,8 +438,11 @@ class WordOfDayCard extends StatelessWidget {
 
 class NotAWordCard extends StatelessWidget {
   /// The misspelled run this letter is in ("AQ"), if any.
-  const NotAWordCard({super.key, this.run});
+  const NotAWordCard({super.key, this.run, this.offStar = false});
   final String? run;
+
+  /// A real word that isn't on a new village's gold star.
+  final bool offStar;
 
   @override
   Widget build(BuildContext context) {
@@ -454,6 +457,9 @@ class NotAWordCard extends StatelessWidget {
                 TextSpan(
                     text: 'Change a letter or move one away, and the words around it count again.',
                     style: WText.body),
+              ] else if (offStar) ...[
+                TextSpan(text: 'Start your first word on the gold star. ', style: WText.bodyBold),
+                TextSpan(text: 'Cover the star with one of its letters and it counts.', style: WText.body),
               ] else ...[
                 TextSpan(text: 'Not a word yet: ', style: WText.bodyBold),
                 TextSpan(text: "this letter isn't part of a word on its own.", style: WText.body),

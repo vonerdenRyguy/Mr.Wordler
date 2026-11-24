@@ -6,7 +6,7 @@ import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../game/word_runs.dart' show settle;
+import '../game/word_runs.dart' show WordRun, settle;
 import '../daily/daily_challenge_controller.dart';
 import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
@@ -43,6 +43,7 @@ import '../village/village_save_migration.dart';
 import '../letterra/globe_painter.dart';
 import '../letterra/globe_view.dart';
 import '../letterra/planet_data.dart';
+import '../letterra/something_to_find.dart';
 import 'daily_challenge_screen.dart';
 import 'family_online_screens.dart';
 import 'family_screens.dart';
@@ -135,6 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final saved = raw == null
         ? null
         : migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
+    _find = _findIn(saved);
     if (saved == null || saved.boardCells.every((c) => c == null)) {
       setState(() => _village = (
             hasSave: saved != null,
@@ -166,11 +168,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         slot: saved.planetSlot ?? 0,
         letters: letters,
         fog: saved.cleared == null ? null : FogMap.fromBase64(saved.cleared!),
-      ));
+      ), const [], _find);
     }
     const size = InfiniteEstateScreen.boardSize;
-    final runs =
-        (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
+    // Nothing counts until the first word covers the gold star.
+    final runs = saved.starActive
+        ? const <WordRun>[]
+        : (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
     final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
@@ -215,6 +219,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _showPlanet();
   }
 
+  // What glows in planet mode: the nearest special not found yet.
+  SomethingToFind? _find;
+
+  SomethingToFind? _findIn(VillageSaveData? saved) {
+    final map = IslandMap.letterra(
+        seed: saved?.mapSeed ?? VillageSaveData.kDefaultMapSeed, slot: saved?.planetSlot ?? 0);
+    return somethingToFind(
+      map: map,
+      unfound: [
+        for (final sp in map.specials)
+          if (saved == null ||
+              (sp.kind == SpecialKind.villager
+                  ? !saved.villagers.isMet(sp.id)
+                  : !saved.foundSpecials.contains(sp.id)))
+            sp.cell,
+      ],
+      letters: [
+        if (saved != null)
+          for (var i = 0; i < saved.boardCells.length; i++)
+            if (saved.boardCells[i] != null) i,
+      ],
+      level: ref.read(settingsProvider).wordLevel,
+    );
+  }
+
   void _showPlanet() {
     final v = _village!;
     _mine = PlanetVillage(
@@ -224,7 +253,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       runs: v.runs,
       fog: v.fog,
     );
-    _planet.value = PlanetData.of(_mine!, _others);
+    _planet.value = PlanetData.of(_mine!, _others, _find);
     if (!_othersRead) {
       _othersRead = true;
       _readOthers();
@@ -257,7 +286,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (found.isEmpty) return;
     _others = found;
-    _planet.value = PlanetData.of(_mine!, found);
+    _planet.value = PlanetData.of(_mine!, found, _find);
   }
 
   Future<void> _openPlanet() =>
