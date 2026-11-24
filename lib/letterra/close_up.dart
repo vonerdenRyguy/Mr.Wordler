@@ -39,11 +39,8 @@ ui.Image _drawBlocks() {
     for (var i = 0; i < 28; i++) {
       final cell = Rect.fromLTWH(i * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell);
       if (color == 0) {
-        _brick(canvas, cell, i < 26 ? 0 : (i == 26 ? 0.10 : 0.18));
-        if (i < 26) {
-          _letter(canvas, cell, i, halo: true);
-          _letter(canvas, cell, i);
-        }
+        _plain(canvas, cell, i < 26 ? 0 : (i == 26 ? 0.16 : 0.24));
+        if (i < 26) _letter(canvas, cell, i);
         continue;
       }
       if (i >= 26) {
@@ -65,19 +62,11 @@ ui.Image _drawBlocks() {
   return recorder.endRecording().toImageSync((28 * kBlockCell).round(), (kBlockColors.length * kBlockCell).round());
 }
 
-void _letter(Canvas canvas, Rect cell, int i, {bool halo = false}) {
+void _letter(Canvas canvas, Rect cell, int i) {
   final tp = TextPainter(
     text: TextSpan(
       text: String.fromCharCode(65 + i),
-      style: TextStyle(
-        fontFamily: 'LilitaOne',
-        fontSize: 72,
-        foreground: Paint()
-          ..color = halo ? const Color(0xB3FFE9D6) : WColors.ink
-          ..style = halo ? PaintingStyle.stroke : PaintingStyle.fill
-          ..strokeJoin = StrokeJoin.round
-          ..strokeWidth = 12,
-      ),
+      style: const TextStyle(fontFamily: 'LilitaOne', fontSize: 72, color: WColors.ink),
     ),
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.noScaling,
@@ -85,42 +74,110 @@ void _letter(Canvas canvas, Rect cell, int i, {bool halo = false}) {
   tp.paint(canvas, cell.center - Offset(tp.width / 2, tp.height / 2));
 }
 
-// Four rows of bricks with pale mortar; a light patch behind the letter would
-// hide the brick, so the bricks themselves are light enough to read on.
-void _brick(Canvas canvas, Rect cell, double shade) {
+/// How ordinary words look: 0 cream, 1 one clay brick a letter, 2 soft brick
+/// wall, 3 garden stone, 4 honey wood. Only for choosing (spec-22 C).
+int _plainStyle = 1;
+set plainStyle(int style) {
+  _plainStyle = style;
+  _blocks = null;
+}
+
+const _plainColors = [
+  Color(0xFFFFF1CF),
+  Color(0xFFF2AE87),
+  Color(0xFFF6C3A3),
+  Color(0xFFE9E4DA),
+  Color(0xFFF0CB8C),
+];
+
+void _plain(Canvas canvas, Rect cell, double shade) {
+  final base = _plainColors[_plainStyle];
+  final hsl = HSLColor.fromColor(base);
+  Color tone(double by, [double sat = 0]) => hsl
+      .withLightness((hsl.lightness + by - shade).clamp(0.0, 1.0))
+      .withSaturation((hsl.saturation + sat).clamp(0.0, 1.0))
+      .toColor();
   canvas.save();
   canvas.clipRect(cell);
-  final hsl = HSLColor.fromColor(kBlockColors[0]);
-  Color tone(double by) => hsl.withLightness((hsl.lightness + by - shade).clamp(0.0, 1.0)).toColor();
-  canvas.drawRect(cell, Paint()..color = Color.lerp(const Color(0xFFFFEBD6), const Color(0xFF8A5A44), shade * 2)!);
-  const h = kBlockCell / 4, w = kBlockCell / 2;
-  const tones = [0.0, 0.035, -0.035, 0.015, -0.02, 0.03, -0.01];
-  for (var row = 0; row < 4; row++) {
-    for (var k = -1; k < 3; k++) {
-      final x = cell.left + k * w + (row.isOdd ? w / 2 : 0);
-      final r = Rect.fromLTWH(x + 2, cell.top + row * h + 2, w - 4, h - 4);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(r, const Radius.circular(4)),
-        Paint()..color = tone(tones[(row * 3 + k + 1) % tones.length]),
-      );
-      canvas.drawLine(
-        r.topLeft + const Offset(4, 2.5),
-        r.topRight + const Offset(-4, 2.5),
-        Paint()
-          ..strokeWidth = 2.5
-          ..color = tone(0.08),
+  if (shade > 0) {
+    // A side: soft bricks keep their courses; the rest are plain.
+    canvas.drawRect(cell, Paint()..color = tone(0, -0.15));
+    if (_plainStyle == 2) {
+      final line = Paint()
+        ..strokeWidth = 5
+        ..color = tone(0.06, -0.15);
+      canvas.drawLine(cell.centerLeft, cell.centerRight, line);
+      canvas.drawLine(cell.topCenter, cell.center, line);
+    }
+    canvas.restore();
+    return;
+  }
+  canvas.drawRect(cell, Paint()..color = tone(-0.20, -0.2));
+  final face = RRect.fromRectAndRadius(cell.deflate(3), const Radius.circular(16));
+  canvas.drawRRect(face, Paint()..color = tone(0));
+  canvas.clipRRect(face);
+  if (_plainStyle == 1) {
+    // Light rolls off a smooth clay brick.
+    canvas.drawRRect(
+      face,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [tone(0.07), tone(0), tone(-0.035)],
+        ).createShader(cell),
+    );
+    canvas.drawRRect(
+      face.deflate(5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0x40FFFFFF),
+    );
+  } else if (_plainStyle == 2) {
+    final mortar = Paint()
+      ..strokeWidth = 5
+      ..color = tone(0.085);
+    const h = kBlockCell / 3;
+    for (var row = 0; row < 3; row++) {
+      final y = cell.top + row * h;
+      if (row > 0) canvas.drawLine(Offset(cell.left, y), Offset(cell.right, y), mortar);
+      for (final x in row.isOdd ? const [0.25, 0.75] : const [0.5]) {
+        canvas.drawLine(Offset(cell.left + x * kBlockCell, y), Offset(cell.left + x * kBlockCell, y + h), mortar);
+      }
+    }
+  } else if (_plainStyle == 3) {
+    // Faint patches, like a worn garden stone.
+    for (final (x, y, w, h, t) in const [(0.28, 0.25, 0.5, 0.3, 0.03), (0.75, 0.7, 0.5, 0.4, -0.03), (0.2, 0.8, 0.35, 0.25, -0.02)]) {
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: cell.topLeft + Offset(x * kBlockCell, y * kBlockCell), width: w * kBlockCell, height: h * kBlockCell),
+        Paint()..color = tone(t),
       );
     }
+  } else if (_plainStyle == 4) {
+    final grain = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..color = tone(-0.06);
+    for (final y in const [0.2, 0.5, 0.8]) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(cell.left, cell.top + y * kBlockCell)
+          ..quadraticBezierTo(cell.center.dx, cell.top + (y + 0.06) * kBlockCell, cell.right, cell.top + y * kBlockCell),
+        grain,
+      );
+    }
+  } else {
+    canvas.drawRRect(
+      face.deflate(5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0x88FFFFFF),
+    );
   }
   canvas.restore();
-  // A darker edge all round, so each letter is its own block.
-  canvas.drawRect(
-    cell.deflate(3),
-    Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
-      ..color = tone(-0.28),
-  );
 }
 
 const double kBitCell = 64;

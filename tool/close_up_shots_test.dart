@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/screens/close_up_test_screen.dart';
@@ -57,6 +58,27 @@ void main() {
         File('build/shots/cu-$name.png')
           ..createSync(recursive: true)
           ..writeAsBytesSync(bytes!.buffer.asUint8List());
+      });
+    }
+    for (var style = 0; style < 5; style++) {
+      plainStyle = style;
+      await tester.runAsync(() async {
+        final s = boardToSphere(350, 250);
+        final rec = ui.PictureRecorder();
+        final canvas = Canvas(rec)..scale(2);
+        GlobePainter(
+          centerLon: s.lon,
+          centerLat: s.lat,
+          zoom: 12,
+          villages: villages,
+          takenSlots: const {0},
+          isHushed: (r, c, _) => hushedByReach(r, c, 2),
+          showTags: false,
+          closeUp: true,
+          art: GlobeArt.loaded,
+        ).paint(canvas, const Size(390, 844));
+        final bytes = await (await rec.endRecording().toImage(780, 1688)).toByteData(format: ui.ImageByteFormat.png);
+        File('build/shots/style$style.png').writeAsBytesSync(bytes!.buffer.asUint8List());
       });
     }
   });
