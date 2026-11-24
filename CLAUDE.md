@@ -473,8 +473,8 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     render PNGs to `build/shots`.
 
 - **spec-22 One planet** (Ryan's playtest, 2026-11-23; plan in
-  `specs/spec-22-one-planet.md`). **Part A built** on branch
-  `spec-22a-daily-on-me`, not on a phone, not merged: the Daily is a bright
+  `specs/spec-22-one-planet.md`). **Part A merged** to
+  master 2026-11-24 after Ryan's Pixel check (Samsung not checked): the Daily is a bright
   card on Me until played (red ! on the Me tab), then one quiet line; Play is
   only the planet and My village; the village's Hint button is gone; the Shrine
   of Sight makes three things glow in planet mode (`thingsToFind`,
