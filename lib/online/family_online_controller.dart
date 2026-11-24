@@ -555,7 +555,7 @@ class FamilyOnlineController extends StateNotifier<FamilyOnlineState> {
 
   Future<int> _claim() async {
     await _ready;
-    if (!_inFamily) return 0;
+    if (!mounted || !_inFamily) return 0;
     final now = _clock();
     var coins = 0;
     final paid = [..._paidDays];

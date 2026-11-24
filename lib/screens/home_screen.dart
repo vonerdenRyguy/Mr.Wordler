@@ -1,11 +1,13 @@
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../game/word_runs.dart' show settle;
+import '../game/word_runs.dart' show WordRun, settle;
 import '../daily/daily_challenge_controller.dart';
-import '../daily/daily_puzzle.dart';
 import '../daily/word_of_the_day.dart';
 import '../daily/word_of_the_day_controller.dart';
 import '../dictionary/definition_service.dart';
@@ -33,7 +35,6 @@ import '../explore/island_map.dart';
 import '../village/discovery_journal_view.dart';
 import '../village/iso_math.dart';
 import '../village/iso_village_view.dart';
-import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
 import '../village/village_cards.dart';
@@ -41,7 +42,8 @@ import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
 import '../letterra/globe_painter.dart';
 import '../letterra/globe_view.dart';
-import '../letterra/planet.dart';
+import '../letterra/planet_data.dart';
+import '../letterra/something_to_find.dart';
 import 'daily_challenge_screen.dart';
 import 'family_online_screens.dart';
 import 'family_screens.dart';
@@ -50,6 +52,7 @@ import 'helping_screens.dart';
 import 'town_square_screens.dart';
 import 'home_tips.dart';
 import 'infinite_estate_screen.dart';
+import 'planet_screen.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
@@ -89,6 +92,13 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   _Village? _village;
+
+  // Yours first, then the other players on this phone; theirs can't change
+  // while you hold it, so they are read once.
+  final _planet = ValueNotifier<PlanetData?>(null);
+  PlanetVillage? _mine;
+  List<PlanetVillage> _others = const [];
+  bool _othersRead = false;
   int _loadGeneration = 0;
 
   final _pages = PageController(initialPage: HomePage.play.index);
@@ -113,6 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _pages.dispose();
+    _planet.dispose();
     super.dispose();
   }
 
@@ -125,6 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final saved = raw == null
         ? null
         : migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
+    _find = _findIn(saved);
     if (saved == null || saved.boardCells.every((c) => c == null)) {
       setState(() => _village = (
             hasSave: saved != null,
@@ -142,11 +154,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             letters: const {},
             runs: const [],
           ));
+      _showPlanet();
       return;
     }
+    // The planet straight away; its buildings follow once the words are checked.
+    final letters = {
+      for (var i = 0; i < saved.boardCells.length; i++)
+        if (saved.boardCells[i] != null) i: saved.boardCells[i]!,
+    };
+    if (_mine == null) {
+      _planet.value = PlanetData.of(PlanetVillage(
+        player: ref.read(playersProvider).current,
+        slot: saved.planetSlot ?? 0,
+        letters: letters,
+        fog: saved.cleared == null ? null : FogMap.fromBase64(saved.cleared!),
+      ), const [], _find);
+    }
     const size = InfiniteEstateScreen.boardSize;
-    final runs =
-        (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
+    // Nothing counts until the first word covers the gold star.
+    final runs = saved.starActive
+        ? const <WordRun>[]
+        : (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
     final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
@@ -185,13 +213,84 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           slot: migrated.planetSlot ?? 0,
           words: [for (final s in structures) s.def.word],
           reach: fog == null ? 1 : reachFromFog(fog, migrated.planetSlot ?? 0),
-          letters: {
-            for (var i = 0; i < saved.boardCells.length; i++)
-              if (saved.boardCells[i] != null) i: saved.boardCells[i]!,
-          },
+          letters: letters,
           runs: [for (final st in structures) (word: st.def.word, cells: st.ordered)],
         ));
+    _showPlanet();
   }
+
+  // What glows in planet mode: the nearest special not found yet.
+  SomethingToFind? _find;
+
+  SomethingToFind? _findIn(VillageSaveData? saved) {
+    final map = IslandMap.letterra(
+        seed: saved?.mapSeed ?? VillageSaveData.kDefaultMapSeed, slot: saved?.planetSlot ?? 0);
+    return somethingToFind(
+      map: map,
+      unfound: [
+        for (final sp in map.specials)
+          if (saved == null ||
+              (sp.kind == SpecialKind.villager
+                  ? !saved.villagers.isMet(sp.id)
+                  : !saved.foundSpecials.contains(sp.id)))
+            sp.cell,
+      ],
+      letters: [
+        if (saved != null)
+          for (var i = 0; i < saved.boardCells.length; i++)
+            if (saved.boardCells[i] != null) i,
+      ],
+      level: ref.read(settingsProvider).wordLevel,
+    );
+  }
+
+  void _showPlanet() {
+    final v = _village!;
+    _mine = PlanetVillage(
+      player: ref.read(playersProvider).current,
+      slot: v.slot,
+      letters: v.letters,
+      runs: v.runs,
+      fog: v.fog,
+    );
+    _planet.value = PlanetData.of(_mine!, _others, _find);
+    if (!_othersRead) {
+      _othersRead = true;
+      _readOthers();
+    }
+  }
+
+  Future<void> _readOthers() async {
+    final players = ref.read(playersProvider);
+    if (!players.isFamily) return;
+    final found = <PlanetVillage>[];
+    for (final p in players.players) {
+      if (p.id == players.currentId) continue;
+      final raw = await VillageSaveController(prefix: p.prefix).load();
+      if (!mounted) return;
+      if (raw == null) continue;
+      final saved =
+          migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
+      final letters = {
+        for (var i = 0; i < saved.boardCells.length; i++)
+          if (saved.boardCells[i] != null) i: saved.boardCells[i]!,
+      };
+      if (letters.isEmpty) continue;
+      found.add(PlanetVillage(
+        player: p,
+        slot: saved.planetSlot ?? 0,
+        letters: letters,
+        runs: magicRunsOn(letters),
+        fog: saved.cleared == null ? null : FogMap.fromBase64(saved.cleared!),
+      ));
+    }
+    if (found.isEmpty) return;
+    _others = found;
+    _planet.value = PlanetData.of(_mine!, found, _find);
+  }
+
+  Future<void> _openPlanet() =>
+      _open(PlanetScreen(data: _planet, onVisited: _loadVillage));
 
   // Your newest building (the most recently discovered word that's built),
   // else the middle of all your letters.
@@ -399,13 +498,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       ),
       _PlayPage(
-        village: _village,
+        planet: _planet,
         playedToday: playedToday,
         streak: daily.streak,
-        theme: dailyPuzzleFor(now).theme.name,
-        wordLevel: wordLevel,
         now: now,
-        playerName: players.current.name,
+        onPlanet: _openPlanet,
         onVisit: () => _open(const InfiniteEstateScreen()),
         onDaily: () => _openDaily(playedToday),
       ),
@@ -656,29 +753,25 @@ Widget _grow(int flex, double min, Widget child) => Expanded(
 
 // ---- Play ---------------------------------------------------------------------
 
-/// Play (spec-18): the planet Letterra turned to your harbor. Tap your
-/// village to go in; the Daily is a round badge. A goal bar says how far you
-/// have climbed toward the Great Lantern.
+/// Play (spec-18b): the planet slowly turning by itself. Tap it for planet
+/// mode; the gold button goes straight into your village; the Daily is a
+/// round badge. Swipes always change pages.
 class _PlayPage extends ConsumerStatefulWidget {
   const _PlayPage({
-    required this.village,
+    required this.planet,
     required this.playedToday,
     required this.streak,
-    required this.theme,
-    required this.wordLevel,
     required this.now,
-    required this.playerName,
+    required this.onPlanet,
     required this.onVisit,
     required this.onDaily,
   });
 
-  final _Village? village;
+  final ValueNotifier<PlanetData?> planet;
   final bool playedToday;
   final int streak;
-  final String theme;
-  final WordLevel wordLevel;
   final DateTime now;
-  final String playerName;
+  final VoidCallback onPlanet;
   final VoidCallback onVisit;
   final VoidCallback onDaily;
 
@@ -689,146 +782,90 @@ class _PlayPage extends ConsumerStatefulWidget {
 }
 
 class _PlayPageState extends ConsumerState<_PlayPage> {
-  int? _focus;
-
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
-    final v = widget.village;
-    final mySlot = v?.slot ?? 0;
-    final focus = _focus ?? mySlot;
-    final reduce = ref.watch(settingsProvider).reduceMotion;
-    final info = v == null || !v.hasSave
-        ? 'New village'
-        : '${v.buildings} building${v.buildings == 1 ? '' : 's'} · Journal ${v.journal}/${kMagicWords.length}';
-    final reach = v?.reach ?? 1;
-    final villages = [
-      GlobeVillage(
-        slot: mySlot,
-        name: widget.playerName,
-        buildings: (v?.words ?? const <String>[]).take(4).toList(),
-        reach: reach,
-        letters: v?.letters ?? const {},
-        buildingRuns: v?.runs ?? const [],
-      ),
-    ];
-    final taken = {for (final g in villages) g.slot};
-    final fog = v?.fog;
-    bool hushed(int row, int col, double lon) {
-      // Each slice follows the nearest filled harbor: yours by your fog.
-      if (fog != null) return !fog.isCleared(row * kPlanetBoard + col);
-      return hushedByReach(row, col, reach);
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: Color(0xFFBFE6F5)),
-        // The planet fills what the bars leave; the badge and goal sit under it.
-        Padding(
-          padding: EdgeInsets.fromLTRB(0, pad.top, 0, pad.bottom + 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: GlobeView(
-                  villages: villages,
-                  takenSlots: taken,
-                  focusSlot: focus,
-                  isHushed: hushed,
-                  reduceMotion: reduce,
-                  onVillageTap: (_) => widget.onVisit(),
-                  onTurn: (s) => setState(() => _focus = s),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: WSize.screenPadding),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _RoundBadge(
-                          label: 'Daily puzzle',
-                          semantics: 'Daily puzzle. ${widget.playedToday ? 'Done for today' : 'Not played yet'}'
-                              '${widget.streak >= 2 ? '. ${widget.streak}-day streak' : ''}',
-                          color: WColors.sky,
-                          alert: !widget.playedToday,
-                          sub: widget.streak >= 2 ? '${widget.streak}-day streak' : null,
-                          onTap: widget.onDaily,
-                          child: _CalendarTile(month: _PlayPage._months[widget.now.month - 1], day: widget.now.day),
-                        ),
-                      ],
+    final reduce = ref.watch(settingsProvider.select((s) => s.reduceMotion));
+    final turns = ref.watch(homePlanetTurnsProvider);
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return LayoutBuilder(builder: (context, constraints) {
+      // The planet's picture runs to the edges; its middle sits between the
+      // top bar and the Daily badge (a little low, for the Lantern on top).
+      final controlsTop = constraints.maxHeight - pad.bottom - 170 - 40 * scale;
+      final skyHeight = math.max(300.0, pad.top + controlsTop + 76);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: kGlobeSkyLow),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: skyHeight,
+            child: ValueListenableBuilder<PlanetData?>(
+              valueListenable: widget.planet,
+              builder: (context, data, _) => data == null
+                  ? const ColoredBox(color: kGlobeSky)
+                  : GlobeView(
+                      key: const ValueKey('home-globe'),
+                      villages: data.villages,
+                      takenSlots: data.takenSlots,
+                      focusSlot: data.mySlot,
+                      isHushed: data.isHushed,
+                      reduceMotion: reduce,
+                      turning: turns,
+                      onTap: () {
+                        playSfx(context, Sfx.tap);
+                        widget.onPlanet();
+                      },
                     ),
-                    const SizedBox(height: WSize.gap3),
-                    _GoalBar(
-                      title: 'Light the Great Lantern',
-                      sub: 'You reached ${reachName(reach)} · tap your village to go in',
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
-        // A soft shade at the top so the floating bits read well.
-        const IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x33000000), Color(0x00000000), Color(0x00000000)],
-                stops: [0, 0.14, 1],
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: pad.bottom + 10,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: WSize.screenPadding),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: _RoundBadge(
+                      label: 'Daily puzzle',
+                      semantics: 'Daily puzzle. ${widget.playedToday ? 'Done for today' : 'Not played yet'}'
+                          '${widget.streak >= 2 ? '. ${widget.streak}-day streak' : ''}',
+                      color: WColors.sky,
+                      alert: !widget.playedToday,
+                      sub: widget.streak >= 2 ? '${widget.streak}-day streak' : null,
+                      onTap: widget.onDaily,
+                      child: _CalendarTile(month: _PlayPage._months[widget.now.month - 1], day: widget.now.day),
+                    ),
+                  ),
+                  const SizedBox(height: WSize.gap3),
+                  ChunkyButton(
+                    key: const ValueKey('home-my-village'),
+                    label: 'My village',
+                    kind: ChunkyKind.mode,
+                    modeColor: WColors.sun,
+                    size: ChunkySize.big,
+                    expand: true,
+                    onPressed: widget.onVisit,
+                  ),
+                ],
               ),
             ),
           ),
-        ),
-        Positioned(
-          top: pad.top + 6,
-          left: WSize.screenPadding,
-          right: WSize.screenPadding,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Flexible(child: _FloatChip(text: info)),
-              const Spacer(),
-              _Chip(text: widget.wordLevel.info.name, color: widget.wordLevel.info.color),
-            ],
-          ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }
 
-/// The goal line at the bottom of Play.
-class _GoalBar extends StatelessWidget {
-  const _GoalBar({required this.title, required this.sub});
-
-  final String title;
-  final String sub;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      decoration: BoxDecoration(
-        color: WColors.card,
-        border: Border.all(color: WColors.ink, width: WSize.outline),
-        borderRadius: BorderRadius.circular(WSize.radiusHero),
-        boxShadow: wLip(WSize.lip),
-      ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(title, maxLines: 1, style: WText.heading.copyWith(fontSize: 22, color: WColors.ink)),
-        Text(sub, textAlign: TextAlign.center, style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink)),
-      ]),
-    );
-  }
-}
+/// Whether Home's planet turns by itself (off in tests, where a planet that
+/// never stops would never settle).
+final homePlanetTurnsProvider = Provider<bool>((ref) => !Platform.environment.containsKey('FLUTTER_TEST'));
 
 /// A small label floating over the village.
 class _FloatChip extends StatelessWidget {

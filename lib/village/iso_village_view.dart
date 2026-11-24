@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../explore/fog.dart';
+import '../letterra/globe_art.dart';
+import '../letterra/port.dart';
+import '../letterra/port_view.dart';
 import '../explore/island_map.dart';
 import '../game/grid_board_widget.dart' show axisAlignedBoundingBox;
 import '../ui/tokens.dart';
@@ -245,6 +248,9 @@ class IsoVillageView extends StatefulWidget {
     this.villagers = const [],
     this.walkers,
     this.markers = const [],
+    this.port,
+    this.starCell,
+    this.starQuiet = false,
   });
 
   final VillageScene scene;
@@ -266,6 +272,11 @@ class IsoVillageView extends StatefulWidget {
   final List<VillagerSprite> villagers;
   final VillagerWalkers? walkers;
   final List<SpecialMarker> markers;
+
+  // spec-18b: the port, and the gold star's square (quiet once covered).
+  final Port? port;
+  final int? starCell;
+  final bool starQuiet;
 
   @override
   State<IsoVillageView> createState() => _IsoVillageViewState();
@@ -353,6 +364,9 @@ class _IsoVillageViewState extends State<IsoVillageView> with SingleTickerProvid
           villagers: widget.villagers,
           walkers: widget.walkers,
           markers: widget.markers,
+          port: widget.port,
+          starCell: widget.starCell,
+          starQuiet: widget.starQuiet,
         );
         final paint = SizedBox(width: size.width, height: size.height, child: CustomPaint(painter: painter));
         if (widget.onTapContent == null) return paint;
@@ -378,6 +392,9 @@ class IsoVillagePainter extends CustomPainter {
     this.villagers = const [],
     this.walkers,
     this.markers = const [],
+    this.port,
+    this.starCell,
+    this.starQuiet = false,
   }) : super(repaint: walkers);
 
   final VillageScene scene;
@@ -392,6 +409,11 @@ class IsoVillagePainter extends CustomPainter {
   final List<VillagerSprite> villagers;
   final VillagerWalkers? walkers;
   final List<SpecialMarker> markers;
+
+  // spec-18b: the port, and the gold star's square (quiet once covered).
+  final Port? port;
+  final int? starCell;
+  final bool starQuiet;
 
   // One TextPainter per letter per style, shared across frames.
   static final Map<String, TextPainter> _letterCache = {};
@@ -436,6 +458,11 @@ class IsoVillagePainter extends CustomPainter {
     if (islandMap?.isLetterra ?? false) _paintSea(canvas, area, rMin, rMax, cMin, cMax);
     if (fog != null) _paintFog(canvas, area, rMin, rMax, cMin, cMax);
     _paintMarkers(canvas, area);
+    _paintPort(canvas);
+    final star = starCell;
+    if (star != null && scene.boardCells[star] == null) {
+      paintGoldStar(canvas, scene.groundOf(star), isoTileH, quiet: starQuiet);
+    }
 
     bool inView(int index) {
       final r = scene.rowOf(index), c = scene.colOf(index);
@@ -476,6 +503,30 @@ class IsoVillagePainter extends CustomPainter {
     items.sort((a, b) => a.$1.compareTo(b.$1));
     for (final item in items) {
       item.$2();
+    }
+  }
+
+  // spec-18b: the pier, lamps, boat and flag, on water even under the fog.
+  void _paintPort(Canvas canvas) {
+    final p = port;
+    if (p == null) return;
+    final water = Path();
+    for (final i in [...p.pier, p.boat]) {
+      water.addPath(_diamond(scene.groundOf(i), 1.0), Offset.zero);
+    }
+    canvas.drawPath(water, Paint()..color = const Color(0xFF3E86C4));
+    final order = [...p.pier]..sort((a, b) => scene.depthOf(a).compareTo(scene.depthOf(b)));
+    for (final i in order) {
+      final k = _corners(scene.groundOf(i), 1.0, 0);
+      final at = p.pier.indexOf(i);
+      paintPierDiamond(canvas, [k.top, k.right, k.bottom, k.left], isoTileW, lamp: at == 0 || at == 2);
+    }
+    final art = GlobeArt.loaded;
+    if (art == null) return;
+    for (final (cell, sprite) in [(p.boat, GlobeSprite.boatGold), (p.flag, GlobeSprite.flagGold)]) {
+      final g = scene.groundOf(cell);
+      const w = isoTileW * 1.7;
+      paintGlobeSprite(canvas, art, sprite, Rect.fromLTWH(g.dx - w / 2, g.dy - w * 0.82, w, w));
     }
   }
 
@@ -685,6 +736,9 @@ class IsoVillagePainter extends CustomPainter {
       oldDelegate.highlight != highlight ||
       !identical(oldDelegate.villagers, villagers) ||
       !identical(oldDelegate.markers, markers) ||
+      oldDelegate.port != port ||
+      oldDelegate.starCell != starCell ||
+      oldDelegate.starQuiet != starQuiet ||
       oldDelegate.fog != fog ||
       !identical(oldDelegate.highlightBuilding, highlightBuilding);
 }

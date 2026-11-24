@@ -108,6 +108,17 @@ class VillageSaveData {
   /// was born on Letterra.
   final int? migratedFrom;
 
+  /// spec-18b: this village began on an empty shore with a gold star, and
+  /// whether its first word has covered it. Absent on every older save.
+  final bool starStart;
+  final bool starDone;
+
+  /// No word counts yet except one that covers the star.
+  bool get starActive => starStart && !starDone;
+
+  /// spec-18b: regions already celebrated; null = fill quietly from the fog.
+  final Set<int>? bandsReached;
+
   static const int currentVersion = 6;
 
   /// The fixed seed for the spec-15 island map.
@@ -138,6 +149,9 @@ class VillageSaveData {
     this.keptRuns = const [],
     this.planetSlot,
     this.migratedFrom,
+    this.starStart = false,
+    this.starDone = false,
+    this.bandsReached,
   });
 
   VillageSaveData copyWith({
@@ -176,6 +190,9 @@ class VillageSaveData {
         keptRuns: keptRuns ?? this.keptRuns,
         planetSlot: planetSlot ?? this.planetSlot,
         migratedFrom: migratedFrom ?? this.migratedFrom,
+        starStart: starStart,
+        starDone: starDone,
+        bandsReached: bandsReached,
       );
 
   Map<String, dynamic> toJson() => {
@@ -212,6 +229,10 @@ class VillageSaveData {
             'slot': planetSlot,
             if (migratedFrom != null) 'migratedFrom': migratedFrom,
           },
+        // spec-18b
+        if (starStart) 'starStart': true,
+        if (starDone) 'starDone': true,
+        if (bandsReached != null) 'bandsReached': bandsReached!.toList(),
       };
 
   factory VillageSaveData.fromJson(Map<String, dynamic> json) => VillageSaveData(
@@ -252,6 +273,9 @@ class VillageSaveData {
         ],
         planetSlot: (json['planet'] as Map?)?['slot'] as int?,
         migratedFrom: (json['planet'] as Map?)?['migratedFrom'] as int?,
+        starStart: json['starStart'] as bool? ?? false,
+        starDone: json['starDone'] as bool? ?? false,
+        bandsReached: (json['bandsReached'] as List?)?.map((e) => e as int).toSet(),
       );
 }
 

@@ -239,7 +239,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text("Who's playing?"), findsNothing);
     expect(find.text('Leo'), findsOneWidget);
-    expect(find.text('Sprout'), findsOneWidget);
     expect(find.text('9'), findsOneWidget);
     await goToHomePage(tester, 'Family');
     await tester.pumpAndSettle();
@@ -253,7 +252,7 @@ void main() {
     expect(find.text("Who's playing?"), findsOneWidget);
     await tester.tap(find.text('Nana'));
     await tester.pumpAndSettle();
-    expect(find.text('Wordsmith'), findsOneWidget);
+    expect(ProviderScope.containerOf(tester.element(find.text('5'))).read(settingsProvider).wordLevel.name, 'wordsmith');
     expect(find.text('5'), findsOneWidget);
     expect(find.text('9'), findsNothing);
   });

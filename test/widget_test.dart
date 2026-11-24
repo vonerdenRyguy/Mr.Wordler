@@ -116,7 +116,7 @@ void main() {
 
     // Play opens first: the planet, the Daily and the goal bar.
     expect(tester.takeException(), isNull);
-    onScreen(['Daily puzzle', 'Light the Great Lantern', 'New village', 'Me', 'Family']);
+    onScreen(['Daily puzzle', 'My village', 'Me', 'Family']);
     // "Play" is the tab and both games' buttons.
     expect(screen.contains(tester.getRect(find.text('Play').last).bottomRight), isTrue);
     expect(find.text('Free Play'), findsNothing);
@@ -306,7 +306,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     // No perpetual timer in this mode -- pumpAndSettle is safe throughout.
     await tester.pumpAndSettle();
 
@@ -377,7 +377,7 @@ void main() {
 
     await pumpApp(tester);
 
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -392,7 +392,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester, overrides: overrides);
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle();
   }
 
@@ -465,8 +465,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await pumpApp(tester);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('globe-village-0')));
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.ensureVisible(find.byKey(const ValueKey('home-my-village')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);

@@ -448,6 +448,30 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   - Time Attack is gone from Home (its start page is still reachable in
     tests); Me gained a Villagers button.
 
+- **spec-18b planet mode and port** (branch `claude/fervent-margulis-dd1ea6`,
+  merged to master 2026-11-23 after Ryan's Pixel check; Samsung not
+  checked). Spec:
+  `Desktop\MrWordlerScreenshots\specs\spec-18b-planet-mode-and-port.md`.
+  - Painted planet (map texture + sprite sheet, `globe_art.dart`). Home's
+    planet turns by itself (`HomeTurn`, off under tests through
+    `homePlanetTurnsProvider`); no drag or zoom there. A tap opens
+    `PlanetScreen` (spin, zoom, tap a village to dive). `PlanetData` gives
+    the other players on the phone their own harbors, in the picture only.
+  - **Port** (`lib/letterra/port.dart`, `port_view.dart`): pier, boat and
+    flag on sea squares only, facing the letters. In no save; moves nothing.
+  - **Gold star** (`gold_star.dart`; save `starStart` / `starDone`): only
+    villages born after this. Until a word covers it no word counts (the
+    letters stay, shown unsure); after that it is a plain mark forever.
+    `startCellProvider` is set only by the village.
+  - **Something to find** (`something_to_find.dart`): planet mode's glow and
+    card for the nearest unfound special, never saying what it is. "Show me"
+    opens the village centered there (`InfiniteEstateScreen.focusCell`).
+  - **New region** (`lib/explore/regions.dart`; save `bandsReached`): +15
+    coins and a reward moment once per region. Shore and Meadow never; an
+    older save fills in quietly on its first visit.
+  - `tool/port_star_shots_test.dart` and `tool/planet_mode_shots_test.dart`
+    render PNGs to `build/shots`.
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -691,7 +715,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 413 tests as of spec-18 (336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
+- `flutter test` — 442 tests as of spec-18b (413 as of spec-18, 336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the

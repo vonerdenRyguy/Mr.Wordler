@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import '../explore/fog.dart';
 import '../village/magic_word.dart';
 import '../ui/tokens.dart';
+import 'globe_art.dart';
 import 'planet.dart';
+import 'port.dart';
 
 // Letterra's globe (spec-18, canvas W234 and X252). A true sphere seen in
 // orthographic projection, centred on any point: spin it to see the other
@@ -289,6 +291,38 @@ int _hushOver(int base) {
   return (0xFF << 24) | (mix(16, 0x6F) << 16) | (mix(8, 0x73) << 8) | mix(0, 0x78);
 }
 
+const _puffTints = [Color(0xFFFFFFFF), Color(0xFFEFF1FF), Color(0xFFF7F4FF), Color(0xFFE3E9FB)];
+
+// Worked out again only when the villages change, not every frame.
+List<GlobeVillage>? _nearFor;
+Set<int> _near = const {};
+
+Set<int> _cellsNearLetters(List<GlobeVillage> villages) {
+  if (identical(_nearFor, villages)) return _near;
+  _nearFor = villages;
+  return _near = {
+    for (final v in villages)
+      for (final i in v.letters.keys)
+        for (var dr = -3; dr <= 8; dr++)
+          for (var dc = -5; dc <= 5; dc++) i + dr * kPlanetBoard + dc,
+  };
+}
+
+final _quays = Expando<double>();
+
+/// A picture standing on the planet, ready to draw.
+class _Stand {
+  const _Stand(this.z, this.sprite, this.at, this.width, this.lean, [this.tint = 0]);
+
+  /// Which puff shade; fixed per puff, so it never flickers while moving.
+  final int tint;
+  final double z;
+  final GlobeSprite sprite;
+  final Offset at;
+  final double width;
+  final double lean;
+}
+
 /// Paints the planet.
 class GlobePainter extends CustomPainter {
   GlobePainter({
@@ -300,7 +334,11 @@ class GlobePainter extends CustomPainter {
     required this.isHushed,
     this.showTags = true,
     this.detail = GlobeDetail.fine,
+    this.art,
   });
+
+  /// The painted look; null (not loaded, tests) draws the plain one.
+  final GlobeArt? art;
 
   final GlobeDetail detail;
   final double centerLon;
@@ -324,6 +362,12 @@ class GlobePainter extends CustomPainter {
 
     // Sky behind the planet, then the sea filling it; the Deep is darker
     // towards the rim.
+    final look = art;
+    if (look != null) {
+      _paintArt(canvas, size, proj, outline, disc, look);
+      canvas.restore();
+      return;
+    }
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFBFE6F5));
     canvas.drawPath(
       outline,
@@ -434,6 +478,312 @@ class GlobePainter extends CustomPainter {
       colors: Int32List.fromList(colors),
     );
     canvas.drawVertices(vertices, BlendMode.dst, Paint());
+  }
+
+  // ── The painted look (spec-18b) ───────────────────────────────────────────
+
+  void _paintArt(Canvas canvas, Size size, GlobeProjection proj, Path outline, Rect disc, GlobeArt look) {
+    final box = Offset.zero & size;
+    canvas.drawRect(
+      box,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF45ACEA), Color(0xFF9FDDF8), Color(0xFFFDEED2), Color(0xFFFFDDB8)],
+          stops: [0, 0.45, 0.82, 1],
+        ).createShader(box),
+    );
+    // Clouds in the sky, and a soft glow round the planet.
+    final sky = <_Stand>[
+      for (final (x, y, w) in const [(0.08, 0.17, 0.30), (0.86, 0.10, 0.34), (0.90, 0.93, 0.28), (0.14, 0.90, 0.24)])
+        _Stand(0, GlobeSprite.cloud, Offset(size.width * x, size.height * y), size.width * w, 0),
+    ];
+    _drawStands(canvas, look, sky);
+    canvas.drawPath(
+      outline,
+      Paint()
+        ..color = const Color(0xB3FFFFFF)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 22),
+    );
+    canvas.save();
+    canvas.clipPath(outline);
+    _paintMap(canvas, size, proj, look);
+    // The light on a ball; close in there is no round edge left to shade.
+    final round = (1 - (zoom - 1.5) / 1.5).clamp(0.0, 1.0).toDouble();
+    canvas.drawRect(
+      box,
+      Paint()
+        ..shader = RadialGradient(
+          center: const Alignment(-0.3, -0.4),
+          radius: 0.78,
+          colors: [
+            const Color(0x2EFFF6D8).withOpacity(0.18 * round),
+            const Color(0x00000000),
+            const Color(0x59062A5C).withOpacity(0.35 * round),
+          ],
+          stops: const [0, 0.5, 1],
+        ).createShader(disc),
+    );
+    canvas.restore();
+
+    final stands = <_Stand>[];
+    void stand(double lat, double lon, GlobeSprite s, double widthPx, {double rise = 0}) {
+      final cl = math.cos(lat);
+      final p = _V(cl * math.sin(lon), math.sin(lat), cl * math.cos(lon));
+      final st = _standAt(proj, size, p, s, widthPx);
+      if (st != null) stands.add(st);
+    }
+
+    const cellRad = (math.pi / 2) / kHarborDistance;
+    double pxAt(_V p) {
+      final z = (p - proj._eye).dot(proj._f);
+      return z <= 0.02 ? 0 : proj.focal * cellRad / z;
+    }
+
+    // What must stay clear: every letter, and a village's little houses.
+    final zoomedIn = proj.cellPixels >= 5;
+    final near = _cellsNearLetters(villages);
+    for (final d in globeDecorFor(takenSlots)) {
+      final p = _V(d.x, d.y, d.z);
+      if (p.dot(proj._eye) < 0.97) continue;
+      final px = pxAt(p) * d.cells;
+      if (px <= 2) continue;
+      final peak = d.sprite == GlobeSprite.peakA || d.sprite == GlobeSprite.peakB || d.sprite == GlobeSprite.peakC;
+      if (d.hush) {
+        if (!isHushed(d.row, d.col, 0)) continue;
+      } else if (!peak && hushThickness(bandAt(d.row, d.col)) > 0.9 && isHushed(d.row, d.col, 0)) {
+        continue; // out of sight under solid Hush
+      }
+      if (near.contains(d.row * kPlanetBoard + d.col)) continue;
+      if (!zoomedIn && _byHarbor(d)) continue;
+      final st = _standAt(proj, size, p, d.sprite, px, tint: d.row * 7 + d.col * 3);
+      if (st != null) stands.add(st);
+    }
+    stand(math.pi / 2, 0, GlobeSprite.lantern, math.min(proj.radius * 0.62, size.width * 0.55));
+    stand(-21 * _deg, -20 * _deg, GlobeSprite.whale, proj.radius * 0.34);
+    stand(-23 * _deg, 21 * _deg, GlobeSprite.octopus, proj.radius * 0.30);
+    stand(-15 * _deg, 112 * _deg, GlobeSprite.whale, proj.radius * 0.28);
+    stand(-18 * _deg, 205 * _deg, GlobeSprite.octopus, proj.radius * 0.26);
+
+    for (final v in villages) {
+      final lon = slotAngle(v.slot);
+      // Closer in, the real letters take over and the port keeps its true size.
+      final unit = zoomedIn ? proj.cellPixels * 5.2 : proj.radius * 0.30;
+      final k = v.slot % 3;
+      // Close in, the port faces the middle of the letters.
+      final quay = zoomedIn ? _quays[v] ??= portAngle(v.slot, v.letters.keys) : lon;
+      stand((zoomedIn ? -3.4 : -3.0) * _deg, quay, GlobeSprite.port, unit);
+      stand((zoomedIn ? -5.2 : -8) * _deg, quay + (zoomedIn ? 2.2 : 8) * _deg,
+          [GlobeSprite.boatGold, GlobeSprite.boatCoral, GlobeSprite.boatGreen][k], unit * 0.95);
+      stand((zoomedIn ? -1.6 : 0.6) * _deg, quay + (zoomedIn ? -2.0 : -8) * _deg,
+          [GlobeSprite.flagGold, GlobeSprite.flagCoral, GlobeSprite.flagGreen][k], unit * 0.95);
+      if (!zoomedIn) {
+        if (v.letters.isEmpty && v.buildings.isEmpty) {
+          stand(1.5 * _deg, lon, GlobeSprite.star, unit);
+        } else {
+          const spots = [(4.5, -5.5), (9.5, -1.5), (4.0, 5.0), (10.5, 7.0)];
+          final pics = [
+            for (final w in v.buildings.take(4)) _spriteFor(w),
+          ];
+          if (pics.isEmpty) pics.add(GlobeSprite.houseGold);
+          for (var i = 0; i < pics.length; i++) {
+            stand(spots[i].$1 * _deg, lon + spots[i].$2 * _deg, pics[i], unit);
+          }
+        }
+      }
+    }
+    if (zoomedIn) {
+      for (final v in villages) {
+        _paintTiles(canvas, proj, v, proj.cellPixels);
+        for (final run in v.buildingRuns) {
+          final down = run.cells.length > 1 && run.cells[1] - run.cells[0] == kPlanetBoard;
+          final mid = down ? run.cells.first : run.cells[run.cells.length ~/ 2];
+          // Behind the word, so no letter is hidden.
+          final s = boardToSphere(mid ~/ kPlanetBoard - 0.9, mid % kPlanetBoard + 0.5);
+          stand(s.lat, s.lon, _spriteFor(run.word), proj.cellPixels * 3.6);
+        }
+      }
+    }
+    double depth(_Stand s) => s.sprite == GlobeSprite.lantern ? s.z - 0.12 : s.z;
+    stands.sort((a, b) => depth(b).compareTo(depth(a)));
+    final lamp = proj.project(math.pi / 2, 0);
+    if (lamp.front) {
+      final r = math.min(proj.radius * 0.55, 150.0);
+      final c = lamp.p.translate(0, -math.min(proj.radius * 0.2, size.width * 0.18));
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = const RadialGradient(colors: [Color(0xCCFFE08A), Color(0x44FFD36B), Color(0x00FFD36B)], stops: [0, 0.45, 1])
+              .createShader(Rect.fromCircle(center: c, radius: r)),
+      );
+    }
+    _drawStands(canvas, look, stands);
+    if (showTags) {
+      for (final v in villages) {
+        final at = proj.harborAt(v.slot);
+        if (at == null) continue;
+        final spot = zoomedIn && v.letters.isNotEmpty ? _tagSpot(proj, v, at) : at.translate(0, proj.radius * 0.20);
+        _tag(canvas, v.name, spot, v.color);
+      }
+    }
+  }
+
+  bool _byHarbor(GlobeDecor d) {
+    for (final v in villages) {
+      final h = harborCell(v.slot);
+      final dr = d.row - h ~/ kPlanetBoard, dc = d.col - h % kPlanetBoard;
+      if (dr * dr + dc * dc < 22 * 22) return true;
+    }
+    return false;
+  }
+
+  GlobeSprite _spriteFor(String word) => switch (word) {
+        'BARN' || 'FARM' => GlobeSprite.barn,
+        'MILL' => GlobeSprite.mill,
+        'WELL' => GlobeSprite.well,
+        _ => const [
+            GlobeSprite.houseRed,
+            GlobeSprite.houseBlue,
+            GlobeSprite.houseGold,
+            GlobeSprite.houseGreen,
+            GlobeSprite.housePurple,
+          ][word.codeUnits.fold<int>(0, (a, b) => a + b) % 5],
+      };
+
+  _Stand? _standAt(GlobeProjection proj, Size size, _V p, GlobeSprite s, double width, {int tint = 0}) {
+    // Things grow in over the horizon instead of popping.
+    final over = ((p.dot(proj._eye) - 0.97) / 0.08).clamp(0.0, 1.0).toDouble();
+    if (over <= 0.05) return null;
+    width *= over;
+    final v = p - proj._eye;
+    final z = v.dot(proj._f);
+    if (z <= 0.05) return null;
+    final at = Offset(proj.cx + proj.focal * v.dot(proj._r) / z, proj.cy - proj.focal * v.dot(proj._u) / z);
+    if (at.dx < -width || at.dy < -width || at.dx > size.width + width || at.dy > size.height + width) return null;
+    // Pictures lean outward with the ground, but mostly stay upright.
+    final lean = math.atan2(p.dot(proj._r), p.dot(proj._u) + 1.1);
+    return _Stand(z, s, at, width, lean, tint);
+  }
+
+  void _drawStands(Canvas canvas, GlobeArt look, List<_Stand> stands) {
+    if (stands.isEmpty) return;
+    const c = GlobeSprite.cell;
+    canvas.drawAtlas(
+      look.sprites,
+      [
+        for (final s in stands)
+          RSTransform.fromComponents(
+            rotation: s.lean,
+            scale: s.width / c,
+            anchorX: c / 2,
+            anchorY: c * 0.82,
+            translateX: s.at.dx,
+            translateY: s.at.dy,
+          ),
+      ],
+      [for (final s in stands) s.sprite.rect],
+      [
+        // Puffs get a touch of lilac and blue so a bank of Hush has depth.
+        for (final s in stands)
+          s.sprite == GlobeSprite.puff || s.sprite == GlobeSprite.puffWide
+              ? _puffTints[s.tint % _puffTints.length]
+              : const Color(0xFFFFFFFF),
+      ],
+      BlendMode.modulate,
+      null,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
+
+  // The painted map wrapped round the sphere, then a pale mist over the land
+  // the Hush still covers (the puffs stand on it).
+  void _paintMap(Canvas canvas, Size size, GlobeProjection proj, GlobeArt look) {
+    final map = look.mapFor(takenSlots);
+    final k = map.width / kMapSpan;
+    final screen = Offset.zero & size;
+    final split = detail == GlobeDetail.coarse ? 26.0 : 18.0;
+    final pos = <double>[], tex = <double>[], colors = <int>[];
+    final kinds = _kindsFor(takenSlots);
+    var misty = false;
+
+    void corner(double lat, double lon, Offset p) {
+      final b = sphereToBoard(lat, lon);
+      pos
+        ..add(p.dx)
+        ..add(p.dy);
+      tex
+        ..add((b.col + 0.5 - kMapFrom) * k)
+        ..add((b.row + 0.5 - kMapFrom) * k);
+      var color = 0x00E4EBFA;
+      final row = b.row.round(), col = b.col.round();
+      if (row >= 0 && col >= 0 && row < kPlanetBoard && col < kPlanetBoard) {
+        final i = row * kPlanetBoard + col;
+        if (kinds[i] == -2) kinds[i] = _kindAtCompute(takenSlots, row, col);
+        if (kinds[i] >= 0 && isHushed(row, col, lon)) {
+          final t = hushThickness(Band.values[kinds[i]]);
+          color = ((0xE6 * t).round() << 24) | 0xE4EBFA;
+          misty = misty || t > 0;
+        }
+      }
+      colors.add(color);
+    }
+
+    void tile(double lat, double lon, double h, double w) {
+      final mLat = lat + h / 2, mLon = lon + w / 2;
+      final c = proj.project(mLat, mLon);
+      final reach = math.max(h, w * math.cos(mLat));
+      if (c.depth * proj._eyeLen - 1 < -reach * 1.5 * proj._eyeLen) return;
+      final z = proj._zOf(mLat, mLon);
+      if (z < -reach) return; // wholly behind the camera
+      final px = z <= 0.02 ? double.infinity : proj.focal * reach / z;
+      if (z > 0.02 && !screen.inflate(px * 1.5 + 8).contains(c.p)) return;
+      if (px > split && h > 0.2 * _deg) {
+        tile(lat, lon, h / 2, w / 2);
+        tile(lat, lon + w / 2, h / 2, w / 2);
+        tile(lat + h / 2, lon, h / 2, w / 2);
+        tile(lat + h / 2, lon + w / 2, h / 2, w / 2);
+        return;
+      }
+      final p0 = proj.project(lat, lon), p1 = proj.project(lat, lon + w);
+      final p2 = proj.project(lat + h, lon + w), p3 = proj.project(lat + h, lon);
+      if (!p0.front && !p1.front && !p2.front && !p3.front) return;
+      // A corner just over the horizon still projects to a good point; one
+      // behind the camera does not.
+      if (proj._zOf(lat, lon) < 0.02 || proj._zOf(lat, lon + w) < 0.02) return;
+      if (proj._zOf(lat + h, lon + w) < 0.02 || proj._zOf(lat + h, lon) < 0.02) return;
+      corner(lat, lon, p0.p);
+      corner(lat, lon + w, p1.p);
+      corner(lat + h, lon + w, p2.p);
+      corner(lat, lon, p0.p);
+      corner(lat + h, lon + w, p2.p);
+      corner(lat + h, lon, p3.p);
+    }
+
+    canvas.drawColor(const Color(0xFF2383CF), BlendMode.srcOver);
+    const root = 18 * _deg;
+    for (var lat = -36 * _deg; lat < math.pi / 2 - 1e-9; lat += root) {
+      for (var lon = 0.0; lon < 2 * math.pi - 1e-9; lon += root) {
+        tile(lat, lon, root, root);
+      }
+    }
+    if (pos.isEmpty) return;
+    final positions = Float32List.fromList(pos);
+    canvas.drawVertices(
+      ui.Vertices.raw(ui.VertexMode.triangles, positions, textureCoordinates: Float32List.fromList(tex)),
+      BlendMode.srcOver,
+      Paint()
+        ..shader = ui.ImageShader(map, TileMode.clamp, TileMode.clamp, Matrix4.identity().storage,
+            filterQuality: FilterQuality.medium),
+    );
+    if (misty) {
+      canvas.drawVertices(
+        ui.Vertices.raw(ui.VertexMode.triangles, positions, colors: Int32List.fromList(colors)),
+        BlendMode.dst,
+        Paint(),
+      );
+    }
   }
 
   // A soft shade towards the rim (the curve) and a thin atmosphere line along
@@ -610,10 +960,15 @@ class GlobePainter extends CustomPainter {
       }
       if (!ok) continue;
       final quad = Path()..addPolygon(pts, true);
+      if (art != null) {
+        // A thick wooden block: the side facing you, below the letter.
+        canvas.drawPath(quad.shift(Offset(0, cell * 0.22)), Paint()..color = const Color(0xFF8A6A45));
+        canvas.drawPath(quad.shift(Offset(0, cell * 0.22)), edge);
+      }
       fill.color = colors[e.key] ?? _tile;
       canvas.drawPath(quad, fill);
       canvas.drawPath(quad, edge);
-      if (cell >= 13) {
+      if (cell >= (art == null ? 13 : 8)) {
         final c = Offset(
           (pts[0].dx + pts[1].dx + pts[2].dx + pts[3].dx) / 4,
           (pts[0].dy + pts[1].dy + pts[2].dy + pts[3].dy) / 4,
@@ -633,7 +988,7 @@ class GlobePainter extends CustomPainter {
         tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
       }
     }
-    if (cell >= 7) {
+    if (cell >= 7 && art == null) {
       for (final p in roofs) {
         _house(canvas, p.translate(0, -cell * 0.35), cell * 1.1, Colors.transparent, bodyless: true);
       }
@@ -710,6 +1065,7 @@ class GlobePainter extends CustomPainter {
       oldDelegate.villages != villages ||
       oldDelegate.takenSlots != takenSlots ||
       oldDelegate.showTags != showTags ||
+      oldDelegate.art != art ||
       oldDelegate.detail != detail;
 }
 

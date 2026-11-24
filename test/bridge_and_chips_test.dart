@@ -65,7 +65,7 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 20));
     // Building moments (Well, Bridge) may be open; close them.
     for (var i = 0; i < 5 && find.text('Hooray!').evaluate().isNotEmpty; i++) {

@@ -1,0 +1,3 @@
+# Renders sprites.html to assets/globe/sprites.png with headless Edge.
+cd "$(dirname "$0")"; D="$(cygpath -m "$PWD")"; O="$(cygpath -m "$PWD/../../assets/globe")"
+"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist --allow-file-access-from-files --hide-scrollbars --default-background-color=00000000 --force-device-scale-factor=1 --window-size=1536,768 --virtual-time-budget=60000 --user-data-dir="$(cygpath -m "$TEMP")/mrw-edge-prof" --enable-logging=stderr --screenshot="$O/sprites.png" "file:///${D// /%20}/sprites.html" 2>&1 | grep -E "CONSOLE|written" | cut -c1-400 | head

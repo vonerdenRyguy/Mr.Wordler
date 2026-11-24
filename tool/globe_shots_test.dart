@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
@@ -37,7 +39,10 @@ void main() {
             ],
             takenSlots: const {0, 2, 4},
             focusSlot: 0,
-            isHushed: (r, col, lon) => bandAt(r, col).index > 2,
+            isHushed: (r, col, lon) => !letters.keys.any((i) {
+              final a = i ~/ kPlanetBoard - r, b = i % kPlanetBoard - col;
+              return a * a + b * b < 81;
+            }),
           ),
         ),
       ),
@@ -59,12 +64,19 @@ void main() {
       final boundary = key.currentContext!.findRenderObject() as RenderRepaintBoundary;
       final image = await boundary.toImage(pixelRatio: 2);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      File('C:/Users/Ryan the Avatar/Desktop/MrWordlerScreenshots/2026-11-23_spec18/$name.png')
+      File('C:/Users/Ryan the Avatar/Desktop/MrWordlerScreenshots/2026-11-23_spec18b/$name.png')
           .writeAsBytesSync(bytes!.buffer.asUint8List());
     });
   }
 
   testWidgets('shots', (tester) async {
+    await tester.runAsync(() async {
+      await GlobeArt.load();
+      final f = FontLoader('LilitaOne')..addFont(rootBundle.load('assets/fonts/LilitaOne-Regular.ttf'));
+      await f.load();
+      final a = FontLoader('AtkinsonHyperlegible')..addFont(rootBundle.load('assets/fonts/AtkinsonHyperlegible-Bold.ttf'));
+      await a.load();
+    });
     await shot(tester, 'g1-default');
     await shot(tester, 'g2-whole', zoomOuts: 2);
     await shot(tester, 'g3-zoom1', zoomIns: 1);
