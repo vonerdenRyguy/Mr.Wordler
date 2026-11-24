@@ -314,6 +314,7 @@ Set<int> _cellsNearLetters(List<GlobeVillage> villages) {
 }
 
 final _quays = Expando<double>();
+final _homes = Expando<Map<int, int>>();
 
 /// A picture standing on the planet, ready to draw.
 class _Stand {
@@ -616,10 +617,16 @@ class GlobePainter extends CustomPainter {
           final down = run.cells.length > 1 && run.cells[1] - run.cells[0] == kPlanetBoard;
           final mid = down ? run.cells.first : run.cells[run.cells.length ~/ 2];
           // Behind the word, so no letter is hidden.
-          final s = boardToSphere(mid ~/ kPlanetBoard - 0.9, mid % kPlanetBoard + 0.5);
+          var row = mid ~/ kPlanetBoard - 0.9, col = mid % kPlanetBoard + 0.5;
+          if (closeUp) {
+            final home = (_homes[v] ??= _homesFor(v))[run.cells.first * 2 + (down ? 1 : 0)]!;
+            row = home ~/ kPlanetBoard + 0.8;
+            col = home % kPlanetBoard + 0.5;
+          }
+          final s = boardToSphere(row, col);
           final cl = math.cos(s.lat);
           final at = _V(cl * math.sin(s.lon), math.sin(s.lat), cl * math.cos(s.lon));
-          stand(s.lat, s.lon, _spriteFor(run.word), closeUp ? pxAt(at) * 3.0 : proj.cellPixels * 3.6);
+          stand(s.lat, s.lon, _spriteFor(run.word), closeUp ? pxAt(at) * 2.7 : proj.cellPixels * 3.6);
         }
       }
     }
@@ -646,6 +653,48 @@ class GlobePainter extends CustomPainter {
         _tag(canvas, v.name, spot, v.color);
       }
     }
+  }
+
+  // Where each building stands: the nearest open ground to its word, so no
+  // house hides a letter. Keyed by the run's first cell and direction.
+  Map<int, int> _homesFor(GlobeVillage v) {
+    final used = <int>{};
+    final out = <int, int>{};
+    bool open(int row, int col) {
+      for (var r = row - 3; r <= row; r++) {
+        for (var c = col - 1; c <= col + 1; c++) {
+          final i = r * kPlanetBoard + c;
+          if (v.letters.containsKey(i) || used.contains(i)) return false;
+        }
+      }
+      return true;
+    }
+
+    for (final run in v.buildingRuns) {
+      final down = run.cells.length > 1 && run.cells[1] - run.cells[0] == kPlanetBoard;
+      var best = run.cells.first - kPlanetBoard, bestD = double.infinity;
+      for (var r = run.cells.first ~/ kPlanetBoard - 6; r <= run.cells.last ~/ kPlanetBoard + 6; r++) {
+        for (var c = run.cells.first % kPlanetBoard - 6; c <= run.cells.last % kPlanetBoard + 6; c++) {
+          if (!open(r, c)) continue;
+          for (final i in run.cells) {
+            final dr = r - 0.6 - i ~/ kPlanetBoard, dc = c - i % kPlanetBoard;
+            final d = (dr * dr + dc * dc).toDouble();
+            if (d < bestD) {
+              bestD = d;
+              best = r * kPlanetBoard + c;
+            }
+          }
+        }
+      }
+      final r0 = best ~/ kPlanetBoard, c0 = best % kPlanetBoard;
+      for (var r = r0 - 2; r <= r0; r++) {
+        for (var c = c0 - 1; c <= c0 + 1; c++) {
+          used.add(r * kPlanetBoard + c);
+        }
+      }
+      out[run.cells.first * 2 + (down ? 1 : 0)] = best;
+    }
+    return out;
   }
 
   // Close up: grass and flowers on the ground, then every letter as a raised

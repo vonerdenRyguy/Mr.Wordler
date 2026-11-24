@@ -14,10 +14,10 @@ const double kCloseUpMaxZoom = 12;
 
 const double kBlockCell = 96;
 
-/// Top colours: plain words first, then building words.
+/// Top colours: brick for plain words first, then building words.
 const kBlockColors = [
-  Color(0xFFFFF1CF),
-  Color(0xFFFFB184),
+  Color(0xFFEBA27E),
+  Color(0xFF9BD0FF),
   Color(0xFFFFDC62),
   Color(0xFF8FE0CE),
   Color(0xFFFFA3B5),
@@ -38,6 +38,14 @@ ui.Image _drawBlocks() {
     Color darker(double by) => hsl.withLightness((hsl.lightness - by).clamp(0.0, 1.0)).toColor();
     for (var i = 0; i < 28; i++) {
       final cell = Rect.fromLTWH(i * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell);
+      if (color == 0) {
+        _brick(canvas, cell, i < 26 ? 0 : (i == 26 ? 0.10 : 0.18));
+        if (i < 26) {
+          _letter(canvas, cell, i, halo: true);
+          _letter(canvas, cell, i);
+        }
+        continue;
+      }
       if (i >= 26) {
         canvas.drawRect(cell, Paint()..color = darker(i == 26 ? 0.22 : 0.32));
         continue;
@@ -51,18 +59,68 @@ ui.Image _drawBlocks() {
           ..strokeWidth = 4
           ..color = const Color(0x88FFFFFF),
       );
-      final tp = TextPainter(
-        text: TextSpan(
-          text: String.fromCharCode(65 + i),
-          style: const TextStyle(fontFamily: 'LilitaOne', fontSize: 72, color: WColors.ink),
-        ),
-        textDirection: TextDirection.ltr,
-        textScaler: TextScaler.noScaling,
-      )..layout();
-      tp.paint(canvas, cell.center - Offset(tp.width / 2, tp.height / 2));
+      _letter(canvas, cell, i);
     }
   }
   return recorder.endRecording().toImageSync((28 * kBlockCell).round(), (kBlockColors.length * kBlockCell).round());
+}
+
+void _letter(Canvas canvas, Rect cell, int i, {bool halo = false}) {
+  final tp = TextPainter(
+    text: TextSpan(
+      text: String.fromCharCode(65 + i),
+      style: TextStyle(
+        fontFamily: 'LilitaOne',
+        fontSize: 72,
+        foreground: Paint()
+          ..color = halo ? const Color(0xB3FFE9D6) : WColors.ink
+          ..style = halo ? PaintingStyle.stroke : PaintingStyle.fill
+          ..strokeJoin = StrokeJoin.round
+          ..strokeWidth = 12,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+    textScaler: TextScaler.noScaling,
+  )..layout();
+  tp.paint(canvas, cell.center - Offset(tp.width / 2, tp.height / 2));
+}
+
+// Four rows of bricks with pale mortar; a light patch behind the letter would
+// hide the brick, so the bricks themselves are light enough to read on.
+void _brick(Canvas canvas, Rect cell, double shade) {
+  canvas.save();
+  canvas.clipRect(cell);
+  final hsl = HSLColor.fromColor(kBlockColors[0]);
+  Color tone(double by) => hsl.withLightness((hsl.lightness + by - shade).clamp(0.0, 1.0)).toColor();
+  canvas.drawRect(cell, Paint()..color = Color.lerp(const Color(0xFFFFEBD6), const Color(0xFF8A5A44), shade * 2)!);
+  const h = kBlockCell / 4, w = kBlockCell / 2;
+  const tones = [0.0, 0.035, -0.035, 0.015, -0.02, 0.03, -0.01];
+  for (var row = 0; row < 4; row++) {
+    for (var k = -1; k < 3; k++) {
+      final x = cell.left + k * w + (row.isOdd ? w / 2 : 0);
+      final r = Rect.fromLTWH(x + 2, cell.top + row * h + 2, w - 4, h - 4);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(r, const Radius.circular(4)),
+        Paint()..color = tone(tones[(row * 3 + k + 1) % tones.length]),
+      );
+      canvas.drawLine(
+        r.topLeft + const Offset(4, 2.5),
+        r.topRight + const Offset(-4, 2.5),
+        Paint()
+          ..strokeWidth = 2.5
+          ..color = tone(0.08),
+      );
+    }
+  }
+  canvas.restore();
+  // A darker edge all round, so each letter is its own block.
+  canvas.drawRect(
+    cell.deflate(3),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..color = tone(-0.28),
+  );
 }
 
 const double kBitCell = 64;
