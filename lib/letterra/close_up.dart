@@ -9,6 +9,12 @@ import 'planet.dart';
 // Pictures for the close-up (spec-22 C's phone test): letter blocks and the
 // small things growing on the ground, each drawn once onto a sheet.
 
+/// How wide a house's picture is, in board cells, close up.
+const double kHouseCells = 2.7;
+
+/// The block sheet's row for letters that aren't settled.
+const int kLooseRow = 6;
+
 /// How close the close-up goes (about 40 pixels a square on a phone).
 const double kCloseUpMaxZoom = 12;
 
@@ -32,8 +38,8 @@ ui.Image blockSheet() => _blocks ??= _drawBlocks();
 ui.Image _drawBlocks() {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  for (var color = 0; color < kBlockColors.length; color++) {
-    final base = kBlockColors[color];
+  for (var color = 0; color <= kLooseRow; color++) {
+    final base = color == kLooseRow ? const Color(0xFFFFF4E6) : kBlockColors[color];
     final hsl = HSLColor.fromColor(base);
     Color darker(double by) => hsl.withLightness((hsl.lightness - by).clamp(0.0, 1.0)).toColor();
     for (var i = 0; i < 28; i++) {
@@ -56,10 +62,24 @@ ui.Image _drawBlocks() {
           ..strokeWidth = 4
           ..color = const Color(0x88FFFFFF),
       );
+      if (color == kLooseRow) _dashes(canvas, cell);
       _letter(canvas, cell, i);
     }
   }
-  return recorder.endRecording().toImageSync((28 * kBlockCell).round(), (kBlockColors.length * kBlockCell).round());
+  return recorder.endRecording().toImageSync((28 * kBlockCell).round(), ((kLooseRow + 1) * kBlockCell).round());
+}
+
+void _dashes(Canvas canvas, Rect cell) {
+  final path = Path()..addRRect(RRect.fromRectAndRadius(cell.deflate(8), const Radius.circular(12)));
+  final paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 7
+    ..color = WColors.coral;
+  for (final m in path.computeMetrics()) {
+    for (var d = 0.0; d < m.length; d += 24) {
+      canvas.drawPath(m.extractPath(d, d + 14), paint);
+    }
+  }
 }
 
 void _letter(Canvas canvas, Rect cell, int i) {

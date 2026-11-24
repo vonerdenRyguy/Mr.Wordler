@@ -11,7 +11,6 @@ import '../settings/settings_controller.dart';
 import '../sound/sound_service.dart';
 import '../ui/chunky_button.dart';
 import '../ui/tokens.dart';
-import 'close_up_test_screen.dart';
 import 'family_screens.dart' show VisitVillageScreen;
 import 'infinite_estate_screen.dart';
 
@@ -84,6 +83,7 @@ class _PlanetScreenState extends ConsumerState<PlanetScreen> {
                     isHushed: data.isHushed,
                     reduceMotion: reduce,
                     alwaysPan: true,
+                    closeUp: true,
                     showZoomButtons: !_diving,
                     zoomButtonsBottom: MediaQuery.paddingOf(context).bottom +
                         (data.find == null ? 84 : 120 + 74 * MediaQuery.textScalerOf(context).scale(1)),
@@ -113,15 +113,7 @@ class _PlanetScreenState extends ConsumerState<PlanetScreen> {
                                 style: WText.heading.copyWith(fontSize: 28, color: WColors.ink),
                               ),
                             ),
-                            if (kCloseUpTest)
-                              ChunkyIconButton(
-                                icon: Icons.speed,
-                                tooltip: 'Close-up test',
-                                onPressed: () => Navigator.of(context)
-                                    .push(MaterialPageRoute<void>(builder: (_) => const CloseUpTestScreen())),
-                              )
-                            else
-                              const SizedBox(width: WSize.tapTarget),
+                            const SizedBox(width: WSize.tapTarget),
                           ]),
                           const Spacer(),
                           _Bottom(

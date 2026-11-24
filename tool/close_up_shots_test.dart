@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
-import 'package:namer_app/screens/close_up_test_screen.dart';
 
+import '../test/big_test_village.dart';
 import '../test/widget_test.dart' show loadAppFonts;
 
 // Pictures and paint times of the close-up test (not in the normal suite).
@@ -15,7 +15,7 @@ void main() {
   setUpAll(loadAppFonts);
   testWidgets('close up', (tester) async {
     await tester.runAsync(GlobeArt.load);
-    final villages = closeUpTestVillages();
+    final villages = bigTestVillage();
     // ignore: avoid_print
     print('${villages.first.letters.length} letters, ${villages.first.buildingRuns.length} buildings');
     for (final (name, zoom, row, col) in const [

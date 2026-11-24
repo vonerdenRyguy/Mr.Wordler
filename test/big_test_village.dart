@@ -1,5 +1,6 @@
-// A made-up village for the close-up phone test (spec-22 C). Never saved.
-import 'planet.dart';
+// A made-up village with 366 letters and 15 buildings, for tests and pictures.
+import 'package:namer_app/letterra/globe_painter.dart';
+import 'package:namer_app/letterra/planet.dart';
 
 const _row = 334, _col = 224;
 const _rows = [
@@ -44,3 +45,18 @@ Map<int, String> closeUpTestLetters() => {
         for (var c = 0; c < _rows[r].length; c++)
           if (_rows[r][c] != '.') (_row + r) * kPlanetBoard + _col + c: _rows[r][c],
     };
+
+/// That village as the planet draws it.
+List<GlobeVillage> bigTestVillage() {
+  final letters = closeUpTestLetters();
+  final runs = magicRunsOn(letters);
+  return [
+    GlobeVillage(
+      slot: 0,
+      name: 'Test village',
+      letters: letters,
+      buildingRuns: runs,
+      buildings: [for (final r in runs.take(4)) r.word],
+    ),
+  ];
+}

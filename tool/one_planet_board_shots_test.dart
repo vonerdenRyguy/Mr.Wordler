@@ -15,13 +15,13 @@ import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/planet.dart';
-import 'package:namer_app/screens/close_up_test_screen.dart';
 import 'package:namer_app/screens/infinite_estate_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:namer_app/village/magic_word.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../test/big_test_village.dart';
 import '../test/home_test_helpers.dart';
 import '../test/widget_test.dart' show loadAppFonts;
 
@@ -37,7 +37,7 @@ void main() {
       await (FontLoader('MaterialIcons')..addFont(Future.value(font.readAsBytesSync().buffer.asByteData()))).load();
     });
     await tester.runAsync(GlobeArt.load);
-    final villages = closeUpTestVillages();
+    final villages = bigTestVillage();
     Future<void> save(String name, ui.Picture picture) => tester.runAsync(() async {
           final image = await picture.toImage(780, 1688);
           final bytes = await image.toByteData(format: ui.ImageByteFormat.png);

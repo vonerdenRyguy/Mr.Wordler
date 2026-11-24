@@ -14,7 +14,11 @@ class PlanetVillage {
     this.letters = const {},
     this.runs = const [],
     this.fog,
+    this.loose = const {},
   });
+
+  /// Letters not settled into real words (known only inside the village).
+  final Set<int> loose;
 
   final Player player;
 
@@ -64,6 +68,9 @@ class PlanetData {
                     for (final e in v.letters.entries)
                       if (turnedCell(e.key, turns ~/ 2) case final i?) i: e.value,
                   },
+        loose: !exact
+            ? const {}
+            : {for (final c in v.loose) if (turnedCell(c, turns ~/ 2) case final i?) i},
         buildingRuns: !exact
             ? const []
             : [
