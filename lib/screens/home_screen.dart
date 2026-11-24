@@ -219,14 +219,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _showPlanet();
   }
 
-  // What glows in planet mode: the nearest special not found yet.
-  SomethingToFind? _find;
+  // What glows in planet mode: the nearest special not found yet (three with
+  // the Shrine of Sight).
+  List<SomethingToFind> _find = const [];
 
-  SomethingToFind? _findIn(VillageSaveData? saved) {
+  List<SomethingToFind> _findIn(VillageSaveData? saved) {
     final map = IslandMap.letterra(
         seed: saved?.mapSeed ?? VillageSaveData.kDefaultMapSeed, slot: saved?.planetSlot ?? 0);
-    return somethingToFind(
+    return thingsToFind(
       map: map,
+      count: (saved?.shrines.contains(ShrineKind.sight) ?? false) ? 3 : 1,
       unfound: [
         for (final sp in map.specials)
           if (saved == null ||
@@ -488,6 +490,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         wordOfDay: wordOfDay,
         wordClaimed: wordClaimed,
         wordLevel: wordLevel,
+        playedToday: playedToday,
+        streak: daily.streak,
+        now: now,
+        onDaily: () => _openDaily(playedToday),
         onLevel: () => _open(const PortfolioScreen()),
         onWordOfDay: wordOfDay == null ? null : () => _openWordOfDay(wordOfDay, wordClaimed),
         onJournal: _openJournal,
@@ -499,12 +505,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       _PlayPage(
         planet: _planet,
-        playedToday: playedToday,
-        streak: daily.streak,
-        now: now,
         onPlanet: _openPlanet,
         onVisit: () => _open(const InfiniteEstateScreen()),
-        onDaily: () => _openDaily(playedToday),
       ),
       if (!hasFamily)
         Wallpaper(
@@ -631,7 +633,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       index: _page,
                       onTap: _goTo,
                       tabs: [
-                        const HomeTabInfo('Me', Icons.person),
+                        HomeTabInfo('Me', Icons.person, alert: !playedToday && _page != HomePage.me.index),
                         const HomeTabInfo('Play', Icons.home),
                         HomeTabInfo('Family', Icons.groups, badge: _page == HomePage.family.index ? 0 : unseen),
                       ],
@@ -754,28 +756,18 @@ Widget _grow(int flex, double min, Widget child) => Expanded(
 // ---- Play ---------------------------------------------------------------------
 
 /// Play (spec-18b): the planet slowly turning by itself. Tap it for planet
-/// mode; the gold button goes straight into your village; the Daily is a
-/// round badge. Swipes always change pages.
+/// mode; the gold button goes straight into your village. The Daily is on Me
+/// (spec-22). Swipes always change pages.
 class _PlayPage extends ConsumerStatefulWidget {
   const _PlayPage({
     required this.planet,
-    required this.playedToday,
-    required this.streak,
-    required this.now,
     required this.onPlanet,
     required this.onVisit,
-    required this.onDaily,
   });
 
   final ValueNotifier<PlanetData?> planet;
-  final bool playedToday;
-  final int streak;
-  final DateTime now;
   final VoidCallback onPlanet;
   final VoidCallback onVisit;
-  final VoidCallback onDaily;
-
-  static const _months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
   @override
   ConsumerState<_PlayPage> createState() => _PlayPageState();
@@ -790,8 +782,8 @@ class _PlayPageState extends ConsumerState<_PlayPage> {
     final scale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(builder: (context, constraints) {
       // The planet's picture runs to the edges; its middle sits between the
-      // top bar and the Daily badge (a little low, for the Lantern on top).
-      final controlsTop = constraints.maxHeight - pad.bottom - 170 - 40 * scale;
+      // top bar and the button (a little low, for the Lantern on top).
+      final controlsTop = constraints.maxHeight - pad.bottom - 78 - 12 * scale;
       final skyHeight = math.max(300.0, pad.top + controlsTop + 76);
       return Stack(
         fit: StackFit.expand,
@@ -831,19 +823,6 @@ class _PlayPageState extends ConsumerState<_PlayPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
-                    child: _RoundBadge(
-                      label: 'Daily puzzle',
-                      semantics: 'Daily puzzle. ${widget.playedToday ? 'Done for today' : 'Not played yet'}'
-                          '${widget.streak >= 2 ? '. ${widget.streak}-day streak' : ''}',
-                      color: WColors.sky,
-                      alert: !widget.playedToday,
-                      sub: widget.streak >= 2 ? '${widget.streak}-day streak' : null,
-                      onTap: widget.onDaily,
-                      child: _CalendarTile(month: _PlayPage._months[widget.now.month - 1], day: widget.now.day),
-                    ),
-                  ),
-                  const SizedBox(height: WSize.gap3),
                   ChunkyButton(
                     key: const ValueKey('home-my-village'),
                     label: 'My village',
@@ -866,125 +845,6 @@ class _PlayPageState extends ConsumerState<_PlayPage> {
 /// Whether Home's planet turns by itself (off in tests, where a planet that
 /// never stops would never settle).
 final homePlanetTurnsProvider = Provider<bool>((ref) => !Platform.environment.containsKey('FLUTTER_TEST'));
-
-/// A small label floating over the village.
-class _FloatChip extends StatelessWidget {
-  const _FloatChip({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: WColors.card.withOpacity(0.92),
-        borderRadius: BorderRadius.circular(WSize.radiusChip),
-        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 2))],
-      ),
-      child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: WText.label.copyWith(color: WColors.ink)),
-    );
-  }
-}
-
-/// A round game badge over the village, with its name under it and an
-/// optional red "!" (not played yet today).
-class _RoundBadge extends StatefulWidget {
-  const _RoundBadge({
-    required this.label,
-    required this.semantics,
-    required this.color,
-    required this.onTap,
-    required this.child,
-    this.alert = false,
-    this.sub,
-  });
-
-  final String label;
-  final String semantics;
-  final Color color;
-  final VoidCallback onTap;
-  final Widget child;
-  final bool alert;
-  final String? sub;
-
-  @override
-  State<_RoundBadge> createState() => _RoundBadgeState();
-}
-
-class _RoundBadgeState extends State<_RoundBadge> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    const size = 84.0;
-    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    return Semantics(
-      button: true,
-      label: widget.semantics,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: () {
-          playSfx(context, Sfx.tap);
-          widget.onTap();
-        },
-        child: AnimatedScale(
-          scale: _pressed && !reduce ? 0.92 : 1,
-          duration: const Duration(milliseconds: 90),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: size,
-                    height: size,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: widget.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: WColors.ink, width: WSize.outline),
-                      boxShadow: wLip(WSize.lip),
-                    ),
-                    child: widget.child,
-                  ),
-                  if (widget.alert)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: WColors.brick,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: WColors.ink, width: WSize.outlineSmall),
-                        ),
-                        child: Text('!',
-                            textScaler: TextScaler.noScaling,
-                            style: WText.button.copyWith(color: WColors.white, fontSize: 18)),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _FloatChip(text: widget.label),
-              if (widget.sub != null) ...[
-                const SizedBox(height: 4),
-                _FloatChip(text: widget.sub!),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _CalendarTile extends StatelessWidget {
   const _CalendarTile({required this.month, required this.day});
@@ -1053,6 +913,10 @@ class _MePage extends StatelessWidget {
     required this.wordOfDay,
     required this.wordClaimed,
     required this.wordLevel,
+    required this.playedToday,
+    required this.streak,
+    required this.now,
+    required this.onDaily,
     required this.onLevel,
     required this.onWordOfDay,
     required this.onJournal,
@@ -1067,6 +931,10 @@ class _MePage extends StatelessWidget {
   final WordOfDay? wordOfDay;
   final bool wordClaimed;
   final WordLevel wordLevel;
+  final bool playedToday;
+  final int streak;
+  final DateTime now;
+  final VoidCallback onDaily;
   final VoidCallback onLevel;
   final VoidCallback? onWordOfDay;
   final VoidCallback onJournal;
@@ -1082,7 +950,8 @@ class _MePage extends StatelessWidget {
     // A profile, like a game's (spec-12b): you in the middle, one strip,
     // one row of round buttons.
     return _PageBody(children: [
-      const Spacer(flex: 2),
+      if (!playedToday) _DailyCard(now: now, streak: streak, onTap: onDaily),
+      Spacer(flex: playedToday ? 2 : 1),
       Semantics(
         button: true,
         label: '${player.name}. Level ${level.level}. $toNext points to Level ${level.level + 1}. Open My properties',
@@ -1168,6 +1037,10 @@ class _MePage extends StatelessWidget {
           ]),
         ),
       ),
+      if (playedToday) ...[
+        const SizedBox(height: WSize.gap2),
+        _DailyDone(streak: streak, onTap: onDaily),
+      ],
       const Spacer(),
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1188,6 +1061,78 @@ class _MePage extends StatelessWidget {
       ),
       const Spacer(),
     ]);
+  }
+}
+
+/// Today's Daily, big and bright until it's played (spec-22).
+class _DailyCard extends StatelessWidget {
+  const _DailyCard({required this.now, required this.streak, required this.onTap});
+
+  final DateTime now;
+  final int streak;
+  final VoidCallback onTap;
+
+  static const _months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Daily puzzle. Not played yet${streak >= 2 ? '. $streak-day streak' : ''}',
+      excludeSemantics: true,
+      child: ChunkyCard(
+        key: const ValueKey('daily-card'),
+        color: WColors.sun,
+        onTap: onTap,
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          _CalendarTile(month: _months[now.month - 1], day: now.day),
+          const SizedBox(width: WSize.gap3),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('Daily puzzle', maxLines: 1, style: WText.heading.copyWith(fontSize: 26)),
+              ),
+              Text(streak >= 2 ? '$streak-day streak. Keep it going!' : 'A new one is ready!',
+                  style: WText.bodyBold.copyWith(fontSize: 16, color: WColors.ink)),
+            ]),
+          ),
+          const Icon(Icons.play_arrow_rounded, color: WColors.ink, size: 40),
+        ]),
+      ),
+    );
+  }
+}
+
+/// The same once it's played: one quiet line.
+class _DailyDone extends StatelessWidget {
+  const _DailyDone({required this.streak, required this.onTap});
+
+  final int streak;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Daily puzzle. Done for today${streak >= 2 ? '. $streak-day streak' : ''}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('daily-done'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          height: WSize.tapTarget,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.check_circle, color: WColors.grass, size: 20),
+            const SizedBox(width: 6),
+            const Text('Daily puzzle', style: WText.label),
+            Text(streak >= 2 ? ' done, $streak-day streak' : ' done', style: WText.label),
+          ]),
+        ),
+      ),
+    );
   }
 }
 

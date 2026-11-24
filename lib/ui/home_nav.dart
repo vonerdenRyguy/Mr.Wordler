@@ -7,13 +7,16 @@ import 'tokens.dart';
 // the first-time "swipe to look around" card.
 
 class HomeTabInfo {
-  const HomeTabInfo(this.label, this.icon, {this.badge = 0});
+  const HomeTabInfo(this.label, this.icon, {this.badge = 0, this.alert = false});
 
   final String label;
   final IconData icon;
 
   /// A red number on the tab; 0 shows none.
   final int badge;
+
+  /// A red "!": something new to do there today.
+  final bool alert;
 }
 
 /// Small dots above the tab bar: which page you're on.
@@ -91,7 +94,7 @@ class _Tab extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${info.label}${info.badge > 0 ? ', ${info.badge} new' : ''}',
+      label: '${info.label}${info.badge > 0 ? ', ${info.badge} new' : ''}${info.alert ? ', something to play' : ''}',
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -117,7 +120,7 @@ class _Tab extends StatelessWidget {
                 ]),
               ),
             ),
-            if (info.badge > 0)
+            if (info.badge > 0 || info.alert)
               Positioned(
                 top: -8,
                 right: -4,
@@ -132,7 +135,11 @@ class _Tab extends StatelessWidget {
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Text(
-                    info.badge > 9 ? '9+' : '${info.badge}',
+                    info.badge == 0
+                        ? '!'
+                        : info.badge > 9
+                            ? '9+'
+                            : '${info.badge}',
                     textScaler: TextScaler.noScaling,
                     style: WText.buttonSmall.copyWith(fontSize: 13, color: WColors.white),
                   ),

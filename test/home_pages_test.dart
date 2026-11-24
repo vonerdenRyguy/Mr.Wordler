@@ -39,7 +39,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  const playTip = "Try today's Daily puzzle. There's a new one every day!";
+  const playTip = 'Visit your village and spell FARM to raise your first building.';
 
   testWidgets('the first time, a card says to swipe; Got it hides it for good', (tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -84,7 +84,7 @@ void main() {
     expect(find.text(playTip), findsNothing);
     final saved = jsonDecode((await SharedPreferences.getInstance()).getString(HiddenTipsController.prefsKey)!);
     expect(saved['day'], dailyDateKey(DateTime.now()));
-    expect(saved['ids'], ['daily']);
+    expect(saved['ids'], ['first-building']);
   });
 
   testWidgets('a tip hidden yesterday comes back; Show tips off hides them all', (tester) async {
@@ -92,7 +92,7 @@ void main() {
       SettingsController.homeIntroSeenKey: true,
       HiddenTipsController.prefsKey: jsonEncode({
         'day': dailyDateKey(DateTime.now().subtract(const Duration(days: 1))),
-        'ids': ['daily'],
+        'ids': ['first-building'],
       }),
     });
     await pumpHome(tester);
@@ -105,7 +105,7 @@ void main() {
     expect(find.byTooltip('Hide tip'), findsNothing);
   });
 
-  testWidgets("on the Samsung (text 1.15, with a tip showing) Me still fits one screen", (tester) async {
+  testWidgets("on the Samsung (text 1.15, with the Daily not played) Me still fits one screen", (tester) async {
     SharedPreferences.setMockInitialValues({SettingsController.homeIntroSeenKey: true});
     tester.platformDispatcher.textScaleFactorTestValue = 1.15;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -114,10 +114,11 @@ void main() {
     await goToHomePage(tester, 'Me');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Spell the word of the day in your village for +10 coins.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('daily-card')), findsOneWidget);
+    expect(find.byType(TipBar), findsNothing);
     for (final label in ['Stats', 'Word level', 'Journal', 'Homes', 'Villagers']) {
       final box = tester.getRect(find.text(label));
-      expect(box.bottom, lessThan(tester.getRect(find.byType(TipBar)).top), reason: label);
+      expect(box.bottom, lessThan(tester.getRect(find.byType(PageDots)).top), reason: label);
     }
   });
 
@@ -130,8 +131,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: tab);
     }
-    // Play's badge and goal bar are on screen.
-    for (final label in ['Daily puzzle', 'My village']) {
+    // Play's button is on screen.
+    for (final label in ['My village']) {
       expect(const Rect.fromLTWH(0, 0, 390, 844).contains(tester.getRect(find.text(label)).bottomRight), isTrue,
           reason: label);
     }
@@ -172,14 +173,17 @@ void main() {
       }
     }
 
-    testWidgets('before the Daily is played, its badge opens it and wears a red !', (tester) async {
+    testWidgets('before the Daily is played, the Me tab wears a red ! and its card opens it', (tester) async {
       SharedPreferences.setMockInitialValues(prefs());
       await pumpHome(tester);
       expect(find.text('!'), findsOneWidget);
       expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
       expect(find.text('My village'), findsOneWidget);
       expect(find.text('PLAY'), findsNothing);
-      fitsBetweenBars(tester, ['Daily puzzle', 'My village']);
+      expect(find.text('Daily puzzle'), findsNothing); // Play is the planet's
+      fitsBetweenBars(tester, ['My village']);
+      await goToHomePage(tester, 'Me');
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Daily puzzle'));
       await tester.pumpAndSettle();
       expect(find.text('Clue'), findsOneWidget); // the Daily round
@@ -195,10 +199,12 @@ void main() {
       expect(find.text('Swap'), findsOneWidget); // the village
     });
 
-    testWidgets('Time Attack is gone from Home; the Daily badge says so when played', (tester) async {
+    testWidgets('Time Attack is gone from Home; a played Daily is one quiet line on Me', (tester) async {
       SharedPreferences.setMockInitialValues(prefs(played: true));
       await pumpHome(tester);
       expect(find.text('Time Attack'), findsNothing);
+      await goToHomePage(tester, 'Me');
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Daily puzzle'));
       await tester.pumpAndSettle();
       expect(find.text("You've already played today!"), findsOneWidget);
@@ -211,7 +217,7 @@ void main() {
       await pumpHome(tester, size: const Size(411, 891));
       expect(tester.takeException(), isNull);
       expect(find.text(playTip), findsOneWidget);
-      fitsBetweenBars(tester, ['Daily puzzle', 'My village']);
+      fitsBetweenBars(tester, ['My village']);
       expect(tester.getRect(find.text('My village')).bottom,
           lessThan(tester.getRect(find.byType(TipBar)).top));
     });
@@ -239,9 +245,9 @@ void main() {
           askedLetter: letter,
         );
 
-    test('Play: family first, then the Daily, then a first building', () {
+    test('Play: family first, then a first building; never the Daily', () {
       expect(homeTipFor(HomePage.play, facts(waiting: 2))!.id, 'family-waiting');
-      expect(homeTipFor(HomePage.play, facts())!.id, 'daily');
+      expect(homeTipFor(HomePage.play, facts()), isNull);
       expect(homeTipFor(HomePage.play, facts(played: true, buildings: 0))!.id, 'first-building');
       expect(homeTipFor(HomePage.play, facts(played: true)), isNull);
       // Still loading the village: say nothing yet.
@@ -257,8 +263,9 @@ void main() {
       expect(homeTipFor(HomePage.family, facts()), isNull);
     });
 
-    test('Me: the word of the day until it is claimed', () {
-      expect(homeTipFor(HomePage.me, facts(claimed: false))!.id, 'word-of-day');
+    test('Me: after the Daily, the word of the day until it is claimed', () {
+      expect(homeTipFor(HomePage.me, facts(claimed: false)), isNull);
+      expect(homeTipFor(HomePage.me, facts(played: true, claimed: false))!.id, 'word-of-day');
       expect(homeTipFor(HomePage.me, facts()), isNull);
     });
   });

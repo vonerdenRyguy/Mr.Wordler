@@ -251,8 +251,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // Free Swaps used this visit (1 each visit, 2 with a Farm). Works like
   // the Well's limit: session-only, reset when the screen is reopened.
   int _freeSwapsUsed = 0;
-  // spec-15: hints used this visit (1 normally, 3 with Shrine of Sight).
-  int _hintsUsedThisVisit = 0;
 
   // Bridge structure ability: drives GridBoardView's InteractiveViewer to
   // jump/pan to a reached landmark. _boardViewportSize is captured by the
@@ -1142,50 +1140,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
 
   int get _freeSwapsLeft => freeSwapsLeft(used: _freeSwapsUsed, hasFarm: _hasStructure('FARM'));
 
-  // spec-15: hints remaining this visit (Shrine of Sight triples them).
-  int get _hintsLeft =>
-      (_shrines.contains(ShrineKind.sight) ? 3 : 1) - _hintsUsedThisVisit;
-
-  // spec-15: show a hint SnackBar telling the player the minimum word
-  // length needed to push fog into the nearest ring.
-  void _doHint() {
-    if (_hintsLeft <= 0) return;
-    final level = ref.read(settingsProvider).wordLevel;
-    const bw = InfiniteEstateScreen.boardSize;
-    final homeR = _harborIndex ~/ bw;
-    final homeC = _harborIndex % bw;
-    const halfCells = 110;
-
-    Ring? nearestRing;
-    var minLen = 999;
-    for (var dr = -halfCells; dr <= halfCells; dr++) {
-      for (var dc = -halfCells; dc <= halfCells; dc++) {
-        final r = homeR + dr;
-        final c = homeC + dc;
-        if (r < 0 || r >= bw || c < 0 || c >= bw) continue;
-        final idx = r * bw + c;
-        if (!_fog.canSee(idx)) continue;
-        if (_islandMap.isSeaIndex(idx)) continue;
-        final ring = _islandMap.ringAtIndex(idx);
-        if (ring == Ring.coast) continue;
-        final len = minLength(ring, level);
-        if (len < minLen) {
-          minLen = len;
-          nearestRing = ring;
-        }
-      }
-    }
-
-    setState(() => _hintsUsedThisVisit++);
-    if (!mounted) return;
-    final msg = nearestRing == null
-        ? 'Keep spelling to clear the fog!'
-        : 'Spell a $minLen+ letter word to push into the ${nearestRing.displayName}!';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
-    );
-  }
-
   // spec-15: flash a small "+N XP" SnackBar after a word rewards XP.
   void _showXpFloat(int xp) {
     if (!mounted || xp <= 0) return;
@@ -1837,26 +1791,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                                 const SizedBox(width: gap),
                                 SizedBox(
                                   width: swapWidth,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      _HintButton(
-                                        hintsLeft: _hintsLeft,
-                                        onHint: _doHint,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      SizedBox(
-                                        height: rackHeight,
-                                        child: _SwapColumn(
-                                          allPinned: _allBaseSlotsPinned(
-                                              ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
-                                          freeLeft: _freeSwapsLeft,
-                                          canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
-                                              InfiniteEstateScreen.swapCost,
-                                          onSwap: _swapRack,
-                                        ),
-                                      ),
-                                    ],
+                                  height: rackHeight,
+                                  child: _SwapColumn(
+                                    allPinned: _allBaseSlotsPinned(
+                                        ref.watch(gridGameControllerProvider.select((s) => s.rackCells))),
+                                    freeLeft: _freeSwapsLeft,
+                                    canAfford: ref.watch(portfolioProvider.select((p) => p.currency)) >=
+                                        InfiniteEstateScreen.swapCost,
+                                    onSwap: _swapRack,
                                   ),
                                 ),
                               ],
@@ -2064,50 +2006,6 @@ class _VillageActionBar extends StatelessWidget {
             onTap: onBridge,
           ),
       ],
-    );
-  }
-}
-
-// "Hint" button above the Swap column: tells the player the minimum word
-// length needed to push fog into the nearest visible ring.
-class _HintButton extends StatelessWidget {
-  const _HintButton({required this.hintsLeft, required this.onHint});
-
-  final int hintsLeft;
-  final VoidCallback onHint;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = hintsLeft > 0;
-    final ink = enabled ? WColors.ink : WColors.muted;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: 'Hint${enabled ? ", $hintsLeft left" : " used"}',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onHint : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-          decoration: BoxDecoration(
-            color: enabled ? WColors.skyTint : WColors.boardCell,
-            border: Border.all(color: ink, width: WSize.outline),
-            borderRadius: BorderRadius.circular(WSize.radiusButton),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.lightbulb_outline, color: enabled ? WColors.sky : WColors.muted, size: 22),
-              Text('Hint', style: WText.buttonSmall.copyWith(color: ink)),
-              Text(
-                enabled ? (hintsLeft > 1 ? 'x$hintsLeft' : '1 left') : 'used',
-                style: WText.label.copyWith(color: ink, height: 1.1),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

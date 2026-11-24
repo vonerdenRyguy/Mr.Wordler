@@ -57,7 +57,6 @@ HomeTip? homeTipFor(HomePage page, TipFacts f) {
       if (f.waitingFromFamily > 0) {
         return const HomeTip('family-waiting', 'Your family sent you something. Swipe to see it \u{1F449}');
       }
-      if (!f.playedToday) return const HomeTip('daily', "Try today's Daily puzzle. There's a new one every day!");
       if (f.buildings == 0) {
         return const HomeTip('first-building', 'Visit your village and spell FARM to raise your first building.');
       }
@@ -72,6 +71,8 @@ HomeTip? homeTipFor(HomePage page, TipFacts f) {
       }
       return null;
     case HomePage.me:
+      // The Daily's own card asks first.
+      if (!f.playedToday) return null;
       if (!f.wordOfDayClaimed) return const HomeTip('word-of-day', "Spell the word of the day in your village for +10 coins.");
       return null;
   }

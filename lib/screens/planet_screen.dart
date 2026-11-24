@@ -86,8 +86,8 @@ class _PlanetScreenState extends ConsumerState<PlanetScreen> {
                     showZoomButtons: !_diving,
                     zoomButtonsBottom: MediaQuery.paddingOf(context).bottom +
                         (data.find == null ? 84 : 120 + 74 * MediaQuery.textScalerOf(context).scale(1)),
-                    glowCell: _diving ? null : data.find?.cell,
-                    onGlowTap: data.find == null ? null : () => _dive(data, data.mySlot, cell: data.find!.cell),
+                    glowCells: _diving ? const [] : [for (final f in data.finds) f.cell],
+                    onGlowTap: (cell) => _dive(data, data.mySlot, cell: cell),
                     onVillageTap: (s) => _dive(data, s),
                   ),
                 ),
