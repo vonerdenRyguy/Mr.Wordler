@@ -449,8 +449,8 @@ merged together on 2026-11-14 after Ryan checked them on the phone
     tests); Me gained a Villagers button.
 
 - **spec-18b planet mode and port** (branch `claude/fervent-margulis-dd1ea6`,
-  built, **not merged**: Ryan felt planet mode on the Pixel ("Smooth"),
-  commits 4-6 not on a phone yet). Spec:
+  merged to master 2026-11-23 after Ryan's Pixel check; Samsung not
+  checked). Spec:
   `Desktop\MrWordlerScreenshots\specs\spec-18b-planet-mode-and-port.md`.
   - Painted planet (map texture + sprite sheet, `globe_art.dart`). Home's
     planet turns by itself (`HomeTurn`, off under tests through
