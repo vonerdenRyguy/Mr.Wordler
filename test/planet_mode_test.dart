@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/explore/fog.dart';
+import 'package:namer_app/game/grid_board_widget.dart';
+import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
@@ -16,7 +18,6 @@ import 'package:namer_app/main.dart';
 import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
 import 'package:namer_app/screens/infinite_estate_screen.dart';
-import 'package:namer_app/screens/planet_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -147,11 +148,11 @@ void main() {
     expect(lonOf(tester), 0);
   });
 
-  testWidgets('tap the planet, spin, find, dive, back to the planet, back Home', (tester) async {
+  testWidgets('tap the planet, spin, find, dive to the streets and stay, Build, Planet, back Home', (tester) async {
     await start(tester);
     await tester.tap(globe);
     await tester.pumpAndSettle();
-    expect(find.byType(PlanetScreen), findsOneWidget);
+    expect(find.byType(InfiniteEstateScreen), findsOneWidget);
     expect(find.text('Letterra'), findsOneWidget);
     expect(find.text('Daily puzzle'), findsNothing);
 
@@ -165,24 +166,24 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(InfiniteEstateScreen), findsNothing); // still flying
+    expect(find.byKey(const ValueKey('planet-build')), findsNothing); // still flying
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
-    expect(find.byType(InfiniteEstateScreen), findsOneWidget);
+    expect(tester.state<GlobeViewState>(globe).zoom, kCloseUpMaxZoom);
+    expect(find.byType(GridBoardView), findsNothing);
 
-    await tester.tap(find.text('End'));
+    // A new village has no building: its helper leads to Words.
+    await tester.tap(find.text('Go to Words'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Leave Village'));
+    expect(find.byType(GridBoardView), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('words-planet')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
-    await tester.pumpAndSettle();
-    expect(find.byType(InfiniteEstateScreen), findsNothing);
-    expect(find.text('My village').last, findsOneWidget);
+    expect(tester.state<GlobeViewState>(globe).zoom, kCloseUpMaxZoom);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.text('My village'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
   });
 
   testWidgets("with two players, the other's village opens to look at", (tester) async {

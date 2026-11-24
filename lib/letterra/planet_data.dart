@@ -35,7 +35,7 @@ class PlanetVillage {
 /// free harbors, turned about the Lantern. Only the picture is turned; no save
 /// changes.
 class PlanetData {
-  PlanetData._(this.villages, this.players, this.mySlot, this._slices, this.finds);
+  PlanetData._(this.villages, this.players, this.mySlot, this._slices, this.finds, this.others);
 
   factory PlanetData.of(PlanetVillage mine, [List<PlanetVillage> others = const [], List<SomethingToFind> finds = const []]) {
     final villages = <GlobeVillage>[];
@@ -79,10 +79,13 @@ class PlanetData {
               ],
       ));
     }
-    return PlanetData._(villages, players, mine.slot, slices, finds);
+    return PlanetData._(villages, players, mine.slot, slices, finds, others);
   }
 
   final List<GlobeVillage> villages;
+
+  /// The other players on this phone, as their own saves have them.
+  final List<PlanetVillage> others;
 
   /// Whose village each shown harbor is.
   final Map<int, Player> players;

@@ -20,7 +20,6 @@ import 'package:namer_app/letterra/port.dart';
 import 'package:namer_app/letterra/port_view.dart';
 import 'package:namer_app/letterra/something_to_find.dart';
 import 'package:namer_app/main.dart';
-import 'package:namer_app/screens/infinite_estate_screen.dart';
 import 'package:namer_app/settings/word_level.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:namer_app/village/village_save.dart';
@@ -285,6 +284,9 @@ void main() {
     await start(tester, save: _save(_word('WELL', _c(366, 248))));
     await tester.tap(find.byType(GlobeView));
     await tester.pumpAndSettle();
+    await closeMoments(tester);
+    tester.state<GlobeViewState>(find.byType(GlobeView)).showWhole(0);
+    await tester.pumpAndSettle();
     expect(find.textContaining('Something glows in the'), findsOneWidget);
     expect(find.textContaining('letters or more'), findsOneWidget);
     expect(find.text('My village'), findsOneWidget);
@@ -296,8 +298,8 @@ void main() {
     expect(find.byKey(const ValueKey('globe-glow')), findsOneWidget);
     await tester.tap(find.text('Show me'));
     await tester.pumpAndSettle();
-    final estate = tester.widget<InfiniteEstateScreen>(find.byType(InfiniteEstateScreen));
-    expect(estate.focusCell, isNotNull);
+    expect(find.byType(GridBoardView), findsOneWidget);
+    expect(find.byType(GlobeView), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -305,6 +307,9 @@ void main() {
     final save = _save(_word('WELL', _c(366, 248)))..['shrines'] = ['sight'];
     await start(tester, save: save);
     await tester.tap(find.byType(GlobeView));
+    await tester.pumpAndSettle();
+    await closeMoments(tester);
+    tester.state<GlobeViewState>(find.byType(GlobeView)).showWhole(0);
     await tester.pumpAndSettle();
     expect(tester.widget<GlobeView>(find.byType(GlobeView)).glowCells.toSet(), hasLength(3));
   });
@@ -319,6 +324,9 @@ void main() {
       ];
     await start(tester, save: save);
     await tester.tap(find.byType(GlobeView));
+    await tester.pumpAndSettle();
+    await closeMoments(tester);
+    tester.state<GlobeViewState>(find.byType(GlobeView)).showWhole(0);
     await tester.pumpAndSettle();
     expect(find.text('Find my village'), findsOneWidget);
     expect(find.byKey(const ValueKey('globe-glow')), findsNothing);

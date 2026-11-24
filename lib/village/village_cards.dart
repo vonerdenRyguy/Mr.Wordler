@@ -183,7 +183,7 @@ class BuildingCard extends StatelessWidget {
           children: [
             Expanded(
               child: ChunkyButton(
-                label: 'Show in Words',
+                label: 'Build here',
                 kind: ChunkyKind.secondary,
                 expand: true,
                 onPressed: onShowInWords,
@@ -342,7 +342,7 @@ class _WordCardState extends State<WordCard> {
             style: WText.body.copyWith(color: WColors.muted)),
         const SizedBox(height: WSize.gap3),
         ChunkyButton(
-          label: 'Show in Words',
+          label: 'Build here',
           kind: ChunkyKind.secondary,
           expand: true,
           onPressed: () => widget.onShowInWords(run),

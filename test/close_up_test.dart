@@ -7,10 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_art.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
+import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
 import 'package:namer_app/letterra/planet_data.dart';
+import 'package:namer_app/letterra/street.dart';
 import 'package:namer_app/players/players.dart';
+import 'package:namer_app/village/iso_village_view.dart' show VillagerSprite;
 import 'package:namer_app/village/magic_word.dart';
+import 'package:namer_app/villagers/walkers.dart';
 
 import 'big_test_village.dart';
 
@@ -108,5 +112,105 @@ void main() {
       expect(v.letters.keys.toSet(), v.loose);
     }
     expect(data.villages.first.loose, {cell});
+  });
+
+  test("a tap on every letter's middle finds that letter's word, at zoom 7 and 12", () {
+    final v = bigTestVillage().first;
+    for (final zoom in const [kStreetZoom, kCloseUpMaxZoom]) {
+      for (final cell in v.letters.keys) {
+        final proj = _lookAt(cell, zoom);
+        final top = blockTop(proj, cell)!;
+        final hit = streetHit((top[0] + top[1] + top[2] + top[3]) / 4, proj, v);
+        switch (hit) {
+          case StreetBuilding(:final run):
+            expect(v.buildingRuns[run].cells, contains(cell));
+          case StreetLetter(cell: final found):
+            expect(found, cell);
+          default:
+            fail('nothing at $cell');
+        }
+      }
+      for (var i = 0; i < v.buildingRuns.length; i++) {
+        final cells = v.buildingRuns[i].cells;
+        final proj = _lookAt(homeOf(v, cells)!.cell, zoom);
+        final hit = streetHit(houseRect(proj, v, cells)!.center, proj, v);
+        expect(hit, isA<StreetBuilding>().having((h) => h.run, 'run', i));
+      }
+    }
+  });
+
+  test('a villager is found ahead of the letter they stand on; open sky finds nothing', () {
+    final v = bigTestVillage().first;
+    final cell = v.letters.keys.first;
+    final proj = _lookAt(cell, kCloseUpMaxZoom);
+    final at = blockSpot(proj, cell ~/ kPlanetBoard + 0.0, cell % kPlanetBoard + 0.0)!;
+    final hit = streetHit(at.at.translate(0, -at.cell * 0.5), proj, v,
+        villagers: {'v0': (r: cell ~/ kPlanetBoard + 0.0, c: cell % kPlanetBoard + 0.0)});
+    expect(hit, isA<StreetVillager>());
+    expect(streetHit(const Offset(200, 5), proj, v), isNull);
+  });
+
+  testWidgets('the spot in the middle is kept both ways, at every harbor and near the Lantern', (tester) async {
+    for (final cell in [
+      for (var slot = 0; slot < kHarborSlots; slot++) harborCell(slot),
+      harborCell(0) + 7 * kPlanetBoard + 3,
+      harborCell(3) - 20,
+      253 * kPlanetBoard + 252,
+      250 * kPlanetBoard + 250,
+      245 * kPlanetBoard + 251,
+    ]) {
+      final key = GlobalKey<GlobeViewState>();
+      await tester.pumpWidget(MaterialApp(
+        home: GlobeView(
+          key: key,
+          villages: const [],
+          takenSlots: const {0},
+          focusSlot: 0,
+          isHushed: (_, __, ___) => false,
+          closeUp: true,
+          initialCell: cell,
+          initialZoom: kCloseUpMaxZoom,
+        ),
+      ));
+      expect(key.currentState!.centerCell, cell);
+    }
+  });
+
+  Future<VillagerWalkers> streets(WidgetTester tester, {required bool reduceMotion}) async {
+    const cell = 340 * kPlanetBoard + 250;
+    final walkers = VillagerWalkers(seed: 3)..sync({'v0': cell}, {for (var i = 0; i < 8; i++) cell + i});
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: MediaQueryData(disableAnimations: reduceMotion),
+        child: StreetVillagers(
+          proj: _lookAt(cell, kCloseUpMaxZoom),
+          walkers: walkers,
+          sprites: const [VillagerSprite(id: 'v0', name: 'Pip')],
+        ),
+      ),
+    ));
+    return walkers;
+  }
+
+  testWidgets('villagers stroll along the blocks, and stop when the streets are out of view', (tester) async {
+    final walkers = await streets(tester, reduceMotion: false);
+    var moved = 0;
+    walkers.addListener(() => moved++);
+    for (var i = 0; i < 80; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(moved, greaterThan(0));
+    await tester.pumpWidget(const SizedBox());
+    moved = 0;
+    await tester.pump(const Duration(seconds: 10));
+    expect(moved, 0);
+  });
+
+  testWidgets('with Reduce motion villagers stand still', (tester) async {
+    final walkers = await streets(tester, reduceMotion: true);
+    final at = walkers.positionOf('v0');
+    await tester.pump(const Duration(seconds: 8));
+    expect(walkers.positionOf('v0'), at);
+    expect(tester.hasRunningAnimations, isFalse);
   });
 }

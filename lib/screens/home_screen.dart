@@ -52,7 +52,6 @@ import 'helping_screens.dart';
 import 'town_square_screens.dart';
 import 'home_tips.dart';
 import 'infinite_estate_screen.dart';
-import 'planet_screen.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
@@ -292,7 +291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _openPlanet() =>
-      _open(PlanetScreen(data: _planet, onVisited: _loadVillage));
+      _open(InfiniteEstateScreen(startOnPlanet: true, planet: _planet));
 
   // Your newest building (the most recently discovered word that's built),
   // else the middle of all your letters.
@@ -380,7 +379,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           coins: kWordOfDayCoins,
           onVisit: () {
             Navigator.of(sheetContext).pop();
-            _open(const InfiniteEstateScreen());
+            _open(InfiniteEstateScreen(planet: _planet));
           },
         ),
       ),
@@ -497,7 +496,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onLevel: () => _open(const PortfolioScreen()),
         onWordOfDay: wordOfDay == null ? null : () => _openWordOfDay(wordOfDay, wordClaimed),
         onJournal: _openJournal,
-        onVillagers: () => _open(const InfiniteEstateScreen(openVillagers: true)),
+        onVillagers: () => _open(InfiniteEstateScreen(openVillagers: true, planet: _planet)),
         onProperties: () => _open(const PortfolioScreen()),
         onStats: () => _open(const StatsScreen()),
         onWordLevel: () => _open(const WordLevelScreen()),
@@ -506,7 +505,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _PlayPage(
         planet: _planet,
         onPlanet: _openPlanet,
-        onVisit: () => _open(const InfiniteEstateScreen()),
+        onVisit: () => _open(InfiniteEstateScreen(planet: _planet)),
       ),
       if (!hasFamily)
         Wallpaper(
