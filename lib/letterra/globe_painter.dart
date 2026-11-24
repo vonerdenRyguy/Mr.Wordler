@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../explore/fog.dart';
 import '../village/magic_word.dart';
 import '../ui/tokens.dart';
+import 'close_up.dart';
 import 'globe_art.dart';
 import 'planet.dart';
 import 'port.dart';
@@ -89,13 +90,17 @@ class GlobeProjection {
     required this.centerLon,
     this.centerLat = 0.42,
     this.zoom = 1.0,
+    bool closeUp = false,
   })  : radius = math.min(size.width, size.height) * 0.46 * zoom,
         cx = size.width / 2,
         _alt = (_e0 - 1) / zoom {
     final t = (((zoom - 1.2) / 4.0).clamp(0.0, 1.0)).toDouble();
     final smooth = t * t * (3 - 2 * t);
-    tilt = 0.95 * smooth;
-    cy = size.height * (0.5 + 0.12 * smooth);
+    // Down at the streets, look down more: ground rather than sky.
+    final u = closeUp ? (((zoom - 4) / 6).clamp(0.0, 1.0)).toDouble() : 0.0;
+    final down = u * u * (3 - 2 * u);
+    tilt = 0.95 * smooth - 0.37 * down;
+    cy = size.height * (0.5 + 0.12 * smooth - 0.08 * down);
     focal = math.min(size.width, size.height) * 0.46 * math.sqrt(_e0 * _e0 - 1);
 
     final sinLat = math.sin(centerLat), cosLat = math.cos(centerLat);
@@ -335,7 +340,11 @@ class GlobePainter extends CustomPainter {
     this.showTags = true,
     this.detail = GlobeDetail.fine,
     this.art,
+    this.closeUp = false,
   });
+
+  /// Zooming on past the old limit, down to the streets (spec-22 C's test).
+  final bool closeUp;
 
   /// The painted look; null (not loaded, tests) draws the plain one.
   final GlobeArt? art;
@@ -354,7 +363,7 @@ class GlobePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom);
+    final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom, closeUp: closeUp);
     final outline = proj.silhouette();
     final disc = outline.getBounds();
     canvas.save();
@@ -544,10 +553,13 @@ class GlobePainter extends CustomPainter {
     // What must stay clear: every letter, and a village's little houses.
     final zoomedIn = proj.cellPixels >= 5;
     final near = _cellsNearLetters(villages);
+    // Trees are huge next to a word from space; walking down to the streets
+    // they come to a street's size.
+    final shrink = closeUp ? 1 - 0.62 * ((zoom - 3) / 9).clamp(0.0, 1.0) : 1.0;
     for (final d in globeDecorFor(takenSlots)) {
       final p = _V(d.x, d.y, d.z);
       if (p.dot(proj._eye) < 0.97) continue;
-      final px = pxAt(p) * d.cells;
+      final px = pxAt(p) * d.cells * shrink;
       if (px <= 2) continue;
       final peak = d.sprite == GlobeSprite.peakA || d.sprite == GlobeSprite.peakB || d.sprite == GlobeSprite.peakC;
       if (d.hush) {
@@ -595,13 +607,19 @@ class GlobePainter extends CustomPainter {
     }
     if (zoomedIn) {
       for (final v in villages) {
-        _paintTiles(canvas, proj, v, proj.cellPixels);
+        if (closeUp) {
+          _paintStreet(canvas, size, proj, v);
+        } else {
+          _paintTiles(canvas, proj, v, proj.cellPixels);
+        }
         for (final run in v.buildingRuns) {
           final down = run.cells.length > 1 && run.cells[1] - run.cells[0] == kPlanetBoard;
           final mid = down ? run.cells.first : run.cells[run.cells.length ~/ 2];
           // Behind the word, so no letter is hidden.
           final s = boardToSphere(mid ~/ kPlanetBoard - 0.9, mid % kPlanetBoard + 0.5);
-          stand(s.lat, s.lon, _spriteFor(run.word), proj.cellPixels * 3.6);
+          final cl = math.cos(s.lat);
+          final at = _V(cl * math.sin(s.lon), math.sin(s.lat), cl * math.cos(s.lon));
+          stand(s.lat, s.lon, _spriteFor(run.word), closeUp ? pxAt(at) * 3.0 : proj.cellPixels * 3.6);
         }
       }
     }
@@ -628,6 +646,128 @@ class GlobePainter extends CustomPainter {
         _tag(canvas, v.name, spot, v.color);
       }
     }
+  }
+
+  // Close up: grass and flowers on the ground, then every letter as a raised
+  // block. One draw call each, so a big village stays smooth.
+  void _paintStreet(Canvas canvas, Size size, GlobeProjection proj, GlobeVillage v) {
+    final screen = (Offset.zero & size).inflate(40);
+    _V point(double row, double col) {
+      final s = boardToSphere(row, col);
+      final cl = math.cos(s.lat);
+      return _V(cl * math.sin(s.lon), math.sin(s.lat), cl * math.cos(s.lon));
+    }
+
+    const cellRad = (math.pi / 2) / kHarborDistance;
+    final bits = ((zoom - 5) / 4).clamp(0.0, 1.0).toDouble();
+    if (bits > 0) {
+      final here = sphereToBoard(proj.centerLat, proj.centerLon);
+      final transforms = <RSTransform>[], rects = <Rect>[];
+      final north = (900 / zoom).clamp(45, 80).round();
+      for (var row = here.row.round() - north; row <= here.row.round() + 22; row++) {
+        for (var col = here.col.round() - 40; col <= here.col.round() + 40; col++) {
+          if (row < 1 || col < 1 || row >= kPlanetBoard - 1 || col >= kPlanetBoard - 1) continue;
+          final hash = (row * 73856093 ^ col * 19349663) & 0x7fffffff;
+          final n = (hash >> 7) % 100;
+          if (n >= 26) continue;
+          final cell = row * kPlanetBoard + col;
+          if (v.letters.containsKey(cell)) continue;
+          final band = bandAt(row, col);
+          if (band == Band.deep || isBay(row, col, takenSlots)) continue;
+          final kind = groundBitFor(band, n);
+          if (kind < 0) continue;
+          final p = point(row + 0.2 + (hash % 7) / 10, col + 0.2 + (hash % 5) / 8);
+          final r = proj._projectPoint(p);
+          if (!r.front || !screen.contains(r.p)) continue;
+          final z = (p - proj._eye).dot(proj._f);
+          final width = proj.focal * cellRad / z * 1.05 * bits;
+          if (width < 4) continue;
+          transforms.add(RSTransform.fromComponents(
+            rotation: 0,
+            scale: width / kBitCell,
+            anchorX: kBitCell / 2,
+            anchorY: kBitCell * 0.9,
+            translateX: r.p.dx,
+            translateY: r.p.dy,
+          ));
+          rects.add(Rect.fromLTWH(kind * kBitCell, 0, kBitCell, kBitCell));
+        }
+      }
+      if (transforms.isNotEmpty) {
+        canvas.drawAtlas(groundBits(), transforms, rects, null, null, null, Paint()..filterQuality = FilterQuality.medium);
+      }
+    }
+
+    final walls = <int, int>{};
+    for (final run in v.buildingRuns) {
+      for (final c in run.cells) {
+        walls[c] = 1 + run.word.codeUnits.fold<int>(0, (a, b) => a + b) % (kBlockColors.length - 1);
+      }
+    }
+    const lift = 1 + cellRad * 0.34;
+    final blocks = <({double z, int cell})>[];
+    for (final cell in v.letters.keys) {
+      final p = point(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+      final r = proj._projectPoint(p);
+      if (!r.front) continue;
+      final z = (p - proj._eye).dot(proj._f);
+      if (!screen.inflate(proj.focal * cellRad / z).contains(r.p)) continue;
+      blocks.add((z: z, cell: cell));
+    }
+    blocks.sort((a, b) => b.z.compareTo(a.z));
+    final pos = <double>[], tex = <double>[];
+    void quad(List<Offset> o, Rect t) {
+      for (final i in const [0, 1, 2, 0, 2, 3]) {
+        pos
+          ..add(o[i].dx)
+          ..add(o[i].dy);
+        tex
+          ..add(i == 0 || i == 3 ? t.left : t.right)
+          ..add(i < 2 ? t.top : t.bottom);
+      }
+    }
+
+    double area(List<Offset> q) {
+      var a = 0.0;
+      for (var i = 0; i < q.length; i++) {
+        final m = q[i], n = q[(i + 1) % q.length];
+        a += m.dx * n.dy - n.dx * m.dy;
+      }
+      return a;
+    }
+
+    for (final b in blocks) {
+      final row = b.cell ~/ kPlanetBoard, col = b.cell % kPlanetBoard;
+      final color = walls[b.cell] ?? 0;
+      const g = 0.03;
+      final base = [
+        point(row + g, col + g),
+        point(row + g, col + 1 - g),
+        point(row + 1 - g, col + 1 - g),
+        point(row + 1 - g, col + g),
+      ];
+      final low = [for (final p in base) proj._projectPoint(p).p];
+      final top = [for (final p in base) proj._projectPoint(p * lift).p];
+      final side = Rect.fromLTWH(26 * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(2);
+      final dark = Rect.fromLTWH(27 * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(2);
+      for (var i = 0; i < 4; i++) {
+        final j = (i + 1) % 4;
+        // Seen from outside: next top, this top, this ground, next ground.
+        // Only the sides that face you.
+        final face = [top[j], top[i], low[i], low[j]];
+        if (area(face) > 0) quad(face, i.isEven ? side : dark);
+      }
+      final letter = v.letters[b.cell]!.codeUnitAt(0) - 65;
+      quad(top, Rect.fromLTWH(letter * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(1));
+    }
+    if (pos.isEmpty) return;
+    canvas.drawVertices(
+      ui.Vertices.raw(ui.VertexMode.triangles, Float32List.fromList(pos), textureCoordinates: Float32List.fromList(tex)),
+      BlendMode.srcOver,
+      Paint()
+        ..shader = ui.ImageShader(blockSheet(), TileMode.clamp, TileMode.clamp, Matrix4.identity().storage,
+            filterQuality: FilterQuality.medium),
+    );
   }
 
   bool _byHarbor(GlobeDecor d) {
