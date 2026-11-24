@@ -472,6 +472,17 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   - `tool/port_star_shots_test.dart` and `tool/planet_mode_shots_test.dart`
     render PNGs to `build/shots`.
 
+- **spec-22 One planet** (Ryan's playtest, 2026-11-23; plan in
+  `specs/spec-22-one-planet.md`). **Part A merged** to
+  master 2026-11-24 after Ryan's Pixel check (Samsung not checked): the Daily is a bright
+  card on Me until played (red ! on the Me tab), then one quiet line; Play is
+  only the planet and My village; the village's Hint button is gone; the Shrine
+  of Sight makes three things glow in planet mode (`thingsToFind`,
+  `PlanetData.finds`, `GlobeView.glowCells`). Parts B-E (empty harbors, Words +
+  Planet only, bigger regions, buildings by region: any word anywhere, only
+  some become buildings) wait for boards. The Letter Fair (spec-21) is
+  approved, not built.
+
 ## Product direction (set by Ryan, 2026-11-14)
 
 Mr. Wordler is becoming a **cooperative word game for families**, aimed
@@ -715,7 +726,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 442 tests as of spec-18b (413 as of spec-18, 336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
+- `flutter test` — 443 tests as of spec-22a (442 as of spec-18b, 413 as of spec-18, 336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the

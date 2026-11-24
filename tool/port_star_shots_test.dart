@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:namer_app/daily/daily_seed.dart';
 import 'package:namer_app/explore/fog.dart';
 import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/letterra/globe_art.dart';
@@ -83,6 +84,18 @@ void main() {
     await tester.tap(find.text('Village').last);
     await shot('ps4-port-village');
     await show(const MyApp(), {'infiniteEstateVillageSave': save});
+    await shot('ps6-home');
+    await goToHomePage(tester, 'Me');
+    await shot('ps7-me');
+    await goToHomePage(tester, 'Play');
+    await show(const MyApp(), {
+      'infiniteEstateVillageSave': save,
+      'dailyChallengeData': jsonEncode({'lastPlayedDateKey': dailyDateKey(DateTime.now()), 'streak': 3}),
+    });
+    await goToHomePage(tester, 'Me');
+    await shot('ps8-me-done');
+    await goToHomePage(tester, 'Play');
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(GlobeView));
     await shot('ps5-planet');
     await tester.pumpWidget(const SizedBox());

@@ -37,13 +37,13 @@ class GlobeView extends StatefulWidget {
     this.alwaysPan = false,
     this.turning = false,
     this.onTap,
-    this.glowCell,
+    this.glowCells = const [],
     this.onGlowTap,
   });
 
-  /// A board square that glows with a star (spec-18b), through any fog.
-  final int? glowCell;
-  final VoidCallback? onGlowTap;
+  /// Board squares that glow with a star (spec-18b), through any fog.
+  final List<int> glowCells;
+  final ValueChanged<int>? onGlowTap;
 
   /// With [onTap] the planet is only looked at (spec-18b, Home): no drag,
   /// pinch, zoom or village taps, just one tap for the whole planet.
@@ -178,9 +178,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     );
   }
 
-  Widget? _glow(GlobeProjection proj) {
-    final cell = widget.glowCell;
-    if (cell == null) return null;
+  Widget? _glow(GlobeProjection proj, int cell) {
     final s = boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
     final at = proj.project(s.lat, s.lon);
     if (!at.front) return null;
@@ -190,8 +188,8 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
         button: widget.onGlowTap != null,
         label: 'Something to find',
         child: GestureDetector(
-          key: const ValueKey('globe-glow'),
-          onTap: widget.onGlowTap,
+          key: ValueKey(cell == widget.glowCells.first ? 'globe-glow' : 'globe-glow-$cell'),
+          onTap: widget.onGlowTap == null ? null : () => widget.onGlowTap!(cell),
           child: const DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -425,7 +423,8 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                 ),
               ),
               if (!look)
-                if (_glow(proj) case final glow?) glow,
+                for (final cell in widget.glowCells)
+                  if (_glow(proj, cell) case final glow?) glow,
               for (final v in look ? const <GlobeVillage>[] : widget.villages)
                 if (proj.villageHit(v.slot) case final rect?)
                   Positioned.fromRect(

@@ -4,8 +4,8 @@ import '../settings/word_level.dart';
 import 'globe_painter.dart' show reachName, reachOfBand;
 import 'planet.dart';
 
-/// The one thing that glows in planet mode (spec-18b, J321): the nearest
-/// special not found yet. It never says what it is.
+/// Something that glows in planet mode (spec-18b, J321): the nearest special
+/// not found yet, or the three nearest with the Shrine of Sight (spec-22). It never says what it is.
 class SomethingToFind {
   const SomethingToFind(this.cell, this.squares, this.minLength);
 
@@ -18,28 +18,27 @@ class SomethingToFind {
   String get region => reachName(reachOfBand(bandAt(cell ~/ kPlanetBoard, cell % kPlanetBoard)));
 }
 
-/// The nearest of [unfound] to [letters] (or to the harbor while there are
-/// none); null when there is nothing left that a word can reach.
-SomethingToFind? somethingToFind({
+/// The [count] nearest of [unfound] to [letters] (or to the harbor while there
+/// are none), nearest first; empty when nothing is left that a word can reach.
+List<SomethingToFind> thingsToFind({
   required IslandMap map,
   required Iterable<int> unfound,
   required Iterable<int> letters,
   required WordLevel level,
+  int count = 1,
 }) {
   final from = letters.isEmpty ? [harborCell(map.slot)] : letters.toList();
-  int? best;
-  var bestD = 1 << 30;
+  final found = <SomethingToFind>[];
   for (final cell in unfound) {
     if (map.isSeaIndex(cell) || map.ringAtIndex(cell) == Ring.coast) continue;
     final r = cell ~/ kPlanetBoard, c = cell % kPlanetBoard;
+    var best = 1 << 30;
     for (final i in from) {
       final d = (i ~/ kPlanetBoard - r).abs() + (i % kPlanetBoard - c).abs();
-      if (d < bestD) {
-        bestD = d;
-        best = cell;
-      }
+      if (d < best) best = d;
     }
+    found.add(SomethingToFind(cell, best, minLength(map.ringAtIndex(cell), level)));
   }
-  if (best == null) return null;
-  return SomethingToFind(best, bestD, minLength(map.ringAtIndex(best), level));
+  found.sort((a, b) => a.squares != b.squares ? a.squares.compareTo(b.squares) : a.cell.compareTo(b.cell));
+  return found.take(count).toList();
 }

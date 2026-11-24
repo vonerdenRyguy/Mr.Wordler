@@ -38,7 +38,7 @@ enum SpecialKind {
 
 /// Which shrine a [SpecialKind.shrine] tile represents.
 enum ShrineKind {
-  /// Forest shrine — +2 hints per visit.
+  /// Forest shrine — three things glow in planet mode instead of one (spec-22).
   sight,
 
   /// River far-bank shrine — +1 free Swap per visit.

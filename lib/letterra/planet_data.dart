@@ -31,9 +31,9 @@ class PlanetVillage {
 /// free harbors, turned about the Lantern. Only the picture is turned; no save
 /// changes.
 class PlanetData {
-  PlanetData._(this.villages, this.players, this.mySlot, this._slices, this.find);
+  PlanetData._(this.villages, this.players, this.mySlot, this._slices, this.finds);
 
-  factory PlanetData.of(PlanetVillage mine, [List<PlanetVillage> others = const [], SomethingToFind? find]) {
+  factory PlanetData.of(PlanetVillage mine, [List<PlanetVillage> others = const [], List<SomethingToFind> finds = const []]) {
     final villages = <GlobeVillage>[];
     final players = <int, Player>{};
     final slices = <int, _Slice>{};
@@ -72,7 +72,7 @@ class PlanetData {
               ],
       ));
     }
-    return PlanetData._(villages, players, mine.slot, slices, find);
+    return PlanetData._(villages, players, mine.slot, slices, finds);
   }
 
   final List<GlobeVillage> villages;
@@ -81,8 +81,9 @@ class PlanetData {
   final Map<int, Player> players;
   final int mySlot;
 
-  /// What glows in planet mode, if anything is left.
-  final SomethingToFind? find;
+  /// What glows in planet mode, nearest first.
+  final List<SomethingToFind> finds;
+  SomethingToFind? get find => finds.isEmpty ? null : finds.first;
   final Map<int, _Slice> _slices;
 
   late final Set<int> takenSlots = players.keys.toSet();

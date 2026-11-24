@@ -125,8 +125,8 @@ void main() {
     final map = IslandMap.letterra(seed: _seed, slot: 0);
     test('the nearest one, its distance and its word length', () {
       final near = _c(366, 250), far = _c(340, 250);
-      final f = somethingToFind(
-          map: map, unfound: [far, near], letters: [_c(366, 245)], level: WordLevel.wordsmith)!;
+      final f = thingsToFind(
+          map: map, unfound: [far, near], letters: [_c(366, 245)], level: WordLevel.wordsmith).first;
       expect(f.cell, near);
       expect(f.squares, 5);
       expect(f.region, 'the Meadow');
@@ -134,18 +134,18 @@ void main() {
     });
     test('words for the Woods follow the word level', () {
       final woods = _c(330, 250);
-      SomethingToFind at(WordLevel l) => somethingToFind(map: map, unfound: [woods], letters: [], level: l)!;
+      SomethingToFind at(WordLevel l) => thingsToFind(map: map, unfound: [woods], letters: [], level: l).single;
       expect(at(WordLevel.wordsmith).region, 'the Woods');
       expect(at(WordLevel.wordsmith).minLength, 4);
       expect(at(WordLevel.sprout).minLength, 3);
     });
     test('nothing left, nothing at sea', () {
-      expect(somethingToFind(map: map, unfound: [], letters: [], level: WordLevel.sprout), isNull);
-      expect(somethingToFind(map: map, unfound: [_c(490, 250)], letters: [], level: WordLevel.sprout), isNull);
+      expect(thingsToFind(map: map, unfound: [], letters: [], level: WordLevel.sprout), isEmpty);
+      expect(thingsToFind(map: map, unfound: [_c(490, 250)], letters: [], level: WordLevel.sprout), isEmpty);
     });
     test('a new village has something, and it can be reached', () {
-      final f = somethingToFind(
-          map: map, unfound: map.specials.map((s) => s.cell), letters: [], level: WordLevel.wordsmith)!;
+      final f = thingsToFind(
+          map: map, unfound: map.specials.map((s) => s.cell), letters: [], level: WordLevel.wordsmith).first;
       expect(f.minLength, lessThan(10));
     });
   });
@@ -299,6 +299,14 @@ void main() {
     final estate = tester.widget<InfiniteEstateScreen>(find.byType(InfiniteEstateScreen));
     expect(estate.focusCell, isNotNull);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('with the Shrine of Sight three things glow', (tester) async {
+    final save = _save(_word('WELL', _c(366, 248)))..['shrines'] = ['sight'];
+    await start(tester, save: save);
+    await tester.tap(find.byType(GlobeView));
+    await tester.pumpAndSettle();
+    expect(tester.widget<GlobeView>(find.byType(GlobeView)).glowCells.toSet(), hasLength(3));
   });
 
   testWidgets('nothing left to find: no glow, just Find my village', (tester) async {

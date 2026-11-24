@@ -114,9 +114,9 @@ void main() {
       }
     }
 
-    // Play opens first: the planet, the Daily and the goal bar.
+    // Play opens first: the planet and the goal bar.
     expect(tester.takeException(), isNull);
-    onScreen(['Daily puzzle', 'My village', 'Me', 'Family']);
+    onScreen(['My village', 'Me', 'Family']);
     // "Play" is the tab and both games' buttons.
     expect(screen.contains(tester.getRect(find.text('Play').last).bottomRight), isTrue);
     expect(find.text('Free Play'), findsNothing);
