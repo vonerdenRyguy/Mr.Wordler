@@ -282,11 +282,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a new player picks a level before their first Daily, and Home then shows it', (tester) async {
+  testWidgets('a new player picks a level before their first Daily, and only once', (tester) async {
     await pumpApp(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('Wordsmith'), findsOneWidget);
-
     await tester.tap(find.text('Daily puzzle'));
     await tester.pumpAndSettle();
     expect(find.text('Your word level'), findsOneWidget);
@@ -298,8 +296,6 @@ void main() {
 
     await leaveRound(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('Sprout'), findsOneWidget);
-    expect(find.text('Wordsmith'), findsNothing);
 
     // The second time there is no picker.
     await tester.tap(find.text('Daily puzzle'));
@@ -312,8 +308,6 @@ void main() {
   testWidgets('a saved level opens its own puzzle straight away', (tester) async {
     SharedPreferences.setMockInitialValues({SettingsController.wordLevelKey: 'explorer'});
     await pumpApp(tester);
-    expect(find.text('Explorer'), findsOneWidget);
-
     await tester.tap(find.text('Daily puzzle'));
     await _pumpFor(tester, 8);
     expect(find.text('Your word level'), findsNothing);

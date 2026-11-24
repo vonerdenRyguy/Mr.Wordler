@@ -6,6 +6,13 @@ import '../ui/tokens.dart';
 import 'globe_art.dart';
 import 'globe_painter.dart';
 import 'planet.dart';
+import 'planet_data.dart';
+
+/// The sky behind the planet.
+const kGlobeSky = Color(0xFFBFE6F5);
+
+/// The painted sky's lowest colour, to carry on below the picture.
+const kGlobeSkyLow = Color(0xFFFFDDB8);
 
 /// The turning, zooming globe (spec-18): draws the planet, spins freely with a
 /// drag to see the other villages, zooms with a pinch or the + / - buttons
@@ -26,7 +33,23 @@ class GlobeView extends StatefulWidget {
     this.showTags = true,
     this.initialZoom = 1.0,
     this.showZoomButtons = true,
+    this.zoomButtonsBottom = 8,
+    this.alwaysPan = false,
+    this.turning = false,
+    this.onTap,
   });
+
+  /// With [onTap] the planet is only looked at (spec-18b, Home): no drag,
+  /// pinch, zoom or village taps, just one tap for the whole planet.
+  final VoidCallback? onTap;
+
+  /// Turns by itself, resting on each village (see [HomeTurn]). Still with
+  /// Reduce motion.
+  final bool turning;
+
+  /// Lets a lone village's planet be spun too (planet mode).
+  final bool alwaysPan;
+  final double zoomButtonsBottom;
 
   final List<GlobeVillage> villages;
   final Set<int> takenSlots;
@@ -44,7 +67,7 @@ class GlobeView extends StatefulWidget {
   final bool showZoomButtons;
 
   @override
-  State<GlobeView> createState() => _GlobeViewState();
+  State<GlobeView> createState() => GlobeViewState();
 }
 
 /// The camera latitude that suits a zoom: tilted to show the Lantern when the
@@ -54,7 +77,11 @@ double _latForZoom(double zoom) {
   return 0.46 + (0.04 - 0.46) * t;
 }
 
-class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMixin {
+class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
+  AnimationController? _turn;
+  late HomeTurn _turnPlan;
+  Curve _curve = Curves.easeOutCubic;
+
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
   late double _lon = slotAngle(widget.focusSlot);
   late double _zoom = widget.initialZoom;
@@ -78,28 +105,91 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
       }, onError: (_) {});
     }
     _anim.addListener(() {
-      final t = Curves.easeOutCubic.transform(_anim.value);
+      final t = _curve.transform(_anim.value);
       setState(() {
         _lon = wrapLon(_fromLon + lonDelta(_fromLon, _toLon) * t);
         _lat = _fromLat + (_toLat - _fromLat) * t;
-        _zoom = _fromZoom + (_toZoom - _fromZoom) * t;
+        // By ratio, so the ground comes closer at an even pace.
+        _zoom = _fromZoom * math.pow(_toZoom / _fromZoom, t);
       });
     });
     _anim.addStatusListener((status) {
       // Back to full detail once a fly-to settles.
       if (status == AnimationStatus.completed && mounted) setState(() {});
     });
+    _planTurn();
+  }
+
+  void _planTurn() {
+    if (!widget.turning || widget.reduceMotion || widget.villages.isEmpty) {
+      _turn?.dispose();
+      _turn = null;
+      return;
+    }
+    _turnPlan = HomeTurn(widget.focusSlot, widget.villages.map((v) => v.slot));
+    final duration = Duration(milliseconds: (_turnPlan.totalSeconds * 1000).round());
+    if (_turn?.duration == duration) return;
+    _turn?.dispose();
+    _turn = AnimationController(vsync: this, duration: duration)
+      ..addListener(() {
+        final lon = _turnPlan.lonAt(_turn!.value * _turnPlan.totalSeconds);
+        if (lon != _lon) setState(() => _lon = lon);
+      })
+      ..repeat();
+  }
+
+  /// Flies down to the village at [slot]; done when the camera is there.
+  Future<void> diveTo(int slot) async {
+    var lat = 0.04, lon = slotAngle(slot);
+    for (final v in widget.villages) {
+      if (v.slot != slot || v.letters.isEmpty) continue;
+      var r = 0.0, c = 0.0;
+      for (final i in v.letters.keys) {
+        r += i ~/ kPlanetBoard + 0.5;
+        c += i % kPlanetBoard + 0.5;
+      }
+      final s = boardToSphere(r / v.letters.length, c / v.letters.length);
+      lat = s.lat;
+      lon = s.lon;
+    }
+    await _flyTo(lon: lon, zoom: kGlobeMaxZoom, lat: lat, milliseconds: 1000, curve: Curves.easeInOutCubic);
+  }
+
+  /// The whole planet again, turned to [slot].
+  void showWhole(int slot) {
+    _anim.stop();
+    setState(() {
+      _lon = slotAngle(slot);
+      _zoom = 1;
+      _lat = _latForZoom(1);
+    });
+  }
+
+  /// Eases over to the village at [slot], a little closer in.
+  void flyHome(int slot) {
+    _flyTo(lon: slotAngle(slot), zoom: 1.6, lat: _latForZoom(1.6), milliseconds: 800, curve: Curves.easeInOutCubic);
   }
 
   @override
-  void didUpdateWidget(GlobeView old) {
-    super.didUpdateWidget(old);
-    if (old.focusSlot != widget.focusSlot && widget.focusSlot != _reported) {
+  void didUpdateWidget(GlobeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.villages != widget.villages || oldWidget.turning != widget.turning || oldWidget.reduceMotion != widget.reduceMotion) {
+      _planTurn();
+      if (widget.turning && widget.reduceMotion) _lon = slotAngle(widget.focusSlot);
+    }
+    if (oldWidget.focusSlot != widget.focusSlot && widget.focusSlot != _reported) {
       _flyTo(lon: slotAngle(widget.focusSlot), zoom: _zoom, lat: _latForZoom(_zoom));
     }
   }
 
-  void _flyTo({required double lon, required double zoom, required double lat, bool glide = false}) {
+  Future<void> _flyTo({
+    required double lon,
+    required double zoom,
+    required double lat,
+    bool glide = false,
+    int milliseconds = 450,
+    Curve curve = Curves.easeOutCubic,
+  }) async {
     zoom = zoom.clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
     if (widget.reduceMotion) {
       _anim.stop();
@@ -117,12 +207,14 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
     _toLat = lat;
     _toZoom = zoom;
     _gliding = glide;
-    _anim.duration = Duration(milliseconds: glide ? 900 : 450);
-    _anim.forward(from: 0);
+    _curve = curve;
+    _anim.duration = Duration(milliseconds: glide ? 900 : milliseconds);
+    await _anim.forward(from: 0).orCancel.catchError((_) {});
   }
 
   @override
   void dispose() {
+    _turn?.dispose();
     _anim.dispose();
     super.dispose();
   }
@@ -131,7 +223,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
 
   // With one village alone there is nothing to spin to, so swipes go to the
   // page behind (Home's Me | Play | Family) until you have zoomed in.
-  bool get _canPan => widget.villages.length > 1 || _zoom > widget.initialZoom * 1.05;
+  bool get _canPan => widget.alwaysPan || widget.villages.length > 1 || _zoom > widget.initialZoom * 1.05;
 
   void _zoomBy(double factor) {
     final zoom = (_zoom * factor).clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
@@ -186,6 +278,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
   }
 
   void _pointerDown(PointerDownEvent e) {
+    if (widget.onTap != null) return;
     _pointers[e.pointer] = e.position;
     if (_gliding) {
       _gliding = false;
@@ -211,7 +304,8 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
       final size = constraints.biggest;
       _size = size;
       final proj = GlobeProjection(size: size, centerLon: _lon, centerLat: _lat, zoom: _zoom);
-      final canPan = _canPan;
+      final look = widget.onTap != null;
+      final canPan = !look && _canPan;
       return Listener(
         onPointerDown: _pointerDown,
         onPointerMove: _pointerMoved,
@@ -219,6 +313,7 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
         onPointerCancel: _pointerUp,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
           onPanStart: canPan
               ? (_) {
                   _anim.stop();
@@ -245,7 +340,8 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
             children: [
               Positioned.fill(
                 child: Semantics(
-                  label: '$kPlanetName, ${widget.villages.length} '
+                  button: look,
+                  label: '${look ? 'Open the planet. ' : ''}$kPlanetName, ${widget.villages.length} '
                       '${widget.villages.length == 1 ? 'village' : 'villages'}',
                   child: CustomPaint(
                     painter: GlobePainter(
@@ -257,14 +353,14 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
                       isHushed: widget.isHushed,
                       showTags: widget.showTags,
                       art: GlobeArt.loaded,
-                      detail: (_anim.isAnimating || _dragging || _pointers.length > 1)
+                      detail: (_turn != null || _anim.isAnimating || _dragging || _pointers.length > 1)
                           ? GlobeDetail.coarse
                           : GlobeDetail.fine,
                     ),
                   ),
                 ),
               ),
-              for (final v in widget.villages)
+              for (final v in look ? const <GlobeVillage>[] : widget.villages)
                 if (proj.villageHit(v.slot) case final rect?)
                   Positioned.fromRect(
                     rect: rect,
@@ -279,10 +375,10 @@ class _GlobeViewState extends State<GlobeView> with SingleTickerProviderStateMix
                       ),
                     ),
                   ),
-              if (widget.showZoomButtons)
+              if (widget.showZoomButtons && !look)
                 Positioned(
                   right: 8,
-                  bottom: 8,
+                  bottom: widget.zoomButtonsBottom,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

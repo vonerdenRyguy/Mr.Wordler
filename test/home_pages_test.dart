@@ -56,18 +56,18 @@ void main() {
   testWidgets('swiping moves between Me, Play and Family; the tabs follow', (tester) async {
     SharedPreferences.setMockInitialValues({SettingsController.homeIntroSeenKey: true});
     await pumpHome(tester);
-    expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
 
     // Swipe right: Me.
     await tester.fling(find.byType(PageView), const Offset(300, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('Journal'), findsOneWidget);
-    expect(find.byKey(const ValueKey('globe-village-0')), findsNothing);
+    expect(find.byKey(const ValueKey('home-my-village')), findsNothing);
 
     // Swipe left twice: Play, then Family.
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1000);
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('Play with your family'), findsOneWidget);
@@ -131,7 +131,7 @@ void main() {
       expect(tester.takeException(), isNull, reason: tab);
     }
     // Play's badge and goal bar are on screen.
-    for (final label in ['Daily puzzle', 'Light the Great Lantern']) {
+    for (final label in ['Daily puzzle', 'My village']) {
       expect(const Rect.fromLTWH(0, 0, 390, 844).contains(tester.getRect(find.text(label)).bottomRight), isTrue,
           reason: label);
     }
@@ -176,10 +176,10 @@ void main() {
       SharedPreferences.setMockInitialValues(prefs());
       await pumpHome(tester);
       expect(find.text('!'), findsOneWidget);
-      expect(find.byKey(const ValueKey('globe-village-0')), findsOneWidget);
-      expect(find.text('Light the Great Lantern'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
+      expect(find.text('My village'), findsOneWidget);
       expect(find.text('PLAY'), findsNothing);
-      fitsBetweenBars(tester, ['Daily puzzle', 'Light the Great Lantern']);
+      fitsBetweenBars(tester, ['Daily puzzle', 'My village']);
       await tester.tap(find.text('Daily puzzle'));
       await tester.pumpAndSettle();
       expect(find.text('Clue'), findsOneWidget); // the Daily round
@@ -189,7 +189,7 @@ void main() {
       SharedPreferences.setMockInitialValues(prefs(played: true));
       await pumpHome(tester);
       expect(find.text('!'), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+      await tester.tap(find.byKey(const ValueKey('home-my-village')));
       await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
           const Duration(seconds: 20));
       expect(find.text('Swap'), findsOneWidget); // the village
@@ -211,8 +211,8 @@ void main() {
       await pumpHome(tester, size: const Size(411, 891));
       expect(tester.takeException(), isNull);
       expect(find.text(playTip), findsOneWidget);
-      fitsBetweenBars(tester, ['Daily puzzle', 'Light the Great Lantern']);
-      expect(tester.getRect(find.text('Light the Great Lantern')).bottom,
+      fitsBetweenBars(tester, ['Daily puzzle', 'My village']);
+      expect(tester.getRect(find.text('My village')).bottom,
           lessThan(tester.getRect(find.byType(TipBar)).top));
     });
   });

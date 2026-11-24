@@ -506,13 +506,19 @@ class GlobePainter extends CustomPainter {
     canvas.save();
     canvas.clipPath(outline);
     _paintMap(canvas, size, proj, look);
+    // The light on a ball; close in there is no round edge left to shade.
+    final round = (1 - (zoom - 1.5) / 1.5).clamp(0.0, 1.0).toDouble();
     canvas.drawRect(
       box,
       Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.3, -0.4),
           radius: 0.78,
-          colors: const [Color(0x2EFFF6D8), Color(0x00000000), Color(0x59062A5C)],
+          colors: [
+            const Color(0x2EFFF6D8).withOpacity(0.18 * round),
+            const Color(0x00000000),
+            const Color(0x59062A5C).withOpacity(0.35 * round),
+          ],
           stops: const [0, 0.5, 1],
         ).createShader(disc),
     );

@@ -1503,7 +1503,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         ],
       ),
       actions: [
-        WordlerDialogAction('Done', () => Navigator.of(context).popUntil((route) => route.isFirst)),
+        WordlerDialogAction('Done', () => Navigator.of(context).pop()),
       ],
     );
     _cashingOut = false;

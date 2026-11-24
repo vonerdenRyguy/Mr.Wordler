@@ -93,7 +93,7 @@ void main() {
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('globe-village-0')));
+    await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle();
 
     // The band chip says where the view is centred: the Sunny Shore.
