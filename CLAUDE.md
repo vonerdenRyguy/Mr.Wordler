@@ -483,8 +483,9 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   some become buildings) wait for boards. The Letter Fair (spec-21) is
   approved, not built.
 - **spec-22 B and C: Words to build, Planet to see it** (branch
-  `spec-22bc-words-and-planet`, cut from `spec-22c-closeup-test`; **not merged
-  yet**, waiting for Ryan's phone check). Spec:
+  `spec-22bc-words-and-planet`, cut from `spec-22c-closeup-test`; **merged**
+  to master 2026-11-27 on Ryan's OK after the Pixel install; Samsung and
+  Paul's profile not checked). Spec:
   `specs\spec-22bc-words-and-planet.md`, boards L341-L349.
   - **The angled Village view is gone.** The village screen has two modes,
     Words and planet (`_ViewMode`); `PlanetScreen` is gone too. "My village"
