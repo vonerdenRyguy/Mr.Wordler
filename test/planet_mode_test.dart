@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/explore/fog.dart';
+import 'package:namer_app/explore/island_map.dart';
 import 'package:namer_app/game/grid_board_widget.dart';
 import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/letterra/close_up.dart';
@@ -189,6 +190,32 @@ void main() {
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
+  });
+
+  testWidgets('empty harbors are waiting shores: land, a card, Invite family; tiles still refused there',
+      (tester) async {
+    await start(tester);
+    await tester.tap(globe);
+    await tester.pumpAndSettle();
+    final paint = tester
+        .widgetList<CustomPaint>(find.descendant(of: globe, matching: find.byType(CustomPaint)))
+        .map((p) => p.painter)
+        .whereType<GlobePainter>()
+        .first;
+    expect(paint.takenSlots, kAllHarbors);
+    expect(paint.emptyHarbors, {1, 2, 3, 4, 5, 6, 7});
+    // Only the picture: the village map still treats the bay as sea.
+    expect(IslandMap.letterra(seed: 1, slot: 0).isSeaIndex(harborCell(4)), isTrue);
+
+    tester.state<GlobeViewState>(globe).showWhole(4);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('globe-village-4')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('globe-harbor-4')));
+    await tester.pumpAndSettle();
+    expect(find.text('Room for family'), findsOneWidget);
+    await tester.tap(find.text('Invite family'));
+    await tester.pumpAndSettle();
+    expect(find.text('Players on this phone'), findsOneWidget);
   });
 
   testWidgets("with two players, the other's village opens to look at", (tester) async {

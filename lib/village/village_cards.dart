@@ -445,6 +445,37 @@ class WordOfDayCard extends StatelessWidget {
   }
 }
 
+/// A waiting shore (spec-22 C): a harbor nobody in the family lives at yet.
+class RoomForFamilyCard extends StatelessWidget {
+  const RoomForFamilyCard({super.key, required this.onInvite});
+
+  final VoidCallback onInvite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Semantics(header: true, child: Text('Room for family', style: WText.heading))),
+            const _CloseButton(),
+          ],
+        ),
+        const SizedBox(height: WSize.gap2),
+        const Text(
+          'This harbor is waiting. When someone in your family joins, their village starts here.',
+          style: WText.body,
+        ),
+        const SizedBox(height: WSize.gap3),
+        ChunkyButton(label: 'Invite family', icon: Icons.group_add, expand: true, onPressed: onInvite),
+      ],
+    );
+  }
+}
+
 class NotAWordCard extends StatelessWidget {
   /// The misspelled run this letter is in ("AQ"), if any.
   const NotAWordCard({super.key, this.run, this.offStar = false});

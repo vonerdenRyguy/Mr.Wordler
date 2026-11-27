@@ -368,7 +368,12 @@ class GlobePainter extends CustomPainter {
     this.starCell,
     this.starQuiet = false,
     this.drop,
+    this.emptyHarbors = const {},
   });
+
+  /// Harbors nobody lives at yet: drawn as waiting shores (land, a dock and a
+  /// blank flag). Only the picture: [isBay] still refuses tiles there.
+  final Set<int> emptyHarbors;
 
   /// Close up: outlines of things not found yet, through any Hush.
   final List<GroundMark> marks;
@@ -644,6 +649,14 @@ class GlobePainter extends CustomPainter {
           }
         }
       }
+    }
+    // Waiting shores (spec-22 C): a small dock and a blank flag on each harbor
+    // nobody lives at yet.
+    for (final slot in emptyHarbors) {
+      final lon = slotAngle(slot);
+      final unit = zoomedIn ? proj.cellPixels * 5.2 : proj.radius * 0.30;
+      stand((zoomedIn ? -3.4 : -3.0) * _deg, lon, GlobeSprite.port, unit * 0.7);
+      stand((zoomedIn ? -1.6 : 0.6) * _deg, lon + (zoomedIn ? -2.0 : -6) * _deg, GlobeSprite.flagBlank, unit * 0.85);
     }
     var houseZ = double.infinity;
     if (zoomedIn) {
@@ -1334,6 +1347,8 @@ class GlobePainter extends CustomPainter {
       oldDelegate.zoom != zoom ||
       oldDelegate.villages != villages ||
       oldDelegate.takenSlots != takenSlots ||
+      oldDelegate.emptyHarbors.length != emptyHarbors.length ||
+      !oldDelegate.emptyHarbors.containsAll(emptyHarbors) ||
       oldDelegate.showTags != showTags ||
       oldDelegate.art != art ||
       oldDelegate.closeUp != closeUp ||

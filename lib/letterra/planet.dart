@@ -14,6 +14,9 @@ const int kHarborDistance = 120;
 /// How many harbor spots sit around the Sunny Shore.
 const int kHarborSlots = 8;
 
+/// Every harbor: the planet draws them all as land (spec-22 C waiting shores).
+const Set<int> kAllHarbors = {0, 1, 2, 3, 4, 5, 6, 7};
+
 /// Order family members take harbor spots: every other one first.
 const List<int> kSlotOrder = [0, 4, 2, 6, 1, 5, 3, 7];
 

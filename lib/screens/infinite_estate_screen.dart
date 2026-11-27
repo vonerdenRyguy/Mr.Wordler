@@ -31,7 +31,8 @@ import '../game/grid_providers.dart';
 import '../game/word_landing.dart' show startCellProvider, wordCheckProvider;
 import '../game/word_runs.dart';
 import '../online/family_online_controller.dart';
-import 'family_screens.dart' show VisitVillageScreen;
+import 'family_online_screens.dart' show FamilyOnlineScreen;
+import 'family_screens.dart' show FamilyScreen, VisitVillageScreen;
 import 'helping_screens.dart' show showGiftsArrived;
 import 'planet_bottom.dart';
 import '../portfolio/portfolio_controller.dart';
@@ -1494,6 +1495,20 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     setState(() => _planetBusy = false);
   }
 
+  // A waiting shore: room for family, and the way to the family page.
+  Future<void> _roomForFamily() => showVillageSheet<void>(
+        context,
+        Builder(
+          builder: (sheetContext) => RoomForFamilyCard(onInvite: () {
+            Navigator.of(sheetContext).pop();
+            final online = ref.read(familyOnlineProvider).stage == OnlineStage.member;
+            Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => online ? const FamilyOnlineScreen() : const FamilyScreen(),
+            ));
+          }),
+        ),
+      );
+
   // Something to find: fly there, then Words at that square.
   Future<void> _showFind(PlanetData data, int cell) async {
     if (_planetBusy) return;
@@ -1552,6 +1567,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                 glowCells: _planetBusy ? const [] : [for (final f in data.finds) f.cell],
                 onGlowTap: (cell) => _showFind(data, cell),
                 onVillageTap: (slot) => _dive(data, slot),
+                onEmptyHarborTap: _restoring ? null : (_) => _roomForFamily(),
                 onStreetTap: _restoring ? (_, __) {} : (at, proj) => _onStreetTap(at, proj, data),
                 overlay: (proj, cell) => [
                   if (!_restoring && proj.zoom >= kStreetZoom)

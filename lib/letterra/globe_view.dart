@@ -51,7 +51,11 @@ class GlobeView extends StatefulWidget {
     this.onStreetTap,
     this.overlay,
     this.zoomButtonsBottomFor,
+    this.onEmptyHarborTap,
   });
+
+  /// A tap on a harbor nobody lives at yet (a waiting shore).
+  final void Function(int slot)? onEmptyHarborTap;
 
   /// The board square to start on.
   final int? initialCell;
@@ -477,7 +481,9 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                       centerLat: _lat,
                       zoom: _zoom,
                       villages: widget.villages,
-                      takenSlots: widget.takenSlots,
+                      // Land all the way round; empty harbors wait for family.
+                      takenSlots: kAllHarbors,
+                      emptyHarbors: kAllHarbors.difference(widget.takenSlots),
                       isHushed: widget.isHushed,
                       showTags: widget.showTags,
                       art: GlobeArt.loaded,
@@ -513,6 +519,22 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
+              if (!look && widget.onEmptyHarborTap != null)
+                for (final slot in kAllHarbors.difference(widget.takenSlots))
+                  if (proj.villageHit(slot) case final rect?)
+                    Positioned.fromRect(
+                      rect: rect,
+                      child: Semantics(
+                        button: true,
+                        label: 'Room for family',
+                        child: GestureDetector(
+                          key: ValueKey('globe-harbor-$slot'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => widget.onEmptyHarborTap!(slot),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
               if (widget.showZoomButtons && !look)
                 Positioned(
                   right: 8,

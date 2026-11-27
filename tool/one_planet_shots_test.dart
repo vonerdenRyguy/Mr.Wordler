@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvi
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/game/word_landing.dart';
 import 'package:namer_app/letterra/globe_art.dart';
+import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/util/theme_notifier.dart';
@@ -108,6 +109,14 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('globe-zoom-out')));
       await settle(10);
       await shot('z2');
+      tester.state<GlobeViewState>(find.byType(GlobeView)).showWhole(1);
+      await settle(20);
+      await shot('whole');
+      await tester.tap(find.byKey(const ValueKey('globe-zoom-in')));
+      await settle(10);
+      await tester.tap(find.byKey(const ValueKey('globe-zoom-in')));
+      await settle(10);
+      await shot('shore');
       await tester.pumpWidget(const SizedBox());
     });
   }
