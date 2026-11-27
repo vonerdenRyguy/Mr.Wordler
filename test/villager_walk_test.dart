@@ -1,10 +1,6 @@
-// Villagers walk only along word slabs, and stand still with Reduce motion (spec-16).
+// Villagers walk only along word slabs (spec-16).
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:namer_app/village/iso_math.dart';
-import 'package:namer_app/village/iso_village_view.dart';
-import 'package:namer_app/village/structures.dart';
 import 'package:namer_app/villagers/walkers.dart';
 
 const _w = 500;
@@ -58,63 +54,6 @@ void main() {
     walkers.tick(5);
     expect(walkers.positionOf('v0').r, 10.0);
   });
-
-  VillageScene sceneOf(Map<int, String> letters) {
-    final board = List<String?>.filled(_w * _w, null);
-    letters.forEach((k, v) => board[k] = v);
-    return VillageScene(
-        grid: const IsoGrid(boardWidth: _w, boardHeight: _w), boardCells: board, structures: const <BoardStructure>[]);
-  }
-
-  Future<VillagerWalkers> pumpView(WidgetTester tester, {required bool reduceMotion}) async {
-    final scene = sceneOf({for (final c in slabs) c: 'A'});
-    final walkers = VillagerWalkers(seed: 3)..sync({'v0': _i(100, 100)}, scene.walkable);
-    await tester.pumpWidget(MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(disableAnimations: reduceMotion),
-        child: SizedBox(
-          width: 400,
-          height: 600,
-          child: IsoVillageView(
-            scene: scene,
-            walkers: walkers,
-            villagers: const [VillagerSprite(id: 'v0', name: 'Pip')],
-          ),
-        ),
-      ),
-    ));
-    return walkers;
-  }
-
-  testWidgets('in Village view they stroll', (tester) async {
-    final walkers = await pumpView(tester, reduceMotion: false);
-    final start = walkers.positionOf('v0');
-    for (var i = 0; i < 80; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    final end = walkers.positionOf('v0');
-    expect(walkers.cellOf('v0') != _i(100, 100) || start != end, isTrue);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('with Reduce motion they stand still', (tester) async {
-    final walkers = await pumpView(tester, reduceMotion: true);
-    final start = walkers.positionOf('v0');
-    final cell = walkers.cellOf('v0');
-    for (var i = 0; i < 80; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(walkers.positionOf('v0'), start);
-    expect(walkers.cellOf('v0'), cell);
-    // A pumpAndSettle would finish: nothing is animating.
-    await tester.pumpAndSettle();
-  });
-
-  test('tapping a villager is a VillagerHit, ahead of the slab under them', () {
-    final scene = sceneOf({for (final c in slabs) c: 'A'});
-    final g = scene.groundOf(_i(100, 102)) - const Offset(0, 6);
-    final hit = hitTestVillage(g - const Offset(0, 25), scene, villagers: [VillagerSpot('v0', g)]);
-    expect(hit, isA<VillagerHit>());
-    expect(hitTestVillage(g, scene), isA<CellHit>());
-  });
+  // Walking on the planet's streets, and standing still with Reduce motion:
+  // close_up_test.dart.
 }

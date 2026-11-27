@@ -9,7 +9,7 @@ import '../ui/tokens.dart';
 import 'discovery_journal_view.dart' show lettersTowardWord;
 import 'magic_word.dart';
 
-// The cards that open when you tap something in Village view, plus the
+// The cards that open when you tap something on the planet's streets, plus the
 // "Build your first building" helper. All are plain widgets; the screen
 // decides what they do.
 
@@ -540,7 +540,7 @@ class NotAWordCard extends StatelessWidget {
   return (def: best, have: bestHave, haveEach: haveEach);
 }
 
-/// "Build your first building": shown in Village view until there is one.
+/// "Build your first building": shown on the planet and in Words until there is one.
 class FirstBuildingHelper extends StatelessWidget {
   const FirstBuildingHelper({
     super.key,

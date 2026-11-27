@@ -39,8 +39,8 @@ import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
-import '../village/iso_math.dart';
-import '../village/iso_village_view.dart';
+import '../village/village_layout.dart';
+import '../village/words_camera.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
@@ -300,12 +300,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // A new building dropping into place.
   ({List<int> cells, double t})? _drop;
   late final AnimationController _dropAnim;
-  static const _isoGrid =
-      IsoGrid(boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
-  // Rebuilt only when the board or the buildings change.
-  VillageScene? _scene;
-  List<String?>? _sceneBoard;
-  List<BoardStructure>? _sceneStructures;
+  // Where villagers may walk, worked out again only when the board or the
+  // buildings change.
+  Set<int>? _walkable;
+  List<String?>? _walkBoard;
+  List<BoardStructure>? _walkStructures;
   Map<String, SpriteMeta> _spriteMeta = const {};
   // Every valid word on the board (repeats included), for tap cards.
   List<WordRun> _wordRuns = const [];
@@ -348,22 +347,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     }).catchError((_) {});
   }
 
-  VillageScene _villageScene() {
+  Set<int> _walkableNow() {
     final board = ref.read(gridGameControllerProvider).boardCells;
-    if (_scene == null ||
-        !identical(board, _sceneBoard) ||
-        !identical(_structures, _sceneStructures) ||
-        !identical(_scene!.spriteMeta, _spriteMeta)) {
-      _sceneBoard = board;
-      _sceneStructures = _structures;
-      _scene = VillageScene(
-        grid: _isoGrid,
-        boardCells: board,
-        structures: _structures,
-        spriteMeta: _spriteMeta,
-      );
+    if (_walkable == null || !identical(board, _walkBoard) || !identical(_structures, _walkStructures)) {
+      _walkBoard = board;
+      _walkStructures = _structures;
+      _walkable = walkableCells(board, _structures);
     }
-    return _scene!;
+    return _walkable!;
   }
 
   @override
@@ -541,7 +532,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // Tells the walkers who lives where and which slabs they may use.
   void _syncWalkers() {
     if (!mounted) return;
-    _walkers.sync({for (final v in _book.villagers) v.id: v.cell}, _villageScene().walkable);
+    _walkers.sync({for (final v in _book.villagers) v.id: v.cell}, _walkableNow());
   }
 
   // The rings the player can already see (fog cleared somewhere), for wishes
@@ -1086,7 +1077,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         _looseCells = offStar.isEmpty ? board.looseCells : {...board.looseCells, ...offStar};
         _offStarCells = offStar;
         _strayCells = board.strayCells;
-        _scene = null;
+        _walkable = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
         }
@@ -1356,7 +1347,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (_viewCentered) return;
     _viewCentered = true;
     // The middle of all the letters (the board center if there are none).
-    final center = _villageScene().lettersCenter(emptyCell: _harborIndex);
+    final center = lettersCenter(ref.read(gridGameControllerProvider).boardCells, InfiniteEstateScreen.boardSize,
+        emptyCell: _harborIndex);
     final centerIndex = widget.focusCell ?? center.r * InfiniteEstateScreen.boardSize + center.c;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;

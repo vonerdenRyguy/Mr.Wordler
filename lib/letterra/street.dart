@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../village/iso_village_view.dart' show VillagerSprite, paintVillagerFigure;
+import '../village/village_layout.dart' show VillagerSprite, paintVillagerFigure;
 import '../villagers/walkers.dart';
 import 'globe_painter.dart';
 

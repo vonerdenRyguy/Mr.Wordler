@@ -12,7 +12,7 @@ import 'package:namer_app/letterra/planet.dart';
 import 'package:namer_app/letterra/planet_data.dart';
 import 'package:namer_app/letterra/street.dart';
 import 'package:namer_app/players/players.dart';
-import 'package:namer_app/village/iso_village_view.dart' show VillagerSprite;
+import 'package:namer_app/village/village_layout.dart' show VillagerSprite;
 import 'package:namer_app/village/magic_word.dart';
 import 'package:namer_app/villagers/walkers.dart';
 

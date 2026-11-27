@@ -12,7 +12,7 @@ import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/portfolio/portfolio_controller.dart';
 import 'package:namer_app/util/theme_notifier.dart';
-import 'package:namer_app/village/iso_math.dart';
+import 'package:namer_app/village/words_camera.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
