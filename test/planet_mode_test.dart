@@ -9,11 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvi
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/explore/fog.dart';
 import 'package:namer_app/game/grid_board_widget.dart';
+import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
 import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
 import 'package:namer_app/letterra/planet_data.dart';
+import 'package:namer_app/letterra/street.dart' show kStreetZoom;
 import 'package:namer_app/main.dart';
 import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
@@ -92,7 +94,10 @@ void main() {
   });
 
   Widget app({bool turns = false}) => ProviderScope(
-        overrides: [homePlanetTurnsProvider.overrideWithValue(turns)],
+        overrides: [
+          homePlanetTurnsProvider.overrideWithValue(turns),
+          wordCheckProvider.overrideWithValue((w) async => w == 'WELL'),
+        ],
         child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
       );
 
@@ -222,5 +227,33 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('globe-village-4')));
     await tester.pumpAndSettle();
     expect(find.text("Sam's village"), findsOneWidget);
+    // Sam's streets, close up, to look at only (spec-22 C).
+    for (var i = 0; i < 50 && globe.evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+    }
+    final visit = find.byType(GlobeView).last;
+    expect(tester.widget<GlobeView>(visit).closeUp, isTrue);
+    expect(tester.state<GlobeViewState>(visit).zoom, kStreetZoom);
+    expect(find.byKey(const ValueKey('planet-build')), findsNothing);
+    final paint = tester
+        .widgetList<CustomPaint>(find.descendant(of: visit, matching: find.byType(CustomPaint)))
+        .map((p) => p.painter)
+        .whereType<GlobePainter>()
+        .first;
+    final proj = GlobeProjection(
+        size: tester.getSize(visit), centerLon: paint.centerLon, centerLat: paint.centerLat, zoom: paint.zoom, closeUp: true);
+    final top = blockTop(proj, paint.villages.first.buildingRuns.first.cells[1])!;
+    await tester.tapAt((top[0] + top[1] + top[2] + top[3]) / 4);
+    await tester.pumpAndSettle();
+    expect(find.text('Well'), findsWidgets);
+    expect(find.text('Build here'), findsNothing);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Back').last);
+    await tester.pumpAndSettle();
+    expect(find.text("Sam's village"), findsNothing);
+    final saved = jsonDecode((await SharedPreferences.getInstance()).getString('p2_infiniteEstateVillageSave')!);
+    expect(saved['boardCells'], board);
   });
 }
