@@ -317,7 +317,7 @@ Future<void> showHowToPlay(BuildContext context) {
     ('CAT', 'Drag letters from your rack onto the board.'),
     ('WORD', 'Make real words across or down. Every word must touch another.'),
     ('WELL', 'Magic words like WELL and FARM become buildings in your village.'),
-    ('TAP', 'Tap any word in Village view to learn what it means.'),
+    ('TAP', 'Tap any word on the planet, up close, to learn what it means.'),
     ('CLUE', "The Daily puzzle has a theme and a secret word. Tap Clue if you'd like help."),
     ('EASY', 'Pick a word level in Settings to make the Daily puzzle smaller or bigger.'),
   ];

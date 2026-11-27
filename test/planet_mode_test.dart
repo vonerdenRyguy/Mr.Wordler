@@ -8,15 +8,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:namer_app/explore/fog.dart';
+import 'package:namer_app/explore/island_map.dart';
+import 'package:namer_app/game/grid_board_widget.dart';
+import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
+import 'package:namer_app/letterra/close_up.dart';
 import 'package:namer_app/letterra/globe_painter.dart';
 import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/letterra/planet.dart';
 import 'package:namer_app/letterra/planet_data.dart';
+import 'package:namer_app/letterra/street.dart' show kStreetZoom;
 import 'package:namer_app/main.dart';
 import 'package:namer_app/players/players.dart';
 import 'package:namer_app/screens/home_screen.dart';
 import 'package:namer_app/screens/infinite_estate_screen.dart';
-import 'package:namer_app/screens/planet_screen.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,7 +95,10 @@ void main() {
   });
 
   Widget app({bool turns = false}) => ProviderScope(
-        overrides: [homePlanetTurnsProvider.overrideWithValue(turns)],
+        overrides: [
+          homePlanetTurnsProvider.overrideWithValue(turns),
+          wordCheckProvider.overrideWithValue((w) async => w == 'WELL'),
+        ],
         child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
       );
 
@@ -147,11 +154,11 @@ void main() {
     expect(lonOf(tester), 0);
   });
 
-  testWidgets('tap the planet, spin, find, dive, back to the planet, back Home', (tester) async {
+  testWidgets('tap the planet, spin, find, dive to the streets and stay, Build, Planet, back Home', (tester) async {
     await start(tester);
     await tester.tap(globe);
     await tester.pumpAndSettle();
-    expect(find.byType(PlanetScreen), findsOneWidget);
+    expect(find.byType(InfiniteEstateScreen), findsOneWidget);
     expect(find.text('Letterra'), findsOneWidget);
     expect(find.text('Daily puzzle'), findsNothing);
 
@@ -165,24 +172,50 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('globe-village-0')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(InfiniteEstateScreen), findsNothing); // still flying
+    expect(find.byKey(const ValueKey('planet-build')), findsNothing); // still flying
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate,
         const Duration(seconds: 20));
-    expect(find.byType(InfiniteEstateScreen), findsOneWidget);
+    expect(tester.state<GlobeViewState>(globe).zoom, kCloseUpMaxZoom);
+    expect(find.byType(GridBoardView), findsNothing);
 
-    await tester.tap(find.text('End'));
+    // A new village has no building: its helper leads to Words.
+    await tester.tap(find.text('Go to Words'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Leave Village'));
+    expect(find.byType(GridBoardView), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('words-planet')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
-    await tester.pumpAndSettle();
-    expect(find.byType(InfiniteEstateScreen), findsNothing);
-    expect(find.text('My village').last, findsOneWidget);
+    expect(tester.state<GlobeViewState>(globe).zoom, kCloseUpMaxZoom);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
-    expect(find.text('My village'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-my-village')), findsOneWidget);
+  });
+
+  testWidgets('empty harbors are waiting shores: land, a card, Invite family; tiles still refused there',
+      (tester) async {
+    await start(tester);
+    await tester.tap(globe);
+    await tester.pumpAndSettle();
+    final paint = tester
+        .widgetList<CustomPaint>(find.descendant(of: globe, matching: find.byType(CustomPaint)))
+        .map((p) => p.painter)
+        .whereType<GlobePainter>()
+        .first;
+    expect(paint.takenSlots, kAllHarbors);
+    expect(paint.emptyHarbors, {1, 2, 3, 4, 5, 6, 7});
+    // Only the picture: the village map still treats the bay as sea.
+    expect(IslandMap.letterra(seed: 1, slot: 0).isSeaIndex(harborCell(4)), isTrue);
+
+    tester.state<GlobeViewState>(globe).showWhole(4);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('globe-village-4')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('globe-harbor-4')));
+    await tester.pumpAndSettle();
+    expect(find.text('Room for family'), findsOneWidget);
+    await tester.tap(find.text('Invite family'));
+    await tester.pumpAndSettle();
+    expect(find.text('Players on this phone'), findsOneWidget);
   });
 
   testWidgets("with two players, the other's village opens to look at", (tester) async {
@@ -221,5 +254,33 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('globe-village-4')));
     await tester.pumpAndSettle();
     expect(find.text("Sam's village"), findsOneWidget);
+    // Sam's streets, close up, to look at only (spec-22 C).
+    for (var i = 0; i < 50 && globe.evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+    }
+    final visit = find.byType(GlobeView).last;
+    expect(tester.widget<GlobeView>(visit).closeUp, isTrue);
+    expect(tester.state<GlobeViewState>(visit).zoom, kStreetZoom);
+    expect(find.byKey(const ValueKey('planet-build')), findsNothing);
+    final paint = tester
+        .widgetList<CustomPaint>(find.descendant(of: visit, matching: find.byType(CustomPaint)))
+        .map((p) => p.painter)
+        .whereType<GlobePainter>()
+        .first;
+    final proj = GlobeProjection(
+        size: tester.getSize(visit), centerLon: paint.centerLon, centerLat: paint.centerLat, zoom: paint.zoom, closeUp: true);
+    final top = blockTop(proj, paint.villages.first.buildingRuns.first.cells[1])!;
+    await tester.tapAt((top[0] + top[1] + top[2] + top[3]) / 4);
+    await tester.pumpAndSettle();
+    expect(find.text('Well'), findsWidgets);
+    expect(find.text('Build here'), findsNothing);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Back').last);
+    await tester.pumpAndSettle();
+    expect(find.text("Sam's village"), findsNothing);
+    final saved = jsonDecode((await SharedPreferences.getInstance()).getString('p2_infiniteEstateVillageSave')!);
+    expect(saved['boardCells'], board);
   });
 }

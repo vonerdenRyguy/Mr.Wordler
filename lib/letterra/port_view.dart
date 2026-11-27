@@ -96,30 +96,6 @@ class _PlankPainter extends CustomPainter {
   bool shouldRepaint(_PlankPainter oldDelegate) => oldDelegate.lamp != lamp;
 }
 
-/// Village view: one pier square as planks on the water; [corners] are the
-/// square's top, right, bottom and left.
-void paintPierDiamond(Canvas canvas, List<Offset> corners, double width, {required bool lamp}) {
-  final lift = Offset(0, -width * 0.10);
-  final top = Path()..addPolygon([for (final c in corners) c + lift], true);
-  final side = Path()
-    ..addPolygon([corners[3], corners[2], corners[1], corners[1] + lift, corners[2] + lift, corners[3] + lift], true);
-  canvas.drawPath(side, Paint()..color = _plankDark);
-  canvas.drawPath(top, Paint()..color = _plank);
-  final edge = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 1.5
-    ..color = WColors.ink;
-  canvas.drawPath(top, edge);
-  canvas.drawLine((corners[0] + corners[1]) / 2 + lift, (corners[3] + corners[2]) / 2 + lift, edge);
-  if (lamp) {
-    final foot = corners[3] + lift + Offset(width * 0.12, 0);
-    final head = foot - Offset(0, width * 0.45);
-    canvas.drawLine(foot, head, edge..strokeWidth = 3);
-    canvas.drawCircle(head, width * 0.22, Paint()..color = const Color(0x55FFE08A));
-    canvas.drawCircle(head, width * 0.08, Paint()..color = const Color(0xFFFFF3C4));
-  }
-}
-
 /// The gold star's picture; [quiet] is the plain mark it leaves behind.
 class GoldStarMark extends StatelessWidget {
   const GoldStarMark({super.key, this.quiet = false});

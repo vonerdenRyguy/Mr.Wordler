@@ -10,7 +10,13 @@ import '../explore/fog.dart';
 import '../explore/island_map.dart';
 import '../letterra/band_info.dart';
 import '../explore/regions.dart';
-import '../letterra/globe_painter.dart' show reachName;
+import '../letterra/close_up.dart' show kCloseUpMaxZoom;
+import '../letterra/globe_painter.dart';
+import '../letterra/globe_view.dart';
+import '../letterra/planet_data.dart';
+import '../letterra/something_to_find.dart';
+import '../letterra/street.dart';
+import '../players/players.dart';
 import '../letterra/gold_star.dart';
 import '../letterra/planet.dart';
 import '../letterra/port.dart';
@@ -25,13 +31,16 @@ import '../game/grid_providers.dart';
 import '../game/word_landing.dart' show startCellProvider, wordCheckProvider;
 import '../game/word_runs.dart';
 import '../online/family_online_controller.dart';
+import 'family_online_screens.dart' show FamilyOnlineScreen;
+import 'family_screens.dart' show FamilyScreen, VisitVillageScreen;
 import 'helping_screens.dart' show showGiftsArrived;
+import 'planet_bottom.dart';
 import '../portfolio/portfolio_controller.dart';
 import '../stats/mode_stats_controller.dart';
 import '../village/bridge_transform.dart';
 import '../village/discovery_journal_view.dart';
-import '../village/iso_math.dart';
-import '../village/iso_village_view.dart';
+import '../village/village_layout.dart';
+import '../village/words_camera.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
@@ -61,7 +70,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum _ViewMode { words, village }
+enum _ViewMode { words, planet }
 
 // Infinite Estate / Village Builder: an endless-feeling session on a large
 // (500x500, pannable/zoomable) board -- not literally unbounded, but big
@@ -86,7 +95,19 @@ enum _ViewMode { words, village }
 // growth since the last cash-out into currency/XP and lets the player
 // leave; the village itself is never reset.
 class InfiniteEstateScreen extends StatelessWidget {
-  const InfiniteEstateScreen({super.key, this.openVillagers = false, this.focusCell});
+  const InfiniteEstateScreen({
+    super.key,
+    this.openVillagers = false,
+    this.focusCell,
+    this.startOnPlanet = false,
+    this.planet,
+  });
+
+  /// Open on the planet (a tap on Home's) instead of on Words.
+  final bool startOnPlanet;
+
+  /// Home's planet: the other players' villages, and yours until it has loaded.
+  final ValueListenable<PlanetData?>? planet;
 
   /// Open looking at this board square (planet mode's Show me).
   final int? focusCell;
@@ -128,7 +149,12 @@ class InfiniteEstateScreen extends StatelessWidget {
         ),
         startCellProvider.overrideWith((ref) => null),
       ],
-      child: _InfiniteEstateBody(openVillagers: openVillagers, focusCell: focusCell),
+      child: _InfiniteEstateBody(
+        openVillagers: openVillagers,
+        focusCell: focusCell,
+        startOnPlanet: startOnPlanet,
+        planet: planet,
+      ),
     );
   }
 }
@@ -155,7 +181,10 @@ int scoreForWords(List<String> words) {
 }
 
 class _InfiniteEstateBody extends ConsumerStatefulWidget {
-  const _InfiniteEstateBody({this.openVillagers = false, this.focusCell});
+  const _InfiniteEstateBody({this.openVillagers = false, this.focusCell, this.startOnPlanet = false, this.planet});
+
+  final bool startOnPlanet;
+  final ValueListenable<PlanetData?>? planet;
 
   final int? focusCell;
 
@@ -166,14 +195,14 @@ class _InfiniteEstateBody extends ConsumerStatefulWidget {
 }
 
 class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
-    with WidgetsBindingObserver
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin
     implements VillagerHost {
   int _score = 0;
   // Score value already paid out as currency/XP -- End Session only
   // rewards growth past this, so re-visiting an unchanged village and
   // ending again doesn't re-pay the same structures.
   int _lastCashedOutScore = 0;
-  _ViewMode _viewMode = _ViewMode.words;
+  late _ViewMode _viewMode = widget.startOnPlanet ? _ViewMode.planet : _ViewMode.words;
   List<BoardStructure> _structures = [];
   bool _computingStructures = false;
 
@@ -258,15 +287,24 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // transform (see bridge_transform.dart) -- it's only known once that
   // area has actually been laid out, hence nullable.
   final _transformController = TransformationController();
-  // Village view has its own camera (its content is the angled map).
-  final _villageTransform = TransformationController();
-  bool _villageCentered = false;
-  static const _isoGrid =
-      IsoGrid(boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
-  // Rebuilt only when the board or the buildings change.
-  VillageScene? _scene;
-  List<String?>? _sceneBoard;
-  List<BoardStructure>? _sceneStructures;
+  // The planet (spec-22): made afresh each time it opens, looking at
+  // [_planetCell] (null: the whole planet).
+  GlobalKey<GlobeViewState> _globe = GlobalKey<GlobeViewState>();
+  int? _planetCell;
+  double _planetZoom = 1;
+  // Flying down to another village, or a new building landing.
+  bool _planetBusy = false;
+  PlanetData? _planetData;
+  List<Object?> _planetKey = const [];
+  List<GroundMark> _planetMarks = const [];
+  // A new building dropping into place.
+  ({List<int> cells, double t})? _drop;
+  late final AnimationController _dropAnim;
+  // Where villagers may walk, worked out again only when the board or the
+  // buildings change.
+  Set<int>? _walkable;
+  List<String?>? _walkBoard;
+  List<BoardStructure>? _walkStructures;
   Map<String, SpriteMeta> _spriteMeta = const {};
   // Every valid word on the board (repeats included), for tap cards.
   List<WordRun> _wordRuns = const [];
@@ -286,7 +324,6 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   int _looseNote = 0;
   // The word whose card is open, lit up on the map.
   Set<int> _highlight = const {};
-  BoardStructure? _highlightBuilding;
   Size? _boardViewportSize;
   // The board is far too large to show all at once, so the very first
   // frame instead centers the view on the village's origin (the board's
@@ -300,6 +337,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   @override
   void initState() {
     super.initState();
+    _dropAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
     initSpellCheck();
     WidgetsBinding.instance.addObserver(this);
     _islandMap = IslandMap.letterra(seed: _mapSeed, slot: _slot);
@@ -309,34 +347,14 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     }).catchError((_) {});
   }
 
-  VillageScene _villageScene() {
+  Set<int> _walkableNow() {
     final board = ref.read(gridGameControllerProvider).boardCells;
-    if (_scene == null ||
-        !identical(board, _sceneBoard) ||
-        !identical(_structures, _sceneStructures) ||
-        !identical(_scene!.spriteMeta, _spriteMeta)) {
-      _sceneBoard = board;
-      _sceneStructures = _structures;
-      _scene = VillageScene(
-        grid: _isoGrid,
-        boardCells: board,
-        structures: _structures,
-        spriteMeta: _spriteMeta,
-      );
+    if (_walkable == null || !identical(board, _walkBoard) || !identical(_structures, _walkStructures)) {
+      _walkBoard = board;
+      _walkStructures = _structures;
+      _walkable = walkableCells(board, _structures);
     }
-    return _scene!;
-  }
-
-  // The first time Village view shows, center it on the middle of all the
-  // letters (the board center if there are none).
-  void _centerVillageIfNeeded(Size viewportSize, VillageScene scene) {
-    if (_villageCentered) return;
-    _villageCentered = true;
-    final center = scene.lettersCenter(emptyCell: _harborIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _villageTransform.value = isoTransformCenteredOn(center.r, center.c, viewportSize, 1.0, _isoGrid);
-    });
+    return _walkable!;
   }
 
   @override
@@ -344,7 +362,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     WidgetsBinding.instance.removeObserver(this);
     _saveTidiedForLeaving();
     _transformController.dispose();
-    _villageTransform.dispose();
+    _dropAnim.dispose();
     _bookNotifier.dispose();
     _walkers.dispose();
     super.dispose();
@@ -514,7 +532,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // Tells the walkers who lives where and which slabs they may use.
   void _syncWalkers() {
     if (!mounted) return;
-    _walkers.sync({for (final v in _book.villagers) v.id: v.cell}, _villageScene().walkable);
+    _walkers.sync({for (final v in _book.villagers) v.id: v.cell}, _walkableNow());
   }
 
   // The rings the player can already see (fog cleared somewhere), for wishes
@@ -640,23 +658,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   }
 
   // Outlines through the fog for everything not found yet, and villagers not
-  // met yet (they wave once you can see them).
-  List<SpecialMarker> _markers() => [
+  // met yet.
+  List<GroundMark> _markers() => [
         for (final sp in _islandMap.specials)
           if (sp.kind == SpecialKind.villager ? !_book.isMet(sp.id) : !_foundSpecials.contains(sp.id))
-            SpecialMarker(sp.cell, sp.kind),
+            GroundMark(sp.cell, specialMarkerColor(sp.kind), seen: _fog.canSee(sp.cell)),
       ];
 
   List<VillagerSprite> _sprites() => [
         for (final v in _book.villagers) VillagerSprite(id: v.id, name: v.name, best: v.bestFriend),
-      ];
-
-  List<VillagerSpot> _villagerSpots() => [
-        for (final v in _book.villagers)
-          VillagerSpot(v.id, () {
-            final p = _walkers.positionOf(v.id);
-            return _isoGrid.ground(p.r, p.c) - const Offset(0, 6);
-          }()),
       ];
 
   // Words view: a villager stands still on an empty square beside their word.
@@ -731,11 +741,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       _centerWordsOn(index, transformScale(_transformController.value));
       return;
     }
-    final viewport = _boardViewportSize;
-    if (viewport == null) return;
-    const bw = InfiniteEstateScreen.boardSize;
-    _villageTransform.value =
-        isoTransformCenteredOn(index ~/ bw, index % bw, viewport, transformScale(_villageTransform.value), _isoGrid);
+    _globe.currentState?.walkTo(index, math.max(kStreetZoom + 2, _globe.currentState!.zoom));
   }
 
   Future<void> _loadSavedVillage() async {
@@ -1071,7 +1077,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         _looseCells = offStar.isEmpty ? board.looseCells : {...board.looseCells, ...offStar};
         _offStarCells = offStar;
         _strayCells = board.strayCells;
-        _scene = null;
+        _walkable = null;
         if (newlyDiscovered.isNotEmpty) {
           _discoveredWords = {..._discoveredWords, ...newlyDiscovered};
         }
@@ -1175,11 +1181,12 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   // spec-18: the band under the centre of the view, with its word length.
   Widget _bandChip(Size viewport) {
     const bw = InfiniteEstateScreen.boardSize;
-    final cell = _viewMode == _ViewMode.words
-        ? centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
-            boardWidth: bw, boardHeight: bw)
-        : centerCellOfIsoView(_villageTransform.value, viewport, _isoGrid);
-    final index = cell.r * bw + cell.c;
+    final cell = centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
+        boardWidth: bw, boardHeight: bw);
+    return _bandChipAt(cell.r * bw + cell.c);
+  }
+
+  Widget _bandChipAt(int index) {
     final text = bandChipText(
       _islandMap.bandAtIndex(index),
       ref.read(settingsProvider).wordLevel,
@@ -1226,21 +1233,59 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     final title = names.length == 1
         ? 'You built a ${names.first}!'
         : 'You built a ${names.sublist(0, names.length - 1).join(', a ')} and a ${names.last}!';
-    final card = _spriteMeta[defs.first.word]?.cardPath;
     final what = names.length == 1 ? defs.first.description : null;
-    _rewardsShowing = showRewardMoment(
-      context,
-      ribbon: 'New building!',
-      title: title,
-      message: [
-        if (what != null) what,
-        'Tap ${names.length == 1 ? 'it' : 'them'} in Village view to see more.',
-      ].join('\n'),
-      coins: coins,
-      picture: card == null ? null : Image.asset(card, fit: BoxFit.contain, excludeFromSemantics: true),
-      buttonLabel: 'Hooray!',
-      sound: Sfx.building,
+    _rewardsShowing = _newBuildingMoment(
+      defs.first.word,
+      () => showRewardMoment(
+        context,
+        ribbon: 'New building!',
+        title: title,
+        message: [
+          if (what != null) what,
+          'Tap ${names.length == 1 ? 'it' : 'them'} on the planet to see more.',
+        ].join('\n'),
+        coins: coins,
+        buttonLabel: 'Hooray!',
+        sound: Sfx.building,
+        lookThrough: true,
+      ),
     );
+  }
+
+  // The planet's close-up, the building dropping into place beside its word,
+  // then [moment] over it, and back to Words just as it was. The coins are
+  // already paid, however this ends.
+  Future<void> _newBuildingMoment(String word, Future<void> Function() moment) async {
+    final built = _structures.where((b) => b.def.word == word).toList();
+    if (built.isEmpty) return moment();
+    final cells = built.last.ordered;
+    final data = _livePlanet();
+    final home = homeOf(data.villages.first, cells)?.cell ?? built.last.middle;
+    final reduce = ref.read(settingsProvider).reduceMotion;
+    final fromWords = _viewMode == _ViewMode.words;
+    setState(() {
+      _planetBusy = true;
+      if (fromWords) _showPlanetAt(home, reduce ? kCloseUpMaxZoom : kStreetZoom);
+      _drop = reduce ? null : (cells: cells, t: 0);
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await _globe.currentState?.walkTo(home, kCloseUpMaxZoom, milliseconds: 900);
+    if (!mounted) return;
+    if (!reduce) {
+      void move() => setState(() => _drop = (cells: cells, t: Curves.bounceOut.transform(_dropAnim.value)));
+      _dropAnim.addListener(move);
+      await _dropAnim.forward(from: 0).orCancel.catchError((_) {});
+      _dropAnim.removeListener(move);
+      if (!mounted) return;
+    }
+    setState(() => _drop = null);
+    await moment();
+    if (!mounted) return;
+    setState(() {
+      _planetBusy = false;
+      if (fromWords) _viewMode = _ViewMode.words;
+    });
   }
 
   // Swap letters: pinned letters stay, the rest are traded for balanced
@@ -1267,25 +1312,24 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     return true;
   }
 
-  // Under the map in Village view (you can't place letters there): a hint
-  // line, or the first-building helper until there's a building.
-  Widget _villageFooter() {
-    if (_structures.isNotEmpty) {
-      return Text(
-        'Every word you spell is here. Tap one to see what it means.',
-        style: WText.label,
-        textAlign: TextAlign.center,
-      );
-    }
-    final grid = ref.watch(gridGameControllerProvider);
+  // Until there's a building: which one you are nearest to.
+  Widget _firstBuildingHelper(int cell) {
+    final grid = ref.read(gridGameControllerProvider);
     final closest = closestBuilding(grid.rackCells, grid.boardCells);
     return FirstBuildingHelper(
       def: closest.def,
       have: closest.have,
       haveEach: closest.haveEach,
       spritePath: _spriteMeta[closest.def.word]?.spritePath,
-      onGoToWords: () => _switchView(_ViewMode.words),
+      onGoToWords: () => _openWordsAt(cell),
     );
+  }
+
+  // The same in one line, for Words.
+  String _firstBuildingText() {
+    final grid = ref.watch(gridGameControllerProvider);
+    final closest = closestBuilding(grid.rackCells, grid.boardCells);
+    return 'Build ${closest.def.word}: ${closest.have} of ${closest.def.word.length} letters';
   }
 
   void _drawFromWell() {
@@ -1303,7 +1347,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     if (_viewCentered) return;
     _viewCentered = true;
     // The middle of all the letters (the board center if there are none).
-    final center = _villageScene().lettersCenter(emptyCell: _harborIndex);
+    final center = lettersCenter(ref.read(gridGameControllerProvider).boardCells, InfiniteEstateScreen.boardSize,
+        emptyCell: _harborIndex);
     final centerIndex = widget.focusCell ?? center.r * InfiniteEstateScreen.boardSize + center.c;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1317,30 +1362,28 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
     });
   }
 
-  // Switching views keeps you looking at the same spot, at the same zoom.
-  void _switchView(_ViewMode mode) {
-    if (mode == _viewMode) return;
+  // Words' Planet button: down in your streets, at the same spot.
+  void _openPlanet() {
     final viewport = _boardViewportSize;
-    if (viewport == null) {
-      setState(() => _viewMode = mode);
-      return;
+    var cell = _harborIndex;
+    if (viewport != null) {
+      const bw = InfiniteEstateScreen.boardSize;
+      final c = centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
+          boardWidth: bw, boardHeight: bw);
+      cell = c.r * bw + c.c;
     }
-    if (mode == _ViewMode.village) {
-      final cell = centerCellOfFlatView(_transformController.value, viewport, InfiniteEstateScreen.cellSize,
-          boardWidth: InfiniteEstateScreen.boardSize, boardHeight: InfiniteEstateScreen.boardSize);
-      final scale = transformScale(_transformController.value);
-      _villageCentered = true;
-      setState(() => _viewMode = mode);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _villageTransform.value =
-            isoTransformCenteredOn(cell.r, cell.c, _boardViewportSize ?? viewport, scale, _isoGrid);
-      });
-    } else {
-      final cell = centerCellOfIsoView(_villageTransform.value, viewport, _isoGrid);
-      _centerWordsOn(cell.r * InfiniteEstateScreen.boardSize + cell.c, transformScale(_villageTransform.value));
-    }
+    setState(() => _showPlanetAt(cell, kCloseUpMaxZoom));
   }
+
+  void _showPlanetAt(int cell, double zoom) {
+    _globe = GlobalKey<GlobeViewState>();
+    _planetCell = cell;
+    _planetZoom = zoom;
+    _viewMode = _ViewMode.planet;
+  }
+
+  // Build: Words at the square in the middle of the planet's view.
+  void _openWordsAt(int cell) => _centerWordsOn(cell, transformScale(_transformController.value));
 
   // Switches to Words view centered on board cell [index].
   void _centerWordsOn(int index, double scale) {
@@ -1361,23 +1404,229 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   }
 
   void _showInWords(List<int> positions) {
-    _centerWordsOn(positions[(positions.length - 1) ~/ 2], transformScale(_villageTransform.value));
+    _openWordsAt(positions[(positions.length - 1) ~/ 2]);
   }
 
   Future<String?> _loadDefinition(String word) => ref.read(definitionServiceProvider).getDefinition(word);
 
-  void _onVillageTap(Offset contentPoint) {
-    final hit = hitTestVillage(contentPoint, _villageScene(), villagers: _villagerSpots());
+  // ── The planet (spec-22) ──────────────────────────────────────────────────
+
+  // The planet with your village as it is right now. The same object until
+  // something on it changes, so nothing is worked out or painted again.
+  PlanetData _livePlanet() {
+    final board = ref.read(gridGameControllerProvider).boardCells;
+    final others = widget.planet?.value?.others ?? const <PlanetVillage>[];
+    final key = [board, _structures, _looseCells, _fog, _foundSpecials, _book, others];
+    var same = _planetData != null && key.length == _planetKey.length;
+    for (var i = 0; same && i < key.length; i++) {
+      same = identical(key[i], _planetKey[i]);
+    }
+    if (same) return _planetData!;
+    _planetKey = key;
+    _planetMarks = _markers();
+    final letters = {
+      for (var i = 0; i < board.length; i++)
+        if (board[i] != null) i: board[i]!,
+    };
+    return _planetData = PlanetData.of(
+      PlanetVillage(
+        player: ref.read(playersProvider).current,
+        slot: _slot,
+        letters: letters,
+        runs: [for (final b in _structures) (word: b.def.word, cells: b.ordered)],
+        fog: _fog,
+        loose: _looseCells,
+      ),
+      others,
+      thingsToFind(
+        map: _islandMap,
+        count: _shrines.contains(ShrineKind.sight) ? 3 : 1,
+        unfound: [for (final m in _planetMarks) m.cell],
+        letters: letters.keys,
+        level: ref.read(settingsProvider).wordLevel,
+      ),
+    );
+  }
+
+  void _onStreetTap(Offset at, GlobeProjection proj, PlanetData data) {
+    final hit = streetHit(at, proj, data.villages.first, villagers: {
+      for (final v in _book.villagers) v.id: _walkers.positionOf(v.id),
+    });
     switch (hit) {
-      case VillagerHit(:final id):
+      case StreetVillager(:final id):
         openVillagerCard(id);
-      case BuildingHit(:final structure):
-        _openBuildingCard(structure);
-      case CellHit(:final index):
-        _openWordCard(index);
-      case NoHit():
+      case StreetBuilding(:final run):
+        if (run < _structures.length) _openBuildingCard(_structures[run]);
+      case StreetLetter(:final cell):
+        _openWordCard(cell);
+      case null:
         break;
     }
+  }
+
+  // Your own village: down to the streets, and stay. Another player's: fly
+  // down and look.
+  Future<void> _dive(PlanetData data, int slot) async {
+    if (_planetBusy) return;
+    setState(() => _planetBusy = true);
+    final reduce = ref.read(settingsProvider).reduceMotion;
+    if (!reduce) ref.read(soundProvider).play(Sfx.whoosh);
+    await _globe.currentState?.diveTo(slot);
+    if (!mounted) return;
+    final player = data.players[slot];
+    if (slot != data.mySlot && player != null) {
+      await Navigator.of(context).push(PageRouteBuilder<void>(
+        transitionDuration: Duration(milliseconds: reduce ? 0 : 280),
+        reverseTransitionDuration: Duration(milliseconds: reduce ? 0 : 220),
+        pageBuilder: (_, __, ___) => VisitVillageScreen(player: player),
+        transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+      ));
+      if (!mounted) return;
+      _globe.currentState?.showWhole(slot);
+    }
+    setState(() => _planetBusy = false);
+  }
+
+  // A waiting shore: room for family, and the way to the family page.
+  Future<void> _roomForFamily() => showVillageSheet<void>(
+        context,
+        Builder(
+          builder: (sheetContext) => RoomForFamilyCard(onInvite: () {
+            Navigator.of(sheetContext).pop();
+            final online = ref.read(familyOnlineProvider).stage == OnlineStage.member;
+            Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => online ? const FamilyOnlineScreen() : const FamilyScreen(),
+            ));
+          }),
+        ),
+      );
+
+  // Something to find: fly there, then Words at that square.
+  Future<void> _showFind(PlanetData data, int cell) async {
+    if (_planetBusy) return;
+    setState(() => _planetBusy = true);
+    if (!ref.read(settingsProvider).reduceMotion) {
+      ref.read(soundProvider).play(Sfx.whoosh);
+      await _globe.currentState?.diveTo(data.mySlot, cell: cell);
+      if (!mounted) return;
+    }
+    _planetBusy = false;
+    _openWordsAt(cell);
+  }
+
+  Widget _planetPage() {
+    final reduce = ref.watch(settingsProvider.select((st) => st.reduceMotion));
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: wordlerOverlayStyle,
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        backgroundColor: kGlobeSky,
+        body: AnimatedBuilder(
+          animation: widget.planet ?? _bookNotifier,
+          builder: (context, _) {
+            final data = _restoring ? widget.planet?.value : _livePlanet();
+            if (data == null) return const Center(child: CircularProgressIndicator());
+            final text = MediaQuery.textScalerOf(context).scale(1);
+            final low = MediaQuery.paddingOf(context).bottom;
+            final helper = !_restoring && _structures.isEmpty;
+            return IgnorePointer(
+              ignoring: _planetBusy,
+              child: GlobeView(
+                key: _globe,
+                villages: data.villages,
+                takenSlots: data.takenSlots,
+                focusSlot: data.mySlot,
+                isHushed: data.isHushed,
+                reduceMotion: reduce,
+                alwaysPan: true,
+                closeUp: true,
+                initialCell: _planetCell,
+                initialZoom: _planetZoom,
+                showTags: !_planetBusy || _drop == null,
+                marks: _restoring ? const [] : _planetMarks,
+                highlight: _highlight,
+                starCell: _starStart ? _starCell : null,
+                starQuiet: _starDone,
+                drop: _drop,
+                showZoomButtons: !_planetBusy,
+                zoomButtonsBottomFor: (zoom) =>
+                    low +
+                    (zoom >= kBuildZoom
+                        ? (helper ? 110 + 110 * text : 84)
+                        : data.find == null
+                            ? 84
+                            : 120 + 74 * text),
+                glowCells: _planetBusy ? const [] : [for (final f in data.finds) f.cell],
+                onGlowTap: (cell) => _showFind(data, cell),
+                onVillageTap: (slot) => _dive(data, slot),
+                onEmptyHarborTap: _restoring ? null : (_) => _roomForFamily(),
+                onStreetTap: _restoring ? (_, __) {} : (at, proj) => _onStreetTap(at, proj, data),
+                overlay: (proj, cell) => [
+                  if (!_restoring && proj.zoom >= kStreetZoom)
+                    Positioned.fill(child: StreetVillagers(proj: proj, walkers: _walkers, sprites: _sprites())),
+                  if (!_planetBusy) _planetControls(data, proj.zoom, cell, helper),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _planetControls(PlanetData data, double zoom, int cell, bool helper) {
+    final near = zoom >= kBuildZoom;
+    return Positioned.fill(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(WSize.screenPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                ChunkyIconButton(
+                  icon: Icons.arrow_back,
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                Expanded(
+                  child: near && !_restoring
+                      ? Center(child: FittedBox(fit: BoxFit.scaleDown, child: _bandChipAt(cell)))
+                      : Text(
+                          kPlanetName,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          style: WText.heading.copyWith(fontSize: 28, color: WColors.ink),
+                        ),
+                ),
+                const SizedBox(width: WSize.tapTarget),
+              ]),
+              const Spacer(),
+              if (!near)
+                PlanetBottom(
+                  find: data.find,
+                  onFindMe: () => _globe.currentState?.flyHome(data.mySlot),
+                  onTurn: () => _globe.currentState?.turnTo(data.find!.cell),
+                  onShow: () => _showFind(data, data.find!.cell),
+                )
+              else if (helper)
+                _firstBuildingHelper(cell)
+              else if (!_restoring)
+                ChunkyButton(
+                  key: const ValueKey('planet-build'),
+                  label: 'Build',
+                  icon: Icons.grid_view_rounded,
+                  kind: ChunkyKind.mode,
+                  modeColor: WColors.sun,
+                  size: ChunkySize.big,
+                  expand: true,
+                  onPressed: () => _openWordsAt(cell),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   BuildingAbility? _abilityFor(MagicWordDef def, BuildContext sheetContext) {
@@ -1408,10 +1657,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   }
 
   Future<void> _openBuildingCard(BoardStructure structure) async {
-    setState(() {
-      _highlight = structure.positions;
-      _highlightBuilding = structure;
-    });
+    setState(() => _highlight = structure.positions);
     await showVillageSheet<void>(
       context,
       Builder(
@@ -1427,12 +1673,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
         ),
       ),
     );
-    if (mounted) {
-      setState(() {
-        _highlight = const {};
-        _highlightBuilding = null;
-      });
-    }
+    if (mounted) setState(() => _highlight = const {});
   }
 
   Future<void> _openWordCard(int index) async {
@@ -1572,7 +1813,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
   @override
   Widget build(BuildContext context) {
     // Recompute which magic words are currently built, and re-save, any
-    // time the board/rack/pool changes -- keeps Village view in sync and
+    // time the board/rack/pool changes -- keeps the planet in sync and
     // keeps the persisted village current without the player needing to
     // press anything or remember to save before leaving.
     ref.listen(gridGameControllerProvider, (previous, next) {
@@ -1585,6 +1826,8 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
       }
       if (!_restoring) _saveVillage();
     });
+
+    if (_viewMode == _ViewMode.planet) return _planetPage();
 
     if (_restoring) {
       return const WordlerScaffold(
@@ -1618,9 +1861,15 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                     ),
                     const SizedBox(width: WSize.gap2),
                     Expanded(
-                      child: _ViewToggle(
-                        mode: _viewMode,
-                        onChanged: _switchView,
+                      child: ChunkyButton(
+                        key: const ValueKey('words-planet'),
+                        label: 'Planet',
+                        icon: Icons.public,
+                        kind: ChunkyKind.mode,
+                        modeColor: WColors.sun,
+                        size: ChunkySize.small,
+                        expand: true,
+                        onPressed: _openPlanet,
                       ),
                     ),
                     const SizedBox(width: WSize.gap2),
@@ -1651,10 +1900,11 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                   onWell: _drawFromWell,
                   showBridge: _hasStructure('BRIDGE') && _foundPlaces().isNotEmpty,
                   onBridge: _openBridgeJumpMenu,
-                  buildingCount: _viewMode == _ViewMode.village ? _structures.length : null,
+                  buildingCount: _structures.length,
+                  firstBuilding: _structures.isEmpty ? _firstBuildingText() : null,
                   // Explains the stripes until there are a few buildings.
                   // Worked out from the live structures, not saved.
-                  showStripeHint: _viewMode == _ViewMode.words && _structures.length < 3,
+                  showStripeHint: _structures.length == 1,
                 ),
               ),
               Expanded(
@@ -1673,53 +1923,25 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                       return Stack(
                         children: [
                           Positioned.fill(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: _viewMode == _ViewMode.words
-                                  ? GridBoardView(
-                                      key: const ValueKey('words'),
-                                      theme: _estateTheme,
-                                      // Same zoom feel as every other mode's board;
-                                      // the generous pan boundary past the lazily-
-                                      // built board's own huge extent keeps panning
-                                      // to an edge from ever feeling like hitting a
-                                      // wall.
-                                      minScale: 0.2,
-                                      maxScale: 2.5,
-                                      boundaryMargin: const EdgeInsets.all(400),
-                                      transformController: _transformController,
-                                      cellSize: InfiniteEstateScreen.cellSize,
-                                      stripes: stripes,
-                                      // spec-15: fog overlay and drop gate.
-                                      cellOverlay: _fogOverlay,
-                                      canDropAt: (i) => _fog.canSee(i) && !_islandMap.isSeaIndex(i),
-                                      cellMarker: (i) => _wordsMarker(i, standing),
-                                      looseCells: _looseCells,
-                                      onLooseTap: _openWordCard,
-                                    )
-                                  : Builder(builder: (context) {
-                                      final scene = _villageScene();
-                                      _centerVillageIfNeeded(constraints.biggest, scene);
-                                      return IsoVillageView(
-                                        key: const ValueKey('village'),
-                                        scene: scene,
-                                        transformController: _villageTransform,
-                                        highlight: _highlight,
-                                        highlightBuilding: _highlightBuilding,
-                                        onTapContent: _onVillageTap,
-                                        minScale: 0.2,
-                                        maxScale: 2.5,
-                                        boundaryMargin: const EdgeInsets.all(400),
-                                        fog: _fog,
-                                        islandMap: _islandMap,
-                                        villagers: _sprites(),
-                                        walkers: _walkers,
-                                        markers: _markers(),
-                                        port: _portNow(),
-                                        starCell: _starStart ? _starCell : null,
-                                        starQuiet: _starDone,
-                                      );
-                                    }),
+                            child: GridBoardView(
+                              key: const ValueKey('words'),
+                              theme: _estateTheme,
+                              // Same zoom feel as every other mode's board; the
+                              // generous pan boundary past the lazily-built
+                              // board's own huge extent keeps panning to an edge
+                              // from ever feeling like hitting a wall.
+                              minScale: 0.2,
+                              maxScale: 2.5,
+                              boundaryMargin: const EdgeInsets.all(400),
+                              transformController: _transformController,
+                              cellSize: InfiniteEstateScreen.cellSize,
+                              stripes: stripes,
+                              // spec-15: fog overlay and drop gate.
+                              cellOverlay: _fogOverlay,
+                              canDropAt: (i) => _fog.canSee(i) && !_islandMap.isSeaIndex(i),
+                              cellMarker: (i) => _wordsMarker(i, standing),
+                              looseCells: _looseCells,
+                              onLooseTap: _openWordCard,
                             ),
                           ),
                           if (_starActive)
@@ -1730,7 +1952,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
                             bottom: 8,
                             child: IgnorePointer(
                               child: ValueListenableBuilder<Matrix4>(
-                                valueListenable: _viewMode == _ViewMode.words ? _transformController : _villageTransform,
+                                valueListenable: _transformController,
                                 builder: (context, _, __) => _bandChip(constraints.biggest),
                               ),
                             ),
@@ -1743,9 +1965,7 @@ class _InfiniteEstateBodyState extends ConsumerState<_InfiniteEstateBody>
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(WSize.gamePadding, WSize.gap3, WSize.gamePadding, WSize.gamePadding),
-                child: _viewMode == _ViewMode.village
-                    ? _villageFooter()
-                    : Column(
+                child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // The rack sized to its content (square tiles, every row
@@ -1837,76 +2057,6 @@ class _StarHint extends StatelessWidget {
       );
 }
 
-/// Words / Village: a soil track; the selected side is sun-filled with a
-/// check mark, so which view you're in is never in doubt.
-class _ViewToggle extends StatelessWidget {
-  const _ViewToggle({required this.mode, required this.onChanged});
-
-  final _ViewMode mode;
-  final ValueChanged<_ViewMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget side(_ViewMode value, String label) {
-      final selected = mode == value;
-      return Expanded(
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: '$label view',
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onChanged(value),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              alignment: Alignment.center,
-              // Keeps the two labels apart when big text shrinks them.
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              decoration: BoxDecoration(
-                color: selected ? WColors.sun : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: selected ? Border.all(color: WColors.ink, width: WSize.outlineSmall) : null,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (selected) ...[
-                      const Icon(Icons.check, size: 18, color: WColors.ink),
-                      const SizedBox(width: 4),
-                    ],
-                    Text(label, style: WText.button.copyWith(color: selected ? WColors.ink : WColors.tile)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      height: WSize.tapTarget - WSize.lip,
-      margin: const EdgeInsets.only(bottom: WSize.lip),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: WColors.soil,
-        border: Border.all(color: WColors.ink, width: WSize.outline),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: wLip(WSize.lip),
-      ),
-      child: Row(
-        children: [
-          side(_ViewMode.words, 'Words'),
-          side(_ViewMode.village, 'Village'),
-        ],
-      ),
-    );
-  }
-}
-
 // The row under the top bar: village score plus every structure ability
 // and the Journal, as pill chips. A Wrap (not a Row) so a narrow phone or
 // a large system text size flows onto a second line instead of
@@ -1928,6 +2078,7 @@ class _VillageActionBar extends StatelessWidget {
     required this.showBridge,
     required this.onBridge,
     this.buildingCount,
+    this.firstBuilding,
     this.showStripeHint = false,
   });
 
@@ -1947,8 +2098,9 @@ class _VillageActionBar extends StatelessWidget {
   final VoidCallback onWell;
   final bool showBridge;
   final VoidCallback onBridge;
-  // Village view only.
   final int? buildingCount;
+  // Until there's a building: the one you are nearest to.
+  final String? firstBuilding;
   final bool showStripeHint;
 
   @override
@@ -1965,11 +2117,12 @@ class _VillageActionBar extends StatelessWidget {
           badgeColor: WColors.sun,
           tooltip: 'Level ${lvInfo.level}: ${lvInfo.xpIntoLevel} of ${lvInfo.xpForNextLevel} XP',
         ),
-        if (buildingCount != null)
+        // The Well's and Bridge's own chips take its room (two rows at most).
+        if (buildingCount != null && !(showWell && showBridge))
           PillChip(
             icon: Icons.house,
             value: '$buildingCount',
-            label: buildingCount == 1 ? 'building' : 'buildings',
+            tooltip: buildingCount == 1 ? '1 building' : '$buildingCount buildings',
             badgeColor: WColors.leaf,
           ),
         PillChip(
@@ -1987,6 +2140,7 @@ class _VillageActionBar extends StatelessWidget {
             tooltip: 'Your villagers',
             onTap: onVillagers,
           ),
+        if (firstBuilding != null) PillChip(icon: Icons.construction, value: firstBuilding!, badgeColor: WColors.leaf),
         if (showStripeHint)
           const PillChip(icon: Icons.horizontal_rule, value: 'Stripe = building', badgeColor: WColors.leaf),
         if (showWell)

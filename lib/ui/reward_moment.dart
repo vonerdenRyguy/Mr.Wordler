@@ -28,12 +28,13 @@ Future<void> showRewardMoment(
   String? ribbon,
   String buttonLabel = 'Collect',
   Sfx sound = Sfx.reward,
+  bool lookThrough = false,
 }) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierLabel: title,
-    barrierColor: Colors.black.withOpacity(0.55),
+    barrierColor: Colors.black.withOpacity(lookThrough ? 0.12 : 0.55),
     transitionDuration: const Duration(milliseconds: 180),
     transitionBuilder: (context, animation, _, child) => FadeTransition(opacity: animation, child: child),
     pageBuilder: (context, _, __) => RewardMoment(
@@ -45,6 +46,7 @@ Future<void> showRewardMoment(
       ribbon: ribbon,
       buttonLabel: buttonLabel,
       sound: sound,
+      lookThrough: lookThrough,
     ),
   );
 }
@@ -60,7 +62,11 @@ class RewardMoment extends ConsumerStatefulWidget {
     this.ribbon,
     this.buttonLabel = 'Collect',
     this.sound = Sfx.reward,
+    this.lookThrough = false,
   });
+
+  /// The card sits at the bottom, so what's behind it can be seen.
+  final bool lookThrough;
 
   final String title;
   final String? word;
@@ -201,7 +207,8 @@ class _RewardMomentState extends ConsumerState<RewardMoment> with TickerProvider
                   ),
                 ),
               ),
-            Center(
+            Align(
+              alignment: widget.lookThrough ? Alignment.bottomCenter : Alignment.center,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(WSize.gap5),
                 child: AnimatedBuilder(

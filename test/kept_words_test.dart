@@ -81,18 +81,14 @@ void main() {
     expect((json['keptRuns'] as List).single['w'], 'WELL');
 
     // The building is still there: one building, as before the update.
-    await tester.tap(find.bySemanticsLabel('Village view'));
-    await tester.pumpAndSettle();
     expect(find.text('1'), findsWidgets);
-    expect(find.text('building'), findsOneWidget);
+    expect(find.byTooltip('1 building'), findsOneWidget);
   });
 
   testWidgets('without being kept (a village already tidied), a bad crossing builds nothing', (tester) async {
     SharedPreferences.setMockInitialValues({_key: jsonEncode(_save(version: 5, tidied: true))});
     await openVillage(tester);
-    await tester.tap(find.bySemanticsLabel('Village view'));
-    await tester.pumpAndSettle();
-    expect(find.text('buildings'), findsOneWidget); // 0 buildings
+    expect(find.byTooltip('0 buildings'), findsOneWidget); // 0 buildings
   });
 
   testWidgets('a big bag shows as a +N chip, the rack stays at 10, and a bag letter swaps in', (tester) async {

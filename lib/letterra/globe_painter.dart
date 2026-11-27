@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import '../explore/fog.dart';
 import '../village/magic_word.dart';
 import '../ui/tokens.dart';
+import 'close_up.dart';
 import 'globe_art.dart';
 import 'planet.dart';
 import 'port.dart';
+import 'port_view.dart' show paintGoldStar;
 
 // Letterra's globe (spec-18, canvas W234 and X252). A true sphere seen in
 // orthographic projection, centred on any point: spin it to see the other
@@ -34,7 +36,11 @@ class GlobeVillage {
     this.color = WColors.sun,
     this.letters = const {},
     this.buildingRuns = const [],
+    this.loose = const {},
   });
+
+  /// Letters not settled into real words yet (spec-17), drawn unsure.
+  final Set<int> loose;
 
   final int slot;
   final String name;
@@ -89,13 +95,17 @@ class GlobeProjection {
     required this.centerLon,
     this.centerLat = 0.42,
     this.zoom = 1.0,
+    bool closeUp = false,
   })  : radius = math.min(size.width, size.height) * 0.46 * zoom,
         cx = size.width / 2,
         _alt = (_e0 - 1) / zoom {
     final t = (((zoom - 1.2) / 4.0).clamp(0.0, 1.0)).toDouble();
     final smooth = t * t * (3 - 2 * t);
-    tilt = 0.95 * smooth;
-    cy = size.height * (0.5 + 0.12 * smooth);
+    // Down at the streets, look down more: ground rather than sky.
+    final u = closeUp ? (((zoom - 4) / 6).clamp(0.0, 1.0)).toDouble() : 0.0;
+    final down = u * u * (3 - 2 * u);
+    tilt = 0.95 * smooth - 0.37 * down;
+    cy = size.height * (0.5 + 0.12 * smooth - 0.08 * down);
     focal = math.min(size.width, size.height) * 0.46 * math.sqrt(_e0 * _e0 - 1);
 
     final sinLat = math.sin(centerLat), cosLat = math.cos(centerLat);
@@ -308,7 +318,24 @@ Set<int> _cellsNearLetters(List<GlobeVillage> villages) {
   };
 }
 
+/// How far down its square a house's foot is.
+const double kHouseRow = 0.3;
+
+/// How far from the planet's middle the top of a letter block is.
+const double kBlockLift = 1 + (math.pi / 2) / kHarborDistance * 0.34;
+
 final _quays = Expando<double>();
+final _homes = Expando<Map<int, ({int cell, double scale})>>();
+
+/// Something not found yet, outlined on the ground close up.
+class GroundMark {
+  const GroundMark(this.cell, this.color, {this.seen = false});
+  final int cell;
+  final Color color;
+
+  /// Whether the land around it is cleared (a stronger outline).
+  final bool seen;
+}
 
 /// A picture standing on the planet, ready to draw.
 class _Stand {
@@ -335,7 +362,34 @@ class GlobePainter extends CustomPainter {
     this.showTags = true,
     this.detail = GlobeDetail.fine,
     this.art,
+    this.closeUp = false,
+    this.marks = const [],
+    this.highlight = const {},
+    this.starCell,
+    this.starQuiet = false,
+    this.drop,
+    this.emptyHarbors = const {},
   });
+
+  /// Harbors nobody lives at yet: drawn as waiting shores (land, a dock and a
+  /// blank flag). Only the picture: [isBay] still refuses tiles there.
+  final Set<int> emptyHarbors;
+
+  /// Close up: outlines of things not found yet, through any Hush.
+  final List<GroundMark> marks;
+
+  /// Close up: letters lit up while their card is open.
+  final Set<int> highlight;
+
+  /// Close up: the gold star's square (quiet once covered).
+  final int? starCell;
+  final bool starQuiet;
+
+  /// A building dropping into place: its word's squares, 0 (up in the air) to 1.
+  final ({List<int> cells, double t})? drop;
+
+  /// Zooming on past the old limit, down to the streets (spec-22 C's test).
+  final bool closeUp;
 
   /// The painted look; null (not loaded, tests) draws the plain one.
   final GlobeArt? art;
@@ -354,7 +408,7 @@ class GlobePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom);
+    final proj = GlobeProjection(size: size, centerLon: centerLon, centerLat: centerLat, zoom: zoom, closeUp: closeUp);
     final outline = proj.silhouette();
     final disc = outline.getBounds();
     canvas.save();
@@ -544,10 +598,13 @@ class GlobePainter extends CustomPainter {
     // What must stay clear: every letter, and a village's little houses.
     final zoomedIn = proj.cellPixels >= 5;
     final near = _cellsNearLetters(villages);
+    // Trees are huge next to a word from space; walking down to the streets
+    // they come to a street's size.
+    final shrink = closeUp ? 1 - 0.62 * ((zoom - 3) / 9).clamp(0.0, 1.0) : 1.0;
     for (final d in globeDecorFor(takenSlots)) {
       final p = _V(d.x, d.y, d.z);
       if (p.dot(proj._eye) < 0.97) continue;
-      final px = pxAt(p) * d.cells;
+      final px = pxAt(p) * d.cells * shrink;
       if (px <= 2) continue;
       final peak = d.sprite == GlobeSprite.peakA || d.sprite == GlobeSprite.peakB || d.sprite == GlobeSprite.peakC;
       if (d.hush) {
@@ -584,7 +641,7 @@ class GlobePainter extends CustomPainter {
         } else {
           const spots = [(4.5, -5.5), (9.5, -1.5), (4.0, 5.0), (10.5, 7.0)];
           final pics = [
-            for (final w in v.buildings.take(4)) _spriteFor(w),
+            for (final w in v.buildings.take(4)) spriteForWord(w),
           ];
           if (pics.isEmpty) pics.add(GlobeSprite.houseGold);
           for (var i = 0; i < pics.length; i++) {
@@ -593,15 +650,45 @@ class GlobePainter extends CustomPainter {
         }
       }
     }
+    // Waiting shores (spec-22 C): a small dock and a blank flag on each harbor
+    // nobody lives at yet.
+    for (final slot in emptyHarbors) {
+      final lon = slotAngle(slot);
+      final unit = zoomedIn ? proj.cellPixels * 5.2 : proj.radius * 0.30;
+      stand((zoomedIn ? -3.4 : -3.0) * _deg, lon, GlobeSprite.port, unit * 0.7);
+      stand((zoomedIn ? -1.6 : 0.6) * _deg, lon + (zoomedIn ? -2.0 : -6) * _deg, GlobeSprite.flagBlank, unit * 0.85);
+    }
+    var houseZ = double.infinity;
     if (zoomedIn) {
+      if (closeUp) _paintGround(canvas, size, proj);
       for (final v in villages) {
-        _paintTiles(canvas, proj, v, proj.cellPixels);
+        if (!closeUp) _paintTiles(canvas, proj, v, proj.cellPixels);
         for (final run in v.buildingRuns) {
           final down = run.cells.length > 1 && run.cells[1] - run.cells[0] == kPlanetBoard;
           final mid = down ? run.cells.first : run.cells[run.cells.length ~/ 2];
           // Behind the word, so no letter is hidden.
-          final s = boardToSphere(mid ~/ kPlanetBoard - 0.9, mid % kPlanetBoard + 0.5);
-          stand(s.lat, s.lon, _spriteFor(run.word), proj.cellPixels * 3.6);
+          var row = mid ~/ kPlanetBoard - 0.9, col = mid % kPlanetBoard + 0.5, size = 1.0;
+          if (closeUp) {
+            final home = homeOf(v, run.cells);
+            if (home == null) continue;
+            row = home.cell ~/ kPlanetBoard + kHouseRow;
+            col = home.cell % kPlanetBoard + 0.5;
+            size = home.scale;
+          }
+          final s = boardToSphere(row, col);
+          final cl = math.cos(s.lat);
+          final at = _V(cl * math.sin(s.lon), math.sin(s.lat), cl * math.cos(s.lon));
+          final before = stands.length;
+          stand(s.lat, s.lon, spriteForWord(run.word), closeUp ? pxAt(at) * kHouseCells * size : proj.cellPixels * 3.6);
+          final falling = drop;
+          if (falling != null && stands.length > before && run.cells.join() == falling.cells.join()) {
+            final st = stands.removeLast();
+            final up = (1 - falling.t) * proj.size.height * 0.5;
+            if (falling.t > 0) {
+              stands.add(_Stand(st.z, st.sprite, st.at.translate(0, -up), st.width, st.lean, st.tint));
+            }
+          }
+          if (closeUp && stands.length > before) houseZ = math.min(houseZ, stands.last.z);
         }
       }
     }
@@ -619,7 +706,19 @@ class GlobePainter extends CustomPainter {
               .createShader(Rect.fromCircle(center: c, radius: r)),
       );
     }
-    _drawStands(canvas, look, stands);
+    if (closeUp && zoomedIn) {
+      // Buildings (and what is further off) first, so no letter is ever hidden.
+      final near = stands.indexWhere((s) => depth(s) < houseZ);
+      final split = near < 0 ? stands.length : near;
+      _drawStands(canvas, look, stands.sublist(0, split));
+      for (final v in villages) {
+        _paintStreet(canvas, size, proj, v);
+      }
+      _drawStands(canvas, look, stands.sublist(split));
+      _paintMarks(canvas, proj);
+    } else {
+      _drawStands(canvas, look, stands);
+    }
     if (showTags) {
       for (final v in villages) {
         final at = proj.harborAt(v.slot);
@@ -628,6 +727,185 @@ class GlobePainter extends CustomPainter {
         _tag(canvas, v.name, spot, v.color);
       }
     }
+  }
+
+  static const _cellRad = (math.pi / 2) / kHarborDistance;
+
+  static _V _point(double row, double col) {
+    final s = boardToSphere(row, col);
+    final cl = math.cos(s.lat);
+    return _V(cl * math.sin(s.lon), math.sin(s.lat), cl * math.cos(s.lon));
+  }
+
+  // Close up: grass and flowers on the ground, then (_paintStreet) every
+  // letter as a raised block. One draw call each, so a big village stays
+  // smooth.
+  void _paintGround(Canvas canvas, Size size, GlobeProjection proj) {
+    const point = _point;
+    const cellRad = _cellRad;
+    final screen = (Offset.zero & size).inflate(40);
+    final bits = ((zoom - 5) / 4).clamp(0.0, 1.0).toDouble();
+    if (bits > 0) {
+      final here = sphereToBoard(proj.centerLat, proj.centerLon);
+      final transforms = <RSTransform>[], rects = <Rect>[];
+      final north = (900 / zoom).clamp(45, 80).round();
+      for (var row = here.row.round() - north; row <= here.row.round() + 22; row++) {
+        for (var col = here.col.round() - 40; col <= here.col.round() + 40; col++) {
+          if (row < 1 || col < 1 || row >= kPlanetBoard - 1 || col >= kPlanetBoard - 1) continue;
+          final hash = (row * 73856093 ^ col * 19349663) & 0x7fffffff;
+          final n = (hash >> 7) % 100;
+          if (n >= 26) continue;
+          final cell = row * kPlanetBoard + col;
+          if (villages.any((v) => v.letters.containsKey(cell))) continue;
+          final band = bandAt(row, col);
+          if (band == Band.deep || isBay(row, col, takenSlots)) continue;
+          final kind = groundBitFor(band, n);
+          if (kind < 0) continue;
+          final p = point(row + 0.2 + (hash % 7) / 10, col + 0.2 + (hash % 5) / 8);
+          final r = proj._projectPoint(p);
+          if (!r.front || !screen.contains(r.p)) continue;
+          final z = (p - proj._eye).dot(proj._f);
+          final width = proj.focal * cellRad / z * 1.05 * bits;
+          if (width < 4) continue;
+          transforms.add(RSTransform.fromComponents(
+            rotation: 0,
+            scale: width / kBitCell,
+            anchorX: kBitCell / 2,
+            anchorY: kBitCell * 0.9,
+            translateX: r.p.dx,
+            translateY: r.p.dy,
+          ));
+          rects.add(Rect.fromLTWH(kind * kBitCell, 0, kBitCell, kBitCell));
+        }
+      }
+      if (transforms.isNotEmpty) {
+        canvas.drawAtlas(groundBits(), transforms, rects, null, null, null, Paint()..filterQuality = FilterQuality.medium);
+      }
+    }
+  }
+
+  void _paintMarks(Canvas canvas, GlobeProjection proj) {
+    bool empty(int cell) => !villages.any((v) => v.letters.containsKey(cell));
+    Path ring(int cell, double r) => Path()
+      ..addPolygon([
+        for (var i = 0; i < 24; i++)
+          proj
+              ._projectPoint(_point(cell ~/ kPlanetBoard + 0.5 + r * math.sin(i * math.pi / 12),
+                  cell % kPlanetBoard + 0.5 + r * math.cos(i * math.pi / 12)))
+              .p,
+      ], true);
+    ({Offset at, double cell})? spot(int cell) {
+      final s = blockSpot(proj, cell ~/ kPlanetBoard + 0.0, cell % kPlanetBoard + 0.0);
+      return s == null || s.cell < 8 || !(Offset.zero & proj.size).inflate(s.cell).contains(s.at) ? null : s;
+    }
+
+    for (final m in marks) {
+      final s = spot(m.cell);
+      if (s == null || !empty(m.cell)) continue;
+      canvas.drawPath(ring(m.cell, 0.3), Paint()..color = m.color.withOpacity(m.seen ? 0.35 : 0.18));
+      canvas.drawPath(
+        ring(m.cell, 0.42),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..color = m.color.withOpacity(m.seen ? 0.95 : 0.5),
+      );
+    }
+    final star = starCell;
+    if (star != null && empty(star)) {
+      if (spot(star) case final s?) paintGoldStar(canvas, s.at, s.cell * 0.8, quiet: starQuiet);
+    }
+    for (final cell in highlight) {
+      final top = blockTop(proj, cell);
+      if (top == null) continue;
+      canvas.drawPath(
+        Path()..addPolygon(top, true),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4
+          ..strokeJoin = StrokeJoin.round
+          ..color = WColors.sun,
+      );
+    }
+  }
+
+  void _paintStreet(Canvas canvas, Size size, GlobeProjection proj, GlobeVillage v) {
+    const point = _point;
+    const cellRad = _cellRad;
+    final screen = (Offset.zero & size).inflate(40);
+    final walls = <int, int>{};
+    for (final run in v.buildingRuns) {
+      for (final c in run.cells) {
+        walls[c] = 1 + run.word.codeUnits.fold<int>(0, (a, b) => a + b) % (kBlockColors.length - 1);
+      }
+    }
+    const lift = kBlockLift;
+    final blocks = <({double z, int cell})>[];
+    for (final cell in v.letters.keys) {
+      final p = point(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+      final r = proj._projectPoint(p);
+      if (!r.front) continue;
+      final z = (p - proj._eye).dot(proj._f);
+      if (!screen.inflate(proj.focal * cellRad / z).contains(r.p)) continue;
+      blocks.add((z: z, cell: cell));
+    }
+    blocks.sort((a, b) => b.z.compareTo(a.z));
+    final pos = <double>[], tex = <double>[];
+    void quad(List<Offset> o, Rect t) {
+      for (final i in const [0, 1, 2, 0, 2, 3]) {
+        pos
+          ..add(o[i].dx)
+          ..add(o[i].dy);
+        tex
+          ..add(i == 0 || i == 3 ? t.left : t.right)
+          ..add(i < 2 ? t.top : t.bottom);
+      }
+    }
+
+    double area(List<Offset> q) {
+      var a = 0.0;
+      for (var i = 0; i < q.length; i++) {
+        final m = q[i], n = q[(i + 1) % q.length];
+        a += m.dx * n.dy - n.dx * m.dy;
+      }
+      return a;
+    }
+
+    for (final b in blocks) {
+      final row = b.cell ~/ kPlanetBoard, col = b.cell % kPlanetBoard;
+      final loose = v.loose.contains(b.cell);
+      final color = loose ? kLooseRow : walls[b.cell] ?? 0;
+      const g = 0.03;
+      // A letter that isn't settled stands a little crooked, as in Words.
+      final k = loose ? 0.07 : 0.0;
+      final base = [
+        point(row + g + k, col + g),
+        point(row + g, col + 1 - g - k),
+        point(row + 1 - g - k, col + 1 - g),
+        point(row + 1 - g, col + g + k),
+      ];
+      final low = [for (final p in base) proj._projectPoint(p).p];
+      final top = [for (final p in base) proj._projectPoint(p * lift).p];
+      final side = Rect.fromLTWH(26 * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(2);
+      final dark = Rect.fromLTWH(27 * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(2);
+      for (var i = 0; i < 4; i++) {
+        final j = (i + 1) % 4;
+        // Seen from outside: next top, this top, this ground, next ground.
+        // Only the sides that face you.
+        final face = [top[j], top[i], low[i], low[j]];
+        if (area(face) > 0) quad(face, i.isEven ? side : dark);
+      }
+      final letter = v.letters[b.cell]!.codeUnitAt(0) - 65;
+      quad(top, Rect.fromLTWH(letter * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell).deflate(1));
+    }
+    if (pos.isEmpty) return;
+    canvas.drawVertices(
+      ui.Vertices.raw(ui.VertexMode.triangles, Float32List.fromList(pos), textureCoordinates: Float32List.fromList(tex)),
+      BlendMode.srcOver,
+      Paint()
+        ..shader = ui.ImageShader(blockSheet(), TileMode.clamp, TileMode.clamp, Matrix4.identity().storage,
+            filterQuality: FilterQuality.medium),
+    );
   }
 
   bool _byHarbor(GlobeDecor d) {
@@ -639,8 +917,13 @@ class GlobePainter extends CustomPainter {
     return false;
   }
 
-  GlobeSprite _spriteFor(String word) => switch (word) {
-        'BARN' || 'FARM' => GlobeSprite.barn,
+  static GlobeSprite spriteForWord(String word) => switch (word) {
+        'BARN' => GlobeSprite.barn,
+        'FARM' => GlobeSprite.farm,
+        'TOWER' => GlobeSprite.tower,
+        'BRIDGE' => GlobeSprite.bridge,
+        'GARDEN' => GlobeSprite.garden,
+        'HOUSE' => GlobeSprite.houseRed,
         'MILL' => GlobeSprite.mill,
         'WELL' => GlobeSprite.well,
         _ => const [
@@ -1064,9 +1347,113 @@ class GlobePainter extends CustomPainter {
       oldDelegate.zoom != zoom ||
       oldDelegate.villages != villages ||
       oldDelegate.takenSlots != takenSlots ||
+      oldDelegate.emptyHarbors.length != emptyHarbors.length ||
+      !oldDelegate.emptyHarbors.containsAll(emptyHarbors) ||
       oldDelegate.showTags != showTags ||
       oldDelegate.art != art ||
+      oldDelegate.closeUp != closeUp ||
+      !identical(oldDelegate.marks, marks) ||
+      oldDelegate.highlight != highlight ||
+      oldDelegate.starCell != starCell ||
+      oldDelegate.starQuiet != starQuiet ||
+      oldDelegate.drop != drop ||
       oldDelegate.detail != detail;
+}
+
+// Where each building stands: the nearest open ground to its word, so no
+// house hides a letter. Keyed by the run's first cell and direction. With no
+// room nearby the house is smaller.
+Map<int, ({int cell, double scale})> _homesFor(GlobeVillage v) {
+  final used = <int>{};
+  final out = <int, ({int cell, double scale})>{};
+  bool open(int row, int col, int up, int wide) {
+    for (var r = row - up; r <= row; r++) {
+      for (var c = col - wide; c <= col + wide; c++) {
+        final i = r * kPlanetBoard + c;
+        if (v.letters.containsKey(i) || used.contains(i)) return false;
+      }
+    }
+    return true;
+  }
+
+  for (final run in v.buildingRuns) {
+    if (run.cells.isEmpty) continue;
+    var best = -1, bestUp = 0, bestWide = 0;
+    var bestScale = 0.5, bestD = double.infinity;
+    for (final (scale, up, wide, reach) in const [(1.0, 3, 2, 7), (0.75, 2, 2, 7), (0.5, 2, 1, 9)]) {
+      for (var r = run.cells.first ~/ kPlanetBoard - reach; r <= run.cells.last ~/ kPlanetBoard + reach; r++) {
+        for (var c = run.cells.first % kPlanetBoard - reach; c <= run.cells.last % kPlanetBoard + reach; c++) {
+          if (!open(r, c, up, wide)) continue;
+          for (final i in run.cells) {
+            final dr = r - up / 3 - i ~/ kPlanetBoard, dc = c - i % kPlanetBoard;
+            final d = (dr * dr + dc * dc).toDouble();
+            if (d < bestD) {
+              bestD = d;
+              best = r * kPlanetBoard + c;
+              bestScale = scale;
+              bestUp = up;
+              bestWide = wide;
+            }
+          }
+        }
+      }
+      // Near enough to read as this word's house.
+      if (best >= 0) break;
+    }
+    if (best < 0) best = run.cells.first - kPlanetBoard;
+    final r0 = best ~/ kPlanetBoard, c0 = best % kPlanetBoard;
+    for (var r = r0 - bestUp; r <= r0; r++) {
+      for (var c = c0 - bestWide; c <= c0 + bestWide; c++) {
+        used.add(r * kPlanetBoard + c);
+      }
+    }
+    out[_homeKey(run.cells)] = (cell: best, scale: bestScale);
+  }
+  return out;
+}
+
+int _homeKey(List<int> cells) =>
+    cells.first * 2 + (cells.length > 1 && cells[1] - cells[0] == kPlanetBoard ? 1 : 0);
+
+/// The squares the buildings stand on (and how big), by [homeOf]'s key.
+Map<int, ({int cell, double scale})> homesOf(GlobeVillage v) => _homes[v] ??= _homesFor(v);
+
+/// Where the building of the word on [cells] stands.
+({int cell, double scale})? homeOf(GlobeVillage v, List<int> cells) =>
+    cells.isEmpty ? null : homesOf(v)[_homeKey(cells)];
+
+/// The building's picture on the screen (what isn't see-through), or null when
+/// it is out of sight.
+Rect? houseRect(GlobeProjection proj, GlobeVillage v, List<int> cells) {
+  final home = homeOf(v, cells);
+  if (home == null) return null;
+  final p = GlobePainter._point(home.cell ~/ kPlanetBoard + kHouseRow, home.cell % kPlanetBoard + 0.5);
+  final r = proj._projectPoint(p);
+  if (!r.front) return null;
+  final w = proj.focal * GlobePainter._cellRad / (p - proj._eye).dot(proj._f) * kHouseCells * home.scale;
+  return Rect.fromLTRB(r.p.dx - w * 0.26, r.p.dy - w * 0.5, r.p.dx + w * 0.26, r.p.dy + w * 0.1);
+}
+
+/// The four corners of a letter's block top on the screen (back left first),
+/// or null when it is out of sight.
+List<Offset>? blockTop(GlobeProjection proj, int cell) {
+  final row = cell ~/ kPlanetBoard, col = cell % kPlanetBoard;
+  final out = <Offset>[];
+  for (final (r, c) in const [(0, 0), (0, 1), (1, 1), (1, 0)]) {
+    final at = proj._projectPoint(GlobePainter._point(row + r.toDouble(), col + c.toDouble()) * kBlockLift);
+    if (!at.front) return null;
+    out.add(at.p);
+  }
+  return out;
+}
+
+/// The middle of a block's top at ([row], [col]) on the screen (fractions: part
+/// of the way to the next square), and how many pixels a square is there.
+({Offset at, double cell})? blockSpot(GlobeProjection proj, double row, double col) {
+  final p = GlobePainter._point(row + 0.5, col + 0.5) * kBlockLift;
+  final r = proj._projectPoint(p);
+  if (!r.front) return null;
+  return (at: r.p, cell: proj.focal * GlobePainter._cellRad / (p - proj._eye).dot(proj._f));
 }
 
 /// The magic-word runs on a board, for colouring a village's building tiles

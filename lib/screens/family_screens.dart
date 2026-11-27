@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../game/word_runs.dart' show WordRun, settle;
@@ -16,12 +19,20 @@ import '../ui/chunky_card.dart';
 import '../ui/tokens.dart';
 import '../ui/wordler_dialog.dart';
 import '../ui/wordler_scaffold.dart';
-import '../village/iso_math.dart';
-import '../village/iso_village_view.dart';
 import '../village/magic_word.dart';
 import '../village/structures.dart';
 import '../village/village_art.dart';
+import '../village/village_cards.dart';
 import '../village/village_save.dart';
+import '../village/village_save_migration.dart';
+import '../dictionary/definition_service.dart';
+import '../explore/fog.dart';
+import '../letterra/globe_view.dart';
+import '../letterra/globe_painter.dart';
+import '../letterra/planet.dart';
+import '../letterra/planet_data.dart';
+import '../letterra/street.dart';
+import '../settings/settings_controller.dart';
 import 'daily_challenge_screen.dart';
 import '../online/family_online_controller.dart';
 import 'family_online_screens.dart';
@@ -454,8 +465,9 @@ class _FamilyRow extends StatelessWidget {
   }
 }
 
-/// Another player's village, to look at: pan and zoom, nothing can be
-/// moved or built.
+/// Another player's village, to look at (spec-22 C): their streets on the
+/// planet, close up. Pan and zoom, tap a building or word for its card;
+/// nothing can be moved or built.
 class VisitVillageScreen extends ConsumerStatefulWidget {
   const VisitVillageScreen({super.key, required this.player});
 
@@ -466,10 +478,13 @@ class VisitVillageScreen extends ConsumerStatefulWidget {
 }
 
 class _VisitVillageScreenState extends ConsumerState<VisitVillageScreen> {
-  final _camera = TransformationController();
-  VillageScene? _scene;
+  PlanetData? _planet;
+  int? _focus;
   bool _loaded = false;
-  bool _aimed = false;
+  List<BoardStructure> _structures = const [];
+  List<WordRun> _words = const [];
+  Map<String, SpriteMeta> _meta = const {};
+  Set<int> _highlight = const {};
 
   @override
   void initState() {
@@ -477,71 +492,159 @@ class _VisitVillageScreenState extends ConsumerState<VisitVillageScreen> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _camera.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
-    final saved = await VillageSaveController(prefix: widget.player.prefix).load();
-    VillageScene? scene;
-    if (saved != null && saved.boardCells.any((c) => c != null)) {
+    // Only the cards' pictures: the planet doesn't wait for them.
+    VillageArt.loadMeta().then((meta) => _meta = meta, onError: (_) {});
+    final raw = await VillageSaveController(prefix: widget.player.prefix).load();
+    PlanetData? planet;
+    int? focus;
+    if (raw != null && raw.boardCells.any((c) => c != null)) {
+      // Only read: the save is laid on the planet the way the village does,
+      // and nothing is written back.
+      final saved =
+          migrateVillageSave(raw, rackSize: InfiniteEstateScreen.rackSize, planetSlot: raw.planetSlot ?? 0);
       const size = InfiniteEstateScreen.boardSize;
-      final runs = saved.starActive
-          ? const <WordRun>[]
-          : (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
-      final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
-      scene = VillageScene(
-        grid: const IsoGrid(boardWidth: size, boardHeight: size),
-        boardCells: saved.boardCells,
-        structures: computeStructures(runs),
-        spriteMeta: meta,
-      );
+      final board = saved.starActive
+          ? null
+          : await settle(saved.boardCells, size, size, ref.read(wordCheckProvider), kept: saved.keptRuns);
+      _structures = computeStructures(board?.settledRuns ?? const []);
+      _words = board?.settledRuns ?? const [];
+      final letters = {
+        for (var i = 0; i < saved.boardCells.length; i++)
+          if (saved.boardCells[i] != null) i: saved.boardCells[i]!,
+      };
+      planet = PlanetData.of(PlanetVillage(
+        player: widget.player,
+        slot: saved.planetSlot ?? 0,
+        letters: letters,
+        runs: [for (final b in _structures) (word: b.def.word, cells: b.ordered)],
+        fog: saved.cleared == null ? null : FogMap.fromBase64(saved.cleared!),
+        loose: board?.looseCells ?? letters.keys.toSet(),
+      ));
+      focus = _structures.isNotEmpty ? _structures.last.middle : _middleLetter(letters.keys);
     }
     if (mounted) {
       setState(() {
-        _scene = scene;
+        _planet = planet;
+        _focus = focus;
         _loaded = true;
       });
     }
   }
 
+  // The letter nearest the middle of all of them.
+  static int _middleLetter(Iterable<int> cells) {
+    final list = cells.toList();
+    final r = list.fold<double>(0, (t, i) => t + i ~/ kPlanetBoard) / list.length;
+    final c = list.fold<double>(0, (t, i) => t + i % kPlanetBoard) / list.length;
+    double d(int i) => math.pow(i ~/ kPlanetBoard - r, 2) + math.pow(i % kPlanetBoard - c, 2).toDouble();
+    return list.reduce((a, b) => d(a) <= d(b) ? a : b);
+  }
+
+  Future<String?> _meaning(String word) => ref.read(definitionServiceProvider).getDefinition(word);
+
+  Future<void> _tap(Offset at, GlobeProjection proj, PlanetData data) async {
+    final hit = streetHit(at, proj, data.villages.first);
+    switch (hit) {
+      case StreetBuilding(:final run) when run < _structures.length:
+        final structure = _structures[run];
+        setState(() => _highlight = structure.positions);
+        await showVillageSheet<void>(
+          context,
+          BuildingCard(
+            def: structure.def,
+            cardImagePath: _meta[structure.def.word]?.cardPath,
+            loadDefinition: _meaning,
+          ),
+        );
+      case StreetLetter(:final cell):
+        final runs = _words.where((r) => r.positions.contains(cell)).toList()
+          ..sort((a, b) => (a.across ? 0 : 1).compareTo(b.across ? 0 : 1));
+        if (runs.isEmpty) return; // a loose letter: nothing to say about it here
+        setState(() => _highlight = runs.first.positions.toSet());
+        await showVillageSheet<void>(
+          context,
+          WordCard(
+            runs: runs,
+            loadDefinition: _meaning,
+            onWordChanged: (run) => setState(() => _highlight = run.positions.toSet()),
+          ),
+        );
+      default:
+        return;
+    }
+    if (mounted) setState(() => _highlight = const {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scene = _scene;
-    return WordlerScaffold(
-      title: "${widget.player.name}'s village",
-      body: !_loaded
-          ? const SizedBox.shrink()
-          : scene == null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(WSize.screenPadding),
-                    child: Text(
-                      "${widget.player.name} hasn't built anything yet.",
-                      style: WText.body,
-                      textAlign: TextAlign.center,
-                    ),
+    final data = _planet;
+    if (!_loaded || data == null) {
+      return WordlerScaffold(
+        title: "${widget.player.name}'s village",
+        body: !_loaded
+            ? const SizedBox.shrink()
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(WSize.screenPadding),
+                  child: Text(
+                    "${widget.player.name} hasn't built anything yet.",
+                    style: WText.body,
+                    textAlign: TextAlign.center,
                   ),
-                )
-              : LayoutBuilder(builder: (context, constraints) {
-                  if (!_aimed) {
-                    _aimed = true;
-                    final focus = scene.structures.isNotEmpty
-                        ? (r: scene.rowOf(scene.structures.last.middle), c: scene.colOf(scene.structures.last.middle))
-                        : scene.lettersCenter();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _camera.value = isoTransformCenteredOn(focus.r, focus.c, constraints.biggest, 0.8, scene.grid);
-                      }
-                    });
-                  }
-                  return ColoredBox(
-                    color: WColors.grassField,
-                    child: IsoVillageView(scene: scene, transformController: _camera),
-                  );
-                }),
+                ),
+              ),
+      );
+    }
+    final reduce = ref.watch(settingsProvider.select((st) => st.reduceMotion));
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: wordlerOverlayStyle,
+      child: Scaffold(
+        backgroundColor: kGlobeSky,
+        body: GlobeView(
+          villages: data.villages,
+          takenSlots: data.takenSlots,
+          focusSlot: data.mySlot,
+          isHushed: data.isHushed,
+          reduceMotion: reduce,
+          alwaysPan: true,
+          closeUp: true,
+          initialCell: _focus,
+          initialZoom: kStreetZoom,
+          highlight: _highlight,
+          zoomButtonsBottomFor: (_) => MediaQuery.paddingOf(context).bottom + 24,
+          onStreetTap: (at, proj) => _tap(at, proj, data),
+          overlay: (proj, cell) => [
+            Positioned.fill(
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(WSize.screenPadding),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Row(children: [
+                      ChunkyIconButton(
+                        icon: Icons.arrow_back,
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          "${widget.player.name}'s village",
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: WText.heading.copyWith(fontSize: 26, color: WColors.ink),
+                        ),
+                      ),
+                      const SizedBox(width: WSize.tapTarget),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

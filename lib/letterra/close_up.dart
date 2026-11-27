@@ -1,0 +1,277 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import '../ui/tokens.dart';
+import 'planet.dart';
+
+// Pictures for the close-up (spec-22 C's phone test): letter blocks and the
+// small things growing on the ground, each drawn once onto a sheet.
+
+/// How wide a house's picture is, in board cells, close up.
+const double kHouseCells = 2.7;
+
+/// The block sheet's row for letters that aren't settled.
+const int kLooseRow = 6;
+
+/// How close the close-up goes (about 40 pixels a square on a phone).
+const double kCloseUpMaxZoom = 12;
+
+const double kBlockCell = 96;
+
+/// Top colours: brick for plain words first, then building words.
+const kBlockColors = [
+  Color(0xFFEBA27E),
+  Color(0xFF9BD0FF),
+  Color(0xFFFFDC62),
+  Color(0xFF8FE0CE),
+  Color(0xFFFFA3B5),
+  Color(0xFFB9E27C),
+];
+
+ui.Image? _blocks;
+
+/// One row per colour: A-Z, then the front side and the end side.
+ui.Image blockSheet() => _blocks ??= _drawBlocks();
+
+ui.Image _drawBlocks() {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  for (var color = 0; color <= kLooseRow; color++) {
+    final base = color == kLooseRow ? const Color(0xFFFFF4E6) : kBlockColors[color];
+    final hsl = HSLColor.fromColor(base);
+    Color darker(double by) => hsl.withLightness((hsl.lightness - by).clamp(0.0, 1.0)).toColor();
+    for (var i = 0; i < 28; i++) {
+      final cell = Rect.fromLTWH(i * kBlockCell, color * kBlockCell, kBlockCell, kBlockCell);
+      if (color == 0) {
+        _plain(canvas, cell, i < 26 ? 0 : (i == 26 ? 0.16 : 0.24));
+        if (i < 26) _letter(canvas, cell, i);
+        continue;
+      }
+      if (i >= 26) {
+        canvas.drawRect(cell, Paint()..color = darker(i == 26 ? 0.22 : 0.32));
+        continue;
+      }
+      canvas.drawRect(cell, Paint()..color = darker(0.30));
+      canvas.drawRRect(RRect.fromRectAndRadius(cell.deflate(3), const Radius.circular(14)), Paint()..color = base);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(cell.deflate(8), const Radius.circular(12)),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4
+          ..color = const Color(0x88FFFFFF),
+      );
+      if (color == kLooseRow) _dashes(canvas, cell);
+      _letter(canvas, cell, i);
+    }
+  }
+  return recorder.endRecording().toImageSync((28 * kBlockCell).round(), ((kLooseRow + 1) * kBlockCell).round());
+}
+
+void _dashes(Canvas canvas, Rect cell) {
+  final path = Path()..addRRect(RRect.fromRectAndRadius(cell.deflate(8), const Radius.circular(12)));
+  final paint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 7
+    ..color = WColors.coral;
+  for (final m in path.computeMetrics()) {
+    for (var d = 0.0; d < m.length; d += 24) {
+      canvas.drawPath(m.extractPath(d, d + 14), paint);
+    }
+  }
+}
+
+void _letter(Canvas canvas, Rect cell, int i) {
+  final tp = TextPainter(
+    text: TextSpan(
+      text: String.fromCharCode(65 + i),
+      style: const TextStyle(fontFamily: 'LilitaOne', fontSize: 72, color: WColors.ink),
+    ),
+    textDirection: TextDirection.ltr,
+    textScaler: TextScaler.noScaling,
+  )..layout();
+  tp.paint(canvas, cell.center - Offset(tp.width / 2, tp.height / 2));
+}
+
+/// How ordinary words look: 0 cream, 1 one clay brick a letter, 2 soft brick
+/// wall, 3 garden stone, 4 honey wood. Only for choosing (spec-22 C).
+int _plainStyle = 1;
+set plainStyle(int style) {
+  _plainStyle = style;
+  _blocks = null;
+}
+
+const _plainColors = [
+  Color(0xFFFFF1CF),
+  Color(0xFFF2AE87),
+  Color(0xFFF6C3A3),
+  Color(0xFFE9E4DA),
+  Color(0xFFF0CB8C),
+];
+
+void _plain(Canvas canvas, Rect cell, double shade) {
+  final base = _plainColors[_plainStyle];
+  final hsl = HSLColor.fromColor(base);
+  Color tone(double by, [double sat = 0]) => hsl
+      .withLightness((hsl.lightness + by - shade).clamp(0.0, 1.0))
+      .withSaturation((hsl.saturation + sat).clamp(0.0, 1.0))
+      .toColor();
+  canvas.save();
+  canvas.clipRect(cell);
+  if (shade > 0) {
+    // A side: soft bricks keep their courses; the rest are plain.
+    canvas.drawRect(cell, Paint()..color = tone(0, -0.15));
+    if (_plainStyle == 2) {
+      final line = Paint()
+        ..strokeWidth = 5
+        ..color = tone(0.06, -0.15);
+      canvas.drawLine(cell.centerLeft, cell.centerRight, line);
+      canvas.drawLine(cell.topCenter, cell.center, line);
+    }
+    canvas.restore();
+    return;
+  }
+  canvas.drawRect(cell, Paint()..color = tone(-0.20, -0.2));
+  final face = RRect.fromRectAndRadius(cell.deflate(3), const Radius.circular(16));
+  canvas.drawRRect(face, Paint()..color = tone(0));
+  canvas.clipRRect(face);
+  if (_plainStyle == 1) {
+    // Light rolls off a smooth clay brick.
+    canvas.drawRRect(
+      face,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [tone(0.07), tone(0), tone(-0.035)],
+        ).createShader(cell),
+    );
+    canvas.drawRRect(
+      face.deflate(5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0x40FFFFFF),
+    );
+  } else if (_plainStyle == 2) {
+    final mortar = Paint()
+      ..strokeWidth = 5
+      ..color = tone(0.085);
+    const h = kBlockCell / 3;
+    for (var row = 0; row < 3; row++) {
+      final y = cell.top + row * h;
+      if (row > 0) canvas.drawLine(Offset(cell.left, y), Offset(cell.right, y), mortar);
+      for (final x in row.isOdd ? const [0.25, 0.75] : const [0.5]) {
+        canvas.drawLine(Offset(cell.left + x * kBlockCell, y), Offset(cell.left + x * kBlockCell, y + h), mortar);
+      }
+    }
+  } else if (_plainStyle == 3) {
+    // Faint patches, like a worn garden stone.
+    for (final (x, y, w, h, t) in const [(0.28, 0.25, 0.5, 0.3, 0.03), (0.75, 0.7, 0.5, 0.4, -0.03), (0.2, 0.8, 0.35, 0.25, -0.02)]) {
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: cell.topLeft + Offset(x * kBlockCell, y * kBlockCell), width: w * kBlockCell, height: h * kBlockCell),
+        Paint()..color = tone(t),
+      );
+    }
+  } else if (_plainStyle == 4) {
+    final grain = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..color = tone(-0.06);
+    for (final y in const [0.2, 0.5, 0.8]) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(cell.left, cell.top + y * kBlockCell)
+          ..quadraticBezierTo(cell.center.dx, cell.top + (y + 0.06) * kBlockCell, cell.right, cell.top + y * kBlockCell),
+        grain,
+      );
+    }
+  } else {
+    canvas.drawRRect(
+      face.deflate(5),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = const Color(0x88FFFFFF),
+    );
+  }
+  canvas.restore();
+}
+
+const double kBitCell = 64;
+
+/// Which small thing grows on a square of [band] ([n] is 0-99); -1: nothing.
+int groundBitFor(Band band, int n) => switch (band) {
+      Band.sunnyShore => n < 4 ? 5 : -1,
+      Band.meadow || Band.whisperWoods => n < 16 ? 0 : (n < 18 ? 1 : (n < 20 ? 2 : (n < 22 ? 3 : (n < 24 ? 4 : -1)))),
+      Band.ruinHills => n < 8 ? 0 : (n < 14 ? 4 : -1),
+      _ => -1,
+    };
+
+ui.Image? _bits;
+
+/// Grass, pink, gold and white flowers, a pebble, a shell.
+ui.Image groundBits() => _bits ??= _drawBits();
+
+ui.Image _drawBits() {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  void shadow(double x, double w) =>
+      canvas.drawOval(Rect.fromCenter(center: Offset(x, 57), width: w, height: 8), Paint()..color = const Color(0x332A4A12));
+  void grass(double x) {
+    for (final (dx, lean, h, color) in const [
+      (-9.0, -10.0, 22.0, Color(0xFF4C9A35)),
+      (9.0, 10.0, 22.0, Color(0xFF4C9A35)),
+      (-2.0, -3.0, 32.0, Color(0xFF5FB542)),
+      (4.0, 5.0, 27.0, Color(0xFF75C94F)),
+    ]) {
+      canvas.drawPath(
+        Path()
+          ..moveTo(x + dx - 5, 58)
+          ..quadraticBezierTo(x + dx, 58 - h / 2, x + dx + lean, 58 - h)
+          ..quadraticBezierTo(x + dx + 5, 58 - h / 2, x + dx + 5, 58)
+          ..close(),
+        Paint()..color = color,
+      );
+    }
+  }
+
+  for (var i = 0; i < 6; i++) {
+    final x = i * kBitCell + kBitCell / 2;
+    if (i == 0) {
+      shadow(x, 34);
+      grass(x);
+    } else if (i <= 3) {
+      shadow(x, 26);
+      canvas.drawLine(
+        Offset(x, 57),
+        Offset(x, 30),
+        Paint()
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xFF4C9A35),
+      );
+      final petal = [const Color(0xFFFF7FA8), const Color(0xFFFFC93C), const Color(0xFFFFFFFF)][i - 1];
+      for (var k = 0; k < 5; k++) {
+        final a = k * 2 * math.pi / 5;
+        canvas.drawCircle(Offset(x + math.cos(a) * 9, 25 + math.sin(a) * 9), 7.5, Paint()..color = petal);
+      }
+      canvas.drawCircle(Offset(x, 25), 6, Paint()..color = i == 2 ? const Color(0xFFB9722E) : const Color(0xFFFFD75E));
+    } else if (i == 4) {
+      shadow(x, 34);
+      canvas.drawOval(Rect.fromLTWH(x - 14, 36, 28, 21), Paint()..color = const Color(0xFF9D9A94));
+      canvas.drawOval(Rect.fromLTWH(x - 10, 37, 17, 11), Paint()..color = const Color(0xFFC6C3BC));
+    } else {
+      shadow(x, 30);
+      for (var k = -2; k <= 2; k++) {
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset(x + k * 5, 48), width: 9, height: 20),
+          Paint()..color = k.isEven ? const Color(0xFFFFB9A0) : const Color(0xFFFFE0D0),
+        );
+      }
+    }
+  }
+  return recorder.endRecording().toImageSync((6 * kBitCell).round(), kBitCell.round());
+}

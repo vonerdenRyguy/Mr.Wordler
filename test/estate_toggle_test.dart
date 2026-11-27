@@ -6,6 +6,7 @@ import 'package:namer_app/game/grid_config.dart';
 import 'package:namer_app/game/grid_providers.dart';
 import 'package:namer_app/game/letter_tile.dart';
 import 'package:namer_app/game/word_landing.dart';
+import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/util/theme_notifier.dart';
 import 'package:namer_app/village/magic_word.dart';
@@ -20,13 +21,11 @@ void main() {
     SharedPreferences.setMockInitialValues({'homeIntroSeen': true});
   });
 
-  testWidgets('the Words side starts selected, and tapping Village moves it', (tester) async {
+  testWidgets('My village opens Words; Planet and Build go between them', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final semantics = tester.ensureSemantics();
-
     await tester.pumpWidget(ProviderScope(
       child: ChangeNotifierProvider(create: (_) => ThemeNotifier(), child: const MyApp()),
     ));
@@ -34,15 +33,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('home-my-village')));
     await tester.pumpAndSettle();
 
-    expect(tester.getSemantics(find.bySemanticsLabel('Words view')), containsSemantics(isSelected: true));
-    expect(tester.getSemantics(find.bySemanticsLabel('Village view')), containsSemantics(isSelected: false));
+    expect(find.byType(GridBoardView), findsOneWidget);
+    expect(find.byType(GlobeView), findsNothing);
 
-    await tester.tap(find.bySemanticsLabel('Village view'));
+    await tester.tap(find.byKey(const ValueKey('words-planet')));
     await tester.pumpAndSettle();
+    expect(find.byType(GridBoardView), findsNothing);
+    expect(find.byType(GlobeView), findsOneWidget);
+    // No building yet: the helper stands where Build does.
+    expect(find.text('Build your first building'), findsOneWidget);
 
-    expect(tester.getSemantics(find.bySemanticsLabel('Words view')), containsSemantics(isSelected: false));
-    expect(tester.getSemantics(find.bySemanticsLabel('Village view')), containsSemantics(isSelected: true));
-    semantics.dispose();
+    await tester.tap(find.text('Go to Words'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GridBoardView), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('tiles of a built magic word get its stripe, others do not', (tester) async {

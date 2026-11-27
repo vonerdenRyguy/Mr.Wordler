@@ -33,10 +33,7 @@ import '../ui/wallpaper.dart';
 import '../explore/fog.dart';
 import '../explore/island_map.dart';
 import '../village/discovery_journal_view.dart';
-import '../village/iso_math.dart';
-import '../village/iso_village_view.dart';
 import '../village/structures.dart';
-import '../village/village_art.dart';
 import '../village/village_cards.dart';
 import '../village/village_save.dart';
 import '../village/village_save_migration.dart';
@@ -52,7 +49,6 @@ import 'helping_screens.dart';
 import 'town_square_screens.dart';
 import 'home_tips.dart';
 import 'infinite_estate_screen.dart';
-import 'planet_screen.dart';
 import 'portfolio_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
@@ -62,13 +58,10 @@ typedef _Village = ({
   bool hasSave,
   int journal,
   int buildings,
-  VillageScene? scene,
-  ({int r, int c}) focus,
   List<String?> rack,
   Set<String> discovered,
   // spec-16: the same fog and outlines as inside the village.
   FogMap? fog,
-  List<SpecialMarker> markers,
   // spec-18: where your harbor is on Letterra, your building words (for the
   // little houses on the globe) and how far up you have climbed.
   int slot,
@@ -142,12 +135,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             hasSave: saved != null,
             journal: saved?.discoveredWords.length ?? 0,
             buildings: 0,
-            scene: null,
-            focus: (r: 0, c: 0),
             rack: saved?.rackCells ?? const [],
             discovered: saved?.discoveredWords ?? const {},
             fog: null,
-            markers: const [],
             slot: saved?.planetSlot ?? 0,
             words: const [],
             reach: 0,
@@ -175,7 +165,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final runs = saved.starActive
         ? const <WordRun>[]
         : (await settle(saved.boardCells, size, size, ref.read(wordCheckProvider))).settledRuns;
-    final meta = await VillageArt.loadMeta().catchError((_) => <String, SpriteMeta>{});
     if (!mounted || generation != _loadGeneration) return;
     final structures = computeStructures(runs);
     // An online family sees which buildings you have (spec-09).
@@ -184,32 +173,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       counts[s.def.word] = (counts[s.def.word] ?? 0) + 1;
     }
     ref.read(familyOnlineProvider.notifier).syncBuildings(counts);
-    final scene = VillageScene(
-      grid: const IsoGrid(boardWidth: size, boardHeight: size),
-      boardCells: saved.boardCells,
-      structures: structures,
-      spriteMeta: meta,
-    );
     // The same fog and outlines as the village (spec-16): an old save gets its
     // fog worked out the way the village does when it opens.
     final migrated = saved;
     final fog = migrated.cleared == null ? null : FogMap.fromBase64(migrated.cleared!);
-    final islandMap = IslandMap.letterra(seed: migrated.mapSeed, slot: migrated.planetSlot ?? 0);
-    final markers = [
-      for (final sp in islandMap.specials)
-        if (sp.kind == SpecialKind.villager ? !migrated.villagers.isMet(sp.id) : !migrated.foundSpecials.contains(sp.id))
-          SpecialMarker(sp.cell, sp.kind),
-    ];
     setState(() => _village = (
           hasSave: true,
           journal: saved.discoveredWords.length,
           buildings: structures.length,
-          scene: scene,
-          focus: _focusOf(scene, saved.discoveredWords),
           rack: saved.rackCells,
           discovered: saved.discoveredWords,
           fog: fog,
-          markers: markers,
           slot: migrated.planetSlot ?? 0,
           words: [for (final s in structures) s.def.word],
           reach: fog == null ? 1 : reachFromFog(fog, migrated.planetSlot ?? 0),
@@ -292,22 +266,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _openPlanet() =>
-      _open(PlanetScreen(data: _planet, onVisited: _loadVillage));
-
-  // Your newest building (the most recently discovered word that's built),
-  // else the middle of all your letters.
-  ({int r, int c}) _focusOf(VillageScene scene, Set<String> discovered) {
-    for (final word in discovered.toList().reversed) {
-      for (final s in scene.structures.reversed) {
-        if (s.def.word == word) return (r: scene.rowOf(s.middle), c: scene.colOf(s.middle));
-      }
-    }
-    if (scene.structures.isNotEmpty) {
-      final s = scene.structures.last;
-      return (r: scene.rowOf(s.middle), c: scene.colOf(s.middle));
-    }
-    return scene.lettersCenter();
-  }
+      _open(InfiniteEstateScreen(startOnPlanet: true, planet: _planet));
 
   Future<void> _open(Widget screen) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
@@ -380,7 +339,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           coins: kWordOfDayCoins,
           onVisit: () {
             Navigator.of(sheetContext).pop();
-            _open(const InfiniteEstateScreen());
+            _open(InfiniteEstateScreen(planet: _planet));
           },
         ),
       ),
@@ -497,7 +456,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onLevel: () => _open(const PortfolioScreen()),
         onWordOfDay: wordOfDay == null ? null : () => _openWordOfDay(wordOfDay, wordClaimed),
         onJournal: _openJournal,
-        onVillagers: () => _open(const InfiniteEstateScreen(openVillagers: true)),
+        onVillagers: () => _open(InfiniteEstateScreen(openVillagers: true, planet: _planet)),
         onProperties: () => _open(const PortfolioScreen()),
         onStats: () => _open(const StatsScreen()),
         onWordLevel: () => _open(const WordLevelScreen()),
@@ -506,7 +465,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _PlayPage(
         planet: _planet,
         onPlanet: _openPlanet,
-        onVisit: () => _open(const InfiniteEstateScreen()),
+        onVisit: () => _open(InfiniteEstateScreen(planet: _planet)),
       ),
       if (!hasFamily)
         Wallpaper(

@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:namer_app/daily/word_of_the_day.dart';
 import 'package:namer_app/game/word_landing.dart' show wordCheckProvider;
+import 'package:namer_app/letterra/globe_view.dart';
 import 'package:namer_app/main.dart';
 import 'package:namer_app/screens/home_screen.dart';
 import 'package:namer_app/screens/mode_start_pages.dart';
@@ -322,12 +323,9 @@ void main() {
     expect(find.text('Free letter'), findsNothing);
     expect(find.text('Jump'), findsNothing);
 
-    // Switching to Village view should render without error. You can't
-    // place letters there, so the rack is hidden, and a fresh village
-    // shows the first-building helper instead.
-    expect(find.text('Words'), findsOneWidget);
-    expect(find.text('Village'), findsOneWidget);
-    await tester.tap(find.text('Village'));
+    // The planet renders without error. You can't place letters there, so the
+    // rack is hidden, and a fresh village shows the first-building helper.
+    await tester.tap(find.byKey(const ValueKey('words-planet')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -336,8 +334,8 @@ void main() {
     expect(find.text('Go to Words'), findsOneWidget);
     expect(find.text('Swap'), findsNothing);
 
-    // Switching back to Words view should restore the interactive board.
-    await tester.tap(find.text('Words'));
+    // Going back to Words should restore the interactive board.
+    await tester.tap(find.text('Go to Words'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(ErrorWidget), findsNothing);
@@ -446,6 +444,11 @@ void main() {
     await openInfiniteEstate(tester, overrides: [wordCheckProvider.overrideWithValue((w) async => w == 'WELL')]);
 
     expect(tester.takeException(), isNull);
+    // The WELL is new: its moment shows on the planet, then back to Words.
+    expect(find.byType(GlobeView), findsOneWidget);
+    await tester.tap(find.text('Hooray!'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GlobeView), findsNothing);
     // 4 board letters around the center (where the view opens) + 10 rack.
     expect(oneLetterTileFinder(), findsNWidgets(14));
     for (final l in ['W', 'L']) {

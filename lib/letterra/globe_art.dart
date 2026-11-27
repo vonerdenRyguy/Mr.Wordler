@@ -47,9 +47,14 @@ enum GlobeSprite {
   boatGreen,
   flagCoral,
   flagGreen,
-  housePurple;
+  housePurple,
+  farm,
+  tower,
+  bridge,
+  garden,
+  flagBlank;
 
-  static const double cell = 192;
+  static const double cell = 384;
 
   ui.Rect get rect => ui.Rect.fromLTWH((index % 8) * cell, (index ~/ 8) * cell, cell, cell);
 }

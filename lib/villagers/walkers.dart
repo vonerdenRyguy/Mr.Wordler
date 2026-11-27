@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
-// Villagers strolling along the word slabs in Village view (spec-16). Pure
+// Villagers strolling along the word slabs, on the planet's streets (spec-16, spec-22 C). Pure
 // movement: which cell each one is on, which neighbouring slab they are
 // walking to and how far along. They only ever step between slabs (never
 // grass, never fog: fog hides nothing here because slabs are only ever on

@@ -9,7 +9,7 @@ import '../ui/tokens.dart';
 import 'discovery_journal_view.dart' show lettersTowardWord;
 import 'magic_word.dart';
 
-// The cards that open when you tap something in Village view, plus the
+// The cards that open when you tap something on the planet's streets, plus the
 // "Build your first building" helper. All are plain widgets; the screen
 // decides what they do.
 
@@ -120,14 +120,15 @@ class BuildingCard extends StatelessWidget {
     required this.def,
     required this.cardImagePath,
     required this.loadDefinition,
-    required this.onShowInWords,
+    this.onShowInWords,
     this.ability,
   });
 
   final MagicWordDef def;
   final String? cardImagePath;
   final DefinitionLoader loadDefinition;
-  final VoidCallback onShowInWords;
+  /// Null when only looking (another player's village): no Build here.
+  final VoidCallback? onShowInWords;
   final BuildingAbility? ability;
 
   @override
@@ -178,25 +179,27 @@ class BuildingCard extends StatelessWidget {
         ),
         const SizedBox(height: WSize.gap3),
         _MeaningBox(word: def.word, loadDefinition: loadDefinition),
-        const SizedBox(height: WSize.gap3),
-        Row(
-          children: [
-            Expanded(
-              child: ChunkyButton(
-                label: 'Show in Words',
-                kind: ChunkyKind.secondary,
-                expand: true,
-                onPressed: onShowInWords,
-              ),
-            ),
-            if (ability != null) ...[
-              const SizedBox(width: WSize.gap3),
-              Expanded(
-                child: ChunkyButton(label: ability!.label, expand: true, onPressed: ability!.onPressed),
-              ),
+        if (onShowInWords != null || ability != null) ...[
+          const SizedBox(height: WSize.gap3),
+          Row(
+            children: [
+              if (onShowInWords != null)
+                Expanded(
+                  child: ChunkyButton(
+                    label: 'Build here',
+                    kind: ChunkyKind.secondary,
+                    expand: true,
+                    onPressed: onShowInWords,
+                  ),
+                ),
+              if (onShowInWords != null && ability != null) const SizedBox(width: WSize.gap3),
+              if (ability != null)
+                Expanded(
+                  child: ChunkyButton(label: ability!.label, expand: true, onPressed: ability!.onPressed),
+                ),
             ],
-          ],
-        ),
+          ),
+        ],
       ],
     );
   }
@@ -289,13 +292,14 @@ class WordCard extends StatefulWidget {
     super.key,
     required this.runs,
     required this.loadDefinition,
-    required this.onShowInWords,
+    this.onShowInWords,
     this.onWordChanged,
   });
 
   final List<WordRun> runs;
   final DefinitionLoader loadDefinition;
-  final ValueChanged<WordRun> onShowInWords;
+  /// Null when only looking (another player's village).
+  final ValueChanged<WordRun>? onShowInWords;
   final ValueChanged<WordRun>? onWordChanged;
 
   @override
@@ -338,15 +342,20 @@ class _WordCardState extends State<WordCard> {
         const SizedBox(height: WSize.gap3),
         _MeaningBox(word: run.word, loadDefinition: widget.loadDefinition),
         const SizedBox(height: WSize.gap2),
-        Text('A path in your village. Only magic words become buildings.',
+        Text(
+            widget.onShowInWords == null
+                ? 'A path. Only magic words become buildings.'
+                : 'A path in your village. Only magic words become buildings.',
             style: WText.body.copyWith(color: WColors.muted)),
-        const SizedBox(height: WSize.gap3),
-        ChunkyButton(
-          label: 'Show in Words',
-          kind: ChunkyKind.secondary,
-          expand: true,
-          onPressed: () => widget.onShowInWords(run),
-        ),
+        if (widget.onShowInWords case final show?) ...[
+          const SizedBox(height: WSize.gap3),
+          ChunkyButton(
+            label: 'Build here',
+            kind: ChunkyKind.secondary,
+            expand: true,
+            onPressed: () => show(run),
+          ),
+        ],
       ],
     );
   }
@@ -436,6 +445,37 @@ class WordOfDayCard extends StatelessWidget {
   }
 }
 
+/// A waiting shore (spec-22 C): a harbor nobody in the family lives at yet.
+class RoomForFamilyCard extends StatelessWidget {
+  const RoomForFamilyCard({super.key, required this.onInvite});
+
+  final VoidCallback onInvite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Semantics(header: true, child: Text('Room for family', style: WText.heading))),
+            const _CloseButton(),
+          ],
+        ),
+        const SizedBox(height: WSize.gap2),
+        const Text(
+          'This harbor is waiting. When someone in your family joins, their village starts here.',
+          style: WText.body,
+        ),
+        const SizedBox(height: WSize.gap3),
+        ChunkyButton(label: 'Invite family', icon: Icons.group_add, expand: true, onPressed: onInvite),
+      ],
+    );
+  }
+}
+
 class NotAWordCard extends StatelessWidget {
   /// The misspelled run this letter is in ("AQ"), if any.
   const NotAWordCard({super.key, this.run, this.offStar = false});
@@ -500,7 +540,7 @@ class NotAWordCard extends StatelessWidget {
   return (def: best, have: bestHave, haveEach: haveEach);
 }
 
-/// "Build your first building": shown in Village view until there is one.
+/// "Build your first building": shown on the planet and in Words until there is one.
 class FirstBuildingHelper extends StatelessWidget {
   const FirstBuildingHelper({
     super.key,

@@ -3,10 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../ui/tokens.dart';
+import 'close_up.dart';
 import 'globe_art.dart';
 import 'globe_painter.dart';
 import 'planet.dart';
 import 'planet_data.dart';
+import 'street.dart';
 
 /// The sky behind the planet.
 const kGlobeSky = Color(0xFFBFE6F5);
@@ -39,7 +41,44 @@ class GlobeView extends StatefulWidget {
     this.onTap,
     this.glowCells = const [],
     this.onGlowTap,
+    this.closeUp = false,
+    this.initialCell,
+    this.marks = const [],
+    this.highlight = const {},
+    this.starCell,
+    this.starQuiet = false,
+    this.drop,
+    this.onStreetTap,
+    this.overlay,
+    this.zoomButtonsBottomFor,
+    this.onEmptyHarborTap,
   });
+
+  /// A tap on a harbor nobody lives at yet (a waiting shore).
+  final void Function(int slot)? onEmptyHarborTap;
+
+  /// The board square to start on.
+  final int? initialCell;
+
+  /// See [GlobePainter].
+  final List<GroundMark> marks;
+  final Set<int> highlight;
+  final int? starCell;
+  final bool starQuiet;
+  final ({List<int> cells, double t})? drop;
+
+  /// A tap down in the streets (from [kStreetZoom] up).
+  final void Function(Offset at, GlobeProjection proj)? onStreetTap;
+
+  /// What stands over the planet, rebuilt as the camera moves: the zoom and
+  /// the board square in the middle of the view.
+  final List<Widget> Function(GlobeProjection proj, int cell)? overlay;
+
+  /// Where the zoom buttons go at each zoom (else [zoomButtonsBottom]).
+  final double Function(double zoom)? zoomButtonsBottomFor;
+
+  /// Zoom on down to the streets (spec-22 C).
+  final bool closeUp;
 
   /// Board squares that glow with a star (spec-18b), through any fog.
   final List<int> glowCells;
@@ -89,9 +128,25 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
   Curve _curve = Curves.easeOutCubic;
 
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
-  late double _lon = slotAngle(widget.focusSlot);
+  late double _lon = _startAt?.lon ?? slotAngle(widget.focusSlot);
   late double _zoom = widget.initialZoom;
-  late double _lat = _latForZoom(widget.initialZoom);
+  late double _lat = _startAt?.lat ?? _latForZoom(widget.initialZoom);
+
+  ({double lat, double lon})? get _startAt {
+    final cell = widget.initialCell;
+    return cell == null ? null : boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+  }
+
+  /// How far north the camera may go (close up, right to the Lantern).
+  double get _maxLat => widget.closeUp ? 1.57 : 1.45;
+
+  /// The board square in the middle of the view.
+  int get centerCell {
+    final b = sphereToBoard(_lat, _lon);
+    return b.row.floor().clamp(0, kPlanetBoard - 1) * kPlanetBoard + b.col.floor().clamp(0, kPlanetBoard - 1);
+  }
+
+  double get zoom => _zoom;
   double _fromLon = 0, _fromLat = 0, _fromZoom = 1;
   double _toLon = 0, _toLat = 0, _toZoom = 1;
   Size _size = const Size(400, 400);
@@ -163,7 +218,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
       lat = s.lat;
       lon = s.lon;
     }
-    await _flyTo(lon: lon, zoom: kGlobeMaxZoom, lat: lat, milliseconds: 1000, curve: Curves.easeInOutCubic);
+    await _flyTo(lon: lon, zoom: _maxZoom, lat: lat, milliseconds: 1000, curve: Curves.easeInOutCubic);
   }
 
   /// Turns the planet so board square [cell] faces you.
@@ -244,6 +299,14 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     }
   }
 
+  double get _maxZoom => widget.closeUp ? kCloseUpMaxZoom : kGlobeMaxZoom;
+
+  /// Walks the camera to board square [cell] (the phone test's tour).
+  Future<void> walkTo(int cell, double zoom, {int milliseconds = 1500}) {
+    final s = boardToSphere(cell ~/ kPlanetBoard + 0.5, cell % kPlanetBoard + 0.5);
+    return _flyTo(lon: s.lon, zoom: zoom, lat: s.lat, milliseconds: milliseconds, curve: Curves.easeInOutCubic);
+  }
+
   Future<void> _flyTo({
     required double lon,
     required double zoom,
@@ -252,7 +315,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     int milliseconds = 450,
     Curve curve = Curves.easeOutCubic,
   }) async {
-    zoom = zoom.clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
+    zoom = zoom.clamp(kGlobeMinZoom, _maxZoom).toDouble();
     if (widget.reduceMotion) {
       _anim.stop();
       setState(() {
@@ -281,15 +344,19 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  double get _pxPerRad => GlobeProjection(size: _size, centerLon: _lon, centerLat: _lat, zoom: _zoom).pixelsPerRadian;
+  double get _pxPerRad => GlobeProjection(size: _size, centerLon: _lon, centerLat: _lat, zoom: _zoom, closeUp: widget.closeUp).pixelsPerRadian;
 
   // With one village alone there is nothing to spin to, so swipes go to the
   // page behind (Home's Me | Play | Family) until you have zoomed in.
   bool get _canPan => widget.alwaysPan || widget.villages.length > 1 || _zoom > widget.initialZoom * 1.05;
 
   void _zoomBy(double factor) {
-    final zoom = (_zoom * factor).clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
-    _flyTo(lon: _lon, zoom: zoom, lat: _latForZoom(zoom));
+    final zoom = (_zoom * factor).clamp(kGlobeMinZoom, _maxZoom).toDouble();
+    // Close up, keep where you were looking; only the tilt follows the zoom.
+    final lat = widget.closeUp
+        ? (_lat + _latForZoom(zoom) - _latForZoom(_zoom)).clamp(-0.25, _maxLat).toDouble()
+        : _latForZoom(zoom);
+    _flyTo(lon: _lon, zoom: zoom, lat: lat);
   }
 
   int? _nearestVillage() {
@@ -310,7 +377,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     final cosLat = math.max(0.25, math.cos(_lat));
     setState(() {
       _lon = wrapLon(_lon - delta.dx / (r * cosLat));
-      _lat = (_lat + delta.dy / r).clamp(-0.25, 1.45).toDouble();
+      _lat = (_lat + delta.dy / r).clamp(-0.25, _maxLat).toDouble();
     });
   }
 
@@ -320,7 +387,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     if (widget.reduceMotion || velocity.distance < 120) return;
     final r = _pxPerRad;
     final turn = (-velocity.dx * 0.3 / (r * math.max(0.25, math.cos(_lat)))).clamp(-2.4, 2.4).toDouble();
-    final lat = (_lat + velocity.dy * 0.3 / r).clamp(-0.25, 1.45).toDouble();
+    final lat = (_lat + velocity.dy * 0.3 / r).clamp(-0.25, _maxLat).toDouble();
     _flyTo(lon: _lon + turn, zoom: _zoom, lat: lat, glide: true);
   }
 
@@ -332,9 +399,9 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
       final dist = (pts[0] - pts[1]).distance;
       setState(() {
         final before = _latForZoom(_zoom);
-        _zoom = (_pinchStartZoom * dist / _pinchStartDistance).clamp(kGlobeMinZoom, kGlobeMaxZoom).toDouble();
+        _zoom = (_pinchStartZoom * dist / _pinchStartDistance).clamp(kGlobeMinZoom, _maxZoom).toDouble();
         // Keep where you were looking; only the tilt follows the zoom.
-        _lat = (_lat + _latForZoom(_zoom) - before).clamp(-0.25, 1.45).toDouble();
+        _lat = (_lat + _latForZoom(_zoom) - before).clamp(-0.25, _maxLat).toDouble();
       });
     }
   }
@@ -365,7 +432,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
     return LayoutBuilder(builder: (context, constraints) {
       final size = constraints.biggest;
       _size = size;
-      final proj = GlobeProjection(size: size, centerLon: _lon, centerLat: _lat, zoom: _zoom);
+      final proj = GlobeProjection(size: size, centerLon: _lon, centerLat: _lat, zoom: _zoom, closeUp: widget.closeUp);
       final look = widget.onTap != null;
       final canPan = !look && _canPan;
       return Listener(
@@ -376,6 +443,9 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
+          onTapUp: widget.onStreetTap == null || _zoom < kStreetZoom
+              ? null
+              : (d) => widget.onStreetTap!(d.localPosition, proj),
           onPanStart: canPan
               ? (_) {
                   _anim.stop();
@@ -411,10 +481,18 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                       centerLat: _lat,
                       zoom: _zoom,
                       villages: widget.villages,
-                      takenSlots: widget.takenSlots,
+                      // Land all the way round; empty harbors wait for family.
+                      takenSlots: kAllHarbors,
+                      emptyHarbors: kAllHarbors.difference(widget.takenSlots),
                       isHushed: widget.isHushed,
                       showTags: widget.showTags,
                       art: GlobeArt.loaded,
+                      closeUp: widget.closeUp,
+                      marks: widget.marks,
+                      highlight: widget.highlight,
+                      starCell: widget.starCell,
+                      starQuiet: widget.starQuiet,
+                      drop: widget.drop,
                       detail: (_turn != null || _anim.isAnimating || _dragging || _pointers.length > 1)
                           ? GlobeDetail.coarse
                           : GlobeDetail.fine,
@@ -426,7 +504,8 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                 for (final cell in widget.glowCells)
                   if (_glow(proj, cell) case final glow?) glow,
               for (final v in look ? const <GlobeVillage>[] : widget.villages)
-                if (proj.villageHit(v.slot) case final rect?)
+                if (widget.onStreetTap == null || _zoom < (v.slot == widget.focusSlot ? kBuildZoom : kStreetZoom))
+                  if (proj.villageHit(v.slot) case final rect?)
                   Positioned.fromRect(
                     rect: rect,
                     child: Semantics(
@@ -440,10 +519,26 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
+              if (!look && widget.onEmptyHarborTap != null)
+                for (final slot in kAllHarbors.difference(widget.takenSlots))
+                  if (proj.villageHit(slot) case final rect?)
+                    Positioned.fromRect(
+                      rect: rect,
+                      child: Semantics(
+                        button: true,
+                        label: 'Room for family',
+                        child: GestureDetector(
+                          key: ValueKey('globe-harbor-$slot'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => widget.onEmptyHarborTap!(slot),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
               if (widget.showZoomButtons && !look)
                 Positioned(
                   right: 8,
-                  bottom: widget.zoomButtonsBottom,
+                  bottom: widget.zoomButtonsBottomFor?.call(_zoom) ?? widget.zoomButtonsBottom,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -451,7 +546,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                         key: const ValueKey('globe-zoom-in'),
                         icon: Icons.add,
                         label: 'Zoom in',
-                        enabled: _zoom < kGlobeMaxZoom - 0.01,
+                        enabled: _zoom < _maxZoom - 0.01,
                         onTap: () => _zoomBy(1.7),
                       ),
                       const SizedBox(height: 6),
@@ -465,6 +560,7 @@ class GlobeViewState extends State<GlobeView> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
+              ...?widget.overlay?.call(proj, centerCell),
             ],
           ),
         ),
