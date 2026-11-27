@@ -48,7 +48,7 @@ design, architecture, tricky bugs) or Sonnet (building from a spec, tests,
 installs, small fixes). If I'm on the wrong one, tell me to switch with
 `/model`.
 
-## Current state (as of 2026-11-23)
+## Current state (as of 2026-11-27)
 
 Built from specs 01-15, **all merged to master**. Specs 04 and 05 were
 merged together on 2026-11-14 after Ryan checked them on the phone
@@ -482,6 +482,39 @@ merged together on 2026-11-14 after Ryan checked them on the phone
   Planet only, bigger regions, buildings by region: any word anywhere, only
   some become buildings) wait for boards. The Letter Fair (spec-21) is
   approved, not built.
+- **spec-22 B and C: Words to build, Planet to see it** (branch
+  `spec-22bc-words-and-planet`, cut from `spec-22c-closeup-test`; **not merged
+  yet**, waiting for Ryan's phone check). Spec:
+  `specs\spec-22bc-words-and-planet.md`, boards L341-L349.
+  - **The angled Village view is gone.** The village screen has two modes,
+    Words and planet (`_ViewMode`); `PlanetScreen` is gone too. "My village"
+    opens Words; Home's planet tap opens the village screen on the planet
+    (`startOnPlanet`). Words' **Planet** button and the planet's **Build**
+    button (zoom 3 up, `kBuildZoom`) keep the same square both ways.
+  - **Close-up** (`GlobeView.closeUp`, max zoom 12): clay blocks for ordinary
+    words, bright blocks for building words, loose letters pale with a dashed
+    coral edge. Houses stand beside their word (`homesOf`, drawn before the
+    blocks so no letter is ever hidden; half size in crowded spots).
+    `lib/letterra/street.dart`: `kStreetZoom` 7, `streetHit` (villager, block,
+    building, nearest letter within 28 px), `StreetVillagers` (walk only while
+    in view, still with Reduce motion).
+  - New building: the planet swoops in, it drops into place, coins paid before,
+    back to Words (`_newBuildingMoment`). Building and word cards say **Build
+    here**.
+  - New sprites (farm, tower, bridge, garden, house, blank flag) in a 384 px
+    sheet (`tool/globe_art/`).
+  - **Visiting** another player (`VisitVillageScreen`) is their planet
+    close-up, look only: cards without Build here.
+  - **Waiting shores:** the planet draws all eight harbors as land
+    (`kAllHarbors`); each empty one has a small dock and a blank flag, and a
+    tap gives "Room for family" with Invite family (`RoomForFamilyCard`).
+    Drawing only: `isBay` / `isSeaIndex` still refuse tiles there.
+  - What the old view still lent the rest: `lib/village/village_layout.dart`
+    (`walkableCells`, `lettersCenter`, `VillagerSprite`, `SpecialMarker`,
+    `paintVillagerFigure`) and `words_camera.dart`. `VillageArt` now only
+    loads `buildings.json` for the tap cards' pictures; the sprites in
+    `assets/village/buildings/` are no longer drawn.
+  - `tool/one_planet_shots_test.dart` renders PNGs to `build/shots/op-*.png`.
 
 ## Product direction (set by Ryan, 2026-11-14)
 
@@ -619,13 +652,12 @@ concept, each spec's proposal, and dated real-phone screenshots.
   `gridConfigProvider` isn't overridden.
 - **Lazy rendering for the 500x500 board.** Words view (`GridBoardView`
   with `cellSize`) builds only visible cells inside
-  `InteractiveViewer.builder`; Village view is one `CustomPainter` that
-  paints only visible cells (grass as one checker path; letters, blocks
-  and buildings only for occupied cells).
-- **Village view is a pure rendering of the board**, not a separate data
+  `InteractiveViewer.builder`; the planet (`GlobePainter`) draws ground,
+  grass and blocks as one draw call each and paints nothing while still.
+- **The planet is a pure rendering of the board**, not a separate data
   model: `computeStructures(runs)` (`lib/village/structures.dart`) derives
-  buildings fresh each time, and `VillageScene` holds the geometry both
-  painting and tap hit-testing use. Only board/rack/pool plus
+  buildings fresh each time, and `homesOf` / `streetHit` give the geometry
+  both painting and tapping use. Only board/rack/pool plus
   `reachedLandmarks`, `discoveredWords` and `lastCashedOutScore` are saved
   (`village_save.dart`).
 - **Word checks are injectable:** `wordCheckProvider` (defaults to the
@@ -685,7 +717,7 @@ lib/
     home_tips.dart            Mr. W's tips + hidden-for-today
     mode_start_pages.dart     Time Attack's start page
     time_attack_screen.dart, daily_challenge_screen.dart
-    infinite_estate_screen.dart  The village (Words + Village views)
+    infinite_estate_screen.dart  The village (Words + planet)
     portfolio_screen.dart, stats_screen.dart, settings_screen.dart
     Navigation: Home -> Time Attack start page -> round (Start replaces the
     start page, so leaving returns Home); Home -> "Visit your village" and
@@ -693,10 +725,9 @@ lib/
   village/
     magic_word.dart           The 8 magic words + their building defs
     structures.dart           BoardStructure, computeStructures(runs), stripes
-    iso_math.dart             Isometric projection + view-switch camera helpers
-    iso_village_view.dart     IsoVillageView, VillageScene, hitTestVillage
-    building_art.dart         The eight buildings drawn in code (spec-14)
-    village_art.dart          Loads buildings.json + sprites (with alpha)
+    words_camera.dart         Words view's middle square and zoom
+    village_layout.dart       Walkable squares, letters' middle, villager figure
+    village_art.dart          Loads buildings.json (tap-card pictures)
     village_cards.dart        Building/word/meaning cards, first-building helper
     village_rewards.dart      First-building coins, free Swaps
     landmark.dart, bridge_transform.dart
@@ -726,7 +757,7 @@ spec-10 adds `claimedGifts` inside it), `homeIntroSeen`, `showTips`,
 
 - `flutter analyze` — clean except the pre-existing `bananagramsTiles.dart`
   filename-casing lint.
-- `flutter test` — 443 tests as of spec-22a (442 as of spec-18b, 413 as of spec-18, 336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
+- `flutter test` — 447 tests as of spec-22bc (the old Village view's tests went with it), 443 as of spec-22a (442 as of spec-18b, 413 as of spec-18, 336 as of spec-16, 300 as of spec-15). The full run takes about 5-6 minutes; run it in the background.
   `test/family_word_online_test.dart` and `test/helping_test.dart` play
   out the family word, map and helping on the fake server.
   `test/family_online_test.dart` plays out families on the fake server. `widget_test.dart` loads the
